@@ -37,6 +37,26 @@ Law applied from arcade rung 8 (2026-07-19): that build shipped 26 machine crite
 
 Reference to gather: sites Daniel considers the right register. Not described in prose — captured as images.
 
+### 0(c) UX/legal research gate — OPEN, running 2026-07-20
+
+Daniel paused development here. Build resumes when the research lands and its recommendations are ruled.
+
+Scope sent to research: navigation/header UX (item count, label wording, sticky headers, mobile patterns, and whether "The Work" is insider language); the **text-alignment hypothesis** (Daniel's: *"everything aligned to the left is good for an engineer, bad for the masses"* — sent as a claim to be tested, not confirmed); footer composition; US legal requirements at the *required vs recommended* line (privacy policy thresholds, cookie consent, CAN-SPAM's mailing-address rule against a no-home-address constraint, ADA/WCAG exposure, copyright and licensing); nonprofit structure (private foundation vs public charity for a publishing ministry); the **easy-posting problem** for a blog on a no-build-step static site; dark-theme and gold-on-navy contrast; and what actually matters for a site with no traffic yet.
+
+Scoping answers from Daniel, 2026-07-20: no entity filed, **intent is a private family foundation** `[flagged — may conflict with a publishing ministry that later solicits support; research to settle]`; money not at v0 but likely later; email list + analytics + contact form all wanted, on a **"begin with the end in mind"** basis (build the hooks now, fill later); **no physical address published**.
+
+## Phase 0(d) — Extract the invariants of building a website
+
+Standing instruction from Daniel, recorded so it does not evaporate: *"This is us building a website. Extracting the invariants of the build needs to be on the radar so the next one is more fluidly guided and a bit more plug and play."*
+
+Same lens as the arcade ladder, same deliverable shape: the trove is the product. Target artifacts, to be written as the build teaches them rather than invented up front:
+
+- **`WEB_INVARIANTS.md`** — laws that would be wrong to break on any site, each carrying the specific failure that bought it
+- **`WEB_UX_DECISIONS.md`** — choices with their tradeoffs priced and an explicit re-pick trigger
+- Routing rule, as on the arcade: **law vs choice vs history — nothing belongs in two places**
+
+Zero-waste principle: the research being run for this site is the first deposit. It is not a one-off cost if it is written down as reusable law.
+
 ## Phase 1 — v0 static, landing page
 
 Mantras + MBS. Passes the Phase 0(b) visual gate before it counts as done.
@@ -63,3 +83,10 @@ DNS cut over, verified by sight (HTTP 200 + markers in the live bytes, per fleet
 Repo created (`Sobevista/b4him`, public) after verifying live GitHub showed no existing b4him repo. Chassis seeded at birth: README, this outline, RESUME, CLAUDE.md, `.gitattributes` (LF everywhere — CRLF-churn law, 2026-07-17). CLAUDE.md seeded **at birth** rather than retrofitted, closing the Terminology Canon's fleet gap for this repo on day one.
 Ruled the same session: b4him is a **project, not a Lab experiment** — it has a name, an owned domain, a locked tier ladder and a first resident, and no kill condition. The Lab is for disposable runs with pass criteria locked before the run; this is not that.
 Status: **Phase 0 open.** No code until 0(a) is ruled and 0(b) has visual reference in hand.
+
+### 2026-07-20 — Phase 0(b) CLOSED, then development paused at 0(c)
+Daniel supplied the Beacon Ministries logo — the first real visual reference the project has had, and precisely what the 0(b) gate was built to wait for. **Direction A ("Hearth") chosen and recolored to the logo's gold-on-navy** (D9, full palette table); B and C rejected, files deleted, both described in DECISIONS so neither is rebuilt from scratch. **Mantras came off the landing page** (D10) — pillars, not ornament; they go on About and are bolded when invoked inline. `index.html` shipped and verified in the browser pane at 1280px and narrow: four cards, no overlap, no horizontal overflow, palette matching the locked tokens.
+
+Known-not-done, on the face of it: `about.html` is linked twice and does not exist (both links 404); the header mark is an inline SVG `[ASSUMED stand-in]` awaiting `assets/logo.png`; small gold metadata text has **not** been contrast-measured (sent to research as 0(c) item 7).
+
+**Then Daniel paused the build for research** — see 0(c). His instruction was explicit: go and do the research, do not assume. The scope grew past the landing page: a real header across all pages, a legal-complete footer, a blog with easy posting, and the alignment question. Also opened **0(d)** — extract the invariants of website-building so the next site is more plug-and-play.
