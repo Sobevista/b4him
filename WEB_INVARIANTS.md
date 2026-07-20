@@ -58,6 +58,16 @@
 
 ---
 
+## INV-W8 — Test the instrument against the case you built it for
+
+**Bought:** `tools/contrast-audit.js`, within minutes of being written. The first version walked ancestors looking for a painted background — and reported confident, clean numbers for every element on b4him's landing page. It could not see the page's single most prominent visual feature: the gold "beam," which is a `::before` pseudo-element. `getComputedStyle(el)` does not report pseudo-elements, so the tool was blind to the exact thing that alters the contrast it exists to measure.
+
+It would have shipped as a green light.
+
+**The law:** a measuring tool built by the same author, from the same mental model, as the thing being measured inherits that model's blind spots. Run it against the known case *before* trusting it on the unknown ones — and check that it can see what you already know is there.
+
+**Corollary, learned in the same ten minutes:** once the tool *could* see the overlay, it flagged 14 of 26 elements — technically true, practically noise, since one full-viewport overlay affects everything. A warning that fires on half the page trains the reader to ignore it. Group findings by cause: *"14 elements painted over by `body::before`"* is one fact. Fourteen separate warnings are a habit of dismissal.
+
 ## Candidate laws — not yet earned
 
 Held here deliberately rather than promoted, because nothing has paid for them yet in this build:
