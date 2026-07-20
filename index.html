@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beacon Ministries</title>
+<meta name="description" content="Somewhere to shine your focus. Lessons, games, notes and work product, published free — fumbling included.">
+<style>
+  /* ------------------------------------------------------------------
+     Beacon Ministries — v0 landing
+     Palette locked in DECISIONS.md D9, taken from the logo (gold on navy).
+     Direction A ("Hearth"), recolored to the real identity.
+     No build step, no dependencies, no external requests. (DECISIONS M3)
+  ------------------------------------------------------------------ */
+  :root{
+    --navy-900:#0f1729;
+    --navy-800:#152039;
+    --navy-700:#1c2b4a;
+    --gold:#d8b45c;
+    --gold-bright:#f2dda0;
+    --gold-dim:#8d7434;
+    --ink:#e7e3d8;
+    --muted:#9aa4ba;
+    --line:rgba(216,180,92,.20);
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--navy-800); color:var(--ink);
+    font-family:var(--serif); -webkit-font-smoothing:antialiased;
+    overflow-x:hidden; position:relative;
+  }
+  /* the beam — the mark's light, thrown across the page */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(115vw 62vh at 50% -16vh, rgba(242,221,160,.15), transparent 60%),
+      radial-gradient(65vw 38vh at 50% -6vh, rgba(216,180,92,.13), transparent 58%),
+      radial-gradient(100vw 60vh at 50% 112vh, rgba(15,23,41,.85), transparent 62%);
+  }
+  .wrap{position:relative; z-index:1; max-width:64rem; margin:0 auto; padding:0 1.6rem}
+
+  /* ---------- header ---------- */
+  header{
+    padding:2.2rem 0 0; display:flex; align-items:center; gap:.85rem;
+  }
+  .mark{width:1.9rem; height:1.9rem; flex:none}
+  .wordmark{
+    font-family:var(--sans); font-size:.72rem; letter-spacing:.26em;
+    text-transform:uppercase; color:var(--gold); font-weight:600;
+  }
+  header nav{
+    margin-left:auto; display:flex; gap:1.6rem;
+    font-family:var(--sans); font-size:.78rem; letter-spacing:.06em;
+  }
+  header nav a{color:var(--muted); text-decoration:none; transition:color .2s ease}
+  header nav a:hover{color:var(--gold-bright)}
+
+  /* ---------- hero ---------- */
+  .hero{padding:17vh 0 0; max-width:34ch}
+  h1{
+    font-size:clamp(2.9rem,7.6vw,4.7rem); line-height:1.03; margin:0;
+    font-weight:400; letter-spacing:-.022em;
+  }
+  h1 em{font-style:italic; color:var(--gold-bright)}
+  .lede{
+    font-size:clamp(1.08rem,2.1vw,1.28rem); line-height:1.62;
+    color:var(--muted); margin:1.8rem 0 0; max-width:47ch;
+  }
+  .hero-cta{
+    margin:2.4rem 0 0; display:flex; gap:1.6rem; align-items:center;
+    font-family:var(--sans); font-size:.83rem; letter-spacing:.04em;
+  }
+  .hero-cta a{color:var(--gold); text-decoration:none; border-bottom:1px solid var(--line); padding-bottom:.2rem; transition:color .2s ease, border-color .2s ease}
+  .hero-cta a:hover{color:var(--gold-bright); border-color:var(--gold)}
+
+  /* ---------- the shelf ---------- */
+  .shelf{
+    margin:9rem 0 0; display:grid; gap:1px;
+    grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));
+    background:var(--line); border:1px solid var(--line);
+  }
+  .card{
+    background:var(--navy-800); padding:2.1rem 1.75rem 2.3rem;
+    text-decoration:none; color:inherit; display:block;
+    transition:background .25s ease;
+  }
+  .card:hover{background:var(--navy-700)}
+  .card h2{font-size:1.5rem; font-weight:400; margin:0 0 .6rem; letter-spacing:-.012em}
+  .card p{margin:0; font-size:.94rem; line-height:1.6; color:var(--muted)}
+  .card .count{
+    display:block; margin-top:1.2rem; font-family:var(--sans);
+    font-size:.69rem; letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+  }
+  .card.soon .count{color:var(--gold-dim)}
+
+  /* ---------- footer ---------- */
+  footer{
+    margin:6rem 0 0; padding:2.1rem 0 3.5rem; border-top:1px solid var(--line);
+    font-family:var(--sans); font-size:.77rem; color:#68738c;
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:.7rem;
+  }
+  footer a{color:#68738c; text-decoration:none}
+  footer a:hover{color:var(--gold)}
+
+  @media (max-width:34rem){
+    .hero{padding-top:12vh}
+    .shelf{margin-top:6rem}
+    header nav{gap:1.1rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <!-- [ASSUMED stand-in] placeholder mark until assets/logo.png lands. See DECISIONS D9. -->
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-label="Beacon Ministries">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <div class="wordmark">Beacon Ministries</div>
+    <nav>
+      <a href="#shelf">What's here</a>
+      <a href="about.html">About</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <h1>Somewhere to shine <em>your</em> focus.</h1>
+    <p class="lede">I'm learning in public — the lessons, the games, the notes, and the parts
+    that broke. Take anything here that's useful to you. That's the whole idea.</p>
+    <div class="hero-cta">
+      <a href="#shelf">See what's here</a>
+      <a href="about.html">Why I'm doing this</a>
+    </div>
+  </section>
+
+  <nav class="shelf" id="shelf">
+    <a class="card" href="#">
+      <h2>Learn</h2>
+      <p>Short modules that each teach one idea, with a glossary and flashcards. Start anywhere.</p>
+      <span class="count">16 modules · 3 tiers</span>
+    </a>
+    <a class="card" href="#">
+      <h2>Play</h2>
+      <p>Games I built from the ground up, working out what the originals had to figure out first.</p>
+      <span class="count">9 games · playable here</span>
+    </a>
+    <a class="card soon" href="#">
+      <h2>Watch</h2>
+      <p>Me doing the work, at the pace it actually happens. Mistakes left in.</p>
+      <span class="count">Coming</span>
+    </a>
+    <a class="card" href="#">
+      <h2>The Work</h2>
+      <p>The homework itself — the laws, the experiments, the things I got wrong and how I found out.</p>
+      <span class="count">Notes &amp; findings</span>
+    </a>
+  </nav>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>
