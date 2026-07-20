@@ -61,19 +61,35 @@
 
   /* ---------- header ---------- */
   header{
-    padding:2.2rem 0 0; display:flex; align-items:center; gap:.85rem;
+    padding:2.2rem 0 0; display:flex; align-items:center;
+    gap:.85rem 1.6rem; flex-wrap:wrap;
+  }
+  /* Wordmark sits top-left AND links home — both are the unopposed convention. */
+  .brand{
+    display:flex; align-items:center; gap:.85rem;
+    text-decoration:none; flex:none;
   }
   .mark{width:1.9rem; height:1.9rem; flex:none}
   .wordmark{
     font-family:var(--sans); font-size:.72rem; letter-spacing:.26em;
     text-transform:uppercase; color:var(--gold); font-weight:600;
   }
+  /* All six sections visible. Hidden/hamburger navigation is not appropriate on
+     desktop; the guidance permits but does not endorse hiding on mobile above
+     four items, so these wrap rather than collapse. */
   header nav{
-    margin-left:auto; display:flex; gap:1.6rem;
+    margin-left:auto; display:flex; flex-wrap:wrap; gap:.5rem 1.5rem;
     font-family:var(--sans); font-size:.78rem; letter-spacing:.06em;
   }
-  header nav a{color:var(--muted); text-decoration:none; transition:color .2s ease}
+  header nav a{
+    color:var(--muted); text-decoration:none; transition:color .2s ease;
+    padding:.25rem 0;
+  }
   header nav a:hover{color:var(--gold-bright)}
+  @media (max-width:34rem){
+    header{gap:.9rem}
+    header nav{margin-left:0; width:100%; gap:.4rem 1.1rem}
+  }
 
   /* ---------- hero ---------- */
   .hero{padding:17vh 0 0; max-width:34ch}
@@ -135,8 +151,9 @@
 <div class="wrap">
 
   <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
     <!-- [ASSUMED stand-in] placeholder mark until assets/logo.png lands. See DECISIONS D9. -->
-    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-label="Beacon Ministries">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
       <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
       <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
       <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
@@ -146,10 +163,17 @@
       <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
       <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
     </svg>
-    <div class="wordmark">Beacon Ministries</div>
-    <nav>
-      <a href="#shelf">What's here</a>
-      <a href="about.html">About</a>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <!-- KNOWN-NOT-DONE: none of these pages exist yet. Nothing is published, so
+         they harm no visitor today, but they are debt tracked in BUILD_OUTLINE. -->
+    <nav aria-label="Main">
+      <a href="/lessons/">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
     </nav>
   </header>
 
