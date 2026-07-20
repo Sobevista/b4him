@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- [ASSUMED stand-in] Placeholder mark until the real Beacon Ministries logo
+       lands as a binary asset. Gold on navy, matching DECISIONS D9. -->
+  <rect width="32" height="32" rx="6" fill="#152039"/>
+  <circle cx="16" cy="16" r="12.6" fill="none" stroke="#d8b45c" stroke-width=".9" opacity=".5"/>
+  <path d="M16 6.6 17.6 10.4h-3.2L16 6.6Z" fill="#f2dda0"/>
+  <path d="M10.2 9 13.1 10.6M21.8 9 18.9 10.6" stroke="#f2dda0" stroke-width=".9" stroke-linecap="round" opacity=".75"/>
+  <path d="M14.5 11.6h3l1 9h-5l1-9Z" fill="none" stroke="#d8b45c" stroke-width="1.1"/>
+  <path d="M14.3 15h3.4" stroke="#d8b45c" stroke-width=".8" opacity=".85"/>
+  <path d="M11.6 21c1.5-.5 2.4.4 4.4.4s2.9-.9 4.4-.4" fill="none" stroke="#d8b45c" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M10.9 23.2c1.7-.5 2.7.4 5.1.4s3.4-.9 5.1-.4" fill="none" stroke="#d8b45c" stroke-width=".9" stroke-linecap="round" opacity=".6"/>
+</svg>
