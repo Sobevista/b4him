@@ -77,6 +77,24 @@ Daniel: *"Whatever it turns into is part of the fun... a community will grow and
 
 **Why A survives the recolor rather than being replaced by it:** A's organizing idea was already light thrown into darkness — a glow from above, content lit rather than colored. The logo makes that literal (a lighthouse beam over a dark sea). Gold-on-navy *is* A, corrected to the real identity.
 
+**MEASURED CONTRAST — added 2026-07-20 after the dark-theme research run.** WCAG 2.x ratios against `#152039`, computed and independently re-measured live in the browser:
+
+| Colour | Ratio | AA normal (4.5:1) | AAA normal (7:1) | Use |
+|---|---|---|---|---|
+| `--ink` `#e7e3d8` | **12.62:1** | pass | pass | body text |
+| `--gold-bright` `#f2dda0` | **12.04:1** | pass | pass | emphasis |
+| `--gold` `#d8b45c` | **8.17:1** | pass | pass | accent, small labels — safe at any size |
+| `--muted` `#9aa4ba` | **6.47:1** | pass | **fail** | secondary text |
+| `--gold-dim` `#8d7434` | **3.61:1** | **FAIL** | fail | **large text (≥24px, or ≥18.66px bold) or non-text UI ONLY** |
+
+Large-scale text is normatively ≥18pt (~24px) or ≥14pt bold (~18.5–18.67px). **Letter-spacing and uppercasing do not enter that test** — an 11px wide-tracked uppercase label is normal text and bound by 4.5:1.
+
+Two real AA failures were found in shipped code and fixed the same day: the "Coming" label used `--gold-dim` (3.61:1) and the footer used an undeclared `#68738c` (3.41:1) — a colour invented outside the palette and never measured. Both now use `--muted`. **Live audit after the fix: 21 text elements, 0 failures, lowest ratio 6.47:1.** An audit script, not an opinion.
+
+The earlier worry that small gold metadata was under-contrast was **wrong**: `#d8b45c` at 8.17:1 clears AA *and* AAA at any size. The residual risk there is typographic — stroke weight and x-height at 11px — and no verified source supplies a size floor for it.
+
+**Standing rule:** any new colour gets measured before it ships. The footer failure existed because a colour was written straight into a rule instead of taken from the token table.
+
 **Logo asset:** `assets/logo.png` — to be supplied by Daniel from the source image. Until it lands, the header carries an inline SVG lighthouse mark drawn in the same gold, explicitly a **placeholder** `[ASSUMED stand-in]`, not a substitute for the real mark.
 
 Directions **B (Daybreak)** and **C (Workbench)** are rejected and their files deleted. B was bright warm paper with dawn light — welcoming but generic. C was a paper workbench with numbered sections — the most literal "show the homework" and, as predicted in D4, the coldest. Recorded here so neither is rebuilt from scratch by a future session.
