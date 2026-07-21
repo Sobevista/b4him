@@ -57,6 +57,25 @@ Same lens as the arcade ladder, same deliverable shape: the trove is the product
 
 Zero-waste principle: the research being run for this site is the first deposit. It is not a one-off cost if it is written down as reusable law.
 
+### 0(e) — b4him's role inside LiftLens (recorded 2026-07-20)
+
+Not a new idea — the missing half of one already written down. `Sobevista/LiftLens` → `VISION_SCOPE.md` names **b4him as one of three ground-truth control properties**: the *free sandbox* — "apply fixes and measure with zero consequence; also home base for the 'teach the masses' angle." LiftLens (scoped 2026-07-08) was designed to audit b4him; b4him (born 2026-07-20) is the site it audits. This note is the b4him-side pointer so a future session doesn't rediscover the link cold.
+
+**Same chassis, two programs.** LiftLens and b4him run the identical doctrine:
+
+| LiftLens | b4him (this session) |
+|---|---|
+| `PROPOSED_INVARIANTS.md` — agent proposes laws, human enacts | `WEB_INVARIANTS.md` — laws bought by a failure |
+| "flagged, not scored" until a citable study lands | research tagged verified/refuted; nothing scored on vibes |
+| conformance vs authoritative tools — "where they disagree, LiftLens is wrong" | `tools/contrast-audit.js` vs WCAG's own formula; 30+ claims refuted against primary sources |
+| kill-gate: a non-technical reader must understand every finding | D3/D4 — audience non-technical, warmth is pass/fail |
+
+**Two prospective moves, neither a v0 task (build the pages first, grade them second):**
+1. Once b4him has ~5 real crawlable pages, make it LiftLens's first live conformance run — serves LiftLens Phase 2 *and* b4him's quality gate in one action.
+2. `contrast-audit.js` is a candidate for LiftLens's **missing 8th module (accessibility/WCAG)** — LiftLens's seven-module table has none. Caveat: the audit is browser JS (WCAG contrast needs the *rendered* page); LiftLens probes are Python, so this is a port/headless-browser proposal for LiftLens's `PROPOSED_INVARIANTS.md` flow — **Daniel's to enact, not to be pushed into that CI-locked repo from here.**
+
+**Scope trap named:** this connection tempts instrumenting b4him with SEO tooling before it has a finished page. Backwards. LiftLens is the brake pedal on b4him's web quality, not a v0 feature.
+
 ## Phase 1 — v0 static, landing page
 
 Mantras + MBS. Passes the Phase 0(b) visual gate before it counts as done.
