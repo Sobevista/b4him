@@ -154,3 +154,20 @@ Phase 0(b) requires visual reference before code. Daniel's pushback on the first
 **Inverted:** Claude produces the candidate directions as real rendered HTML, screenshots them, and Daniel picks by eye. His eye remains the gate — that is the part arcade rung 8 lacked — but sourcing the candidates is Claude's work.
 
 Rejected directions are **named in the STATE OF BUILD log and their files deleted**; only the chosen direction persists, as the reference the SCOPE's visual criteria are written against. (Nothing is allowed to just sit — `Claude\Lab\` teardown law, applied by analogy.)
+
+---
+
+## D11 — Publishing the Lessons: curated + genericized. LOCKED 2026-07-21
+
+**What ships:** teaching modules from the (private) harness + Drive curricula, published as public HTML lessons. Not wholesale — **curated**, and every real name **genericized**.
+
+- **Curated starter = Tier 1 "The Honest Machine" (8 modules).** Reviewed all 16 harness Teaching modules; the beginner tier is self-contained (its own Graduation Build) and Chelsie-level. Tiers 2–3 of the harness set (mesh/CAS-heavy) were held.
+- **Genericization is a hard rule, applied consistently.** Product/project names → generic: LiftLens → "a tool I built". Collaborator → generic: Chelsie → "a teammate". Machine/repo/person from the Drive set: `Sobevista-mesh` → "a dedicated machine account", `Pong_Tower` → "a game repo of mine", Daniel → first person. **The one non-negotiable line: the real client's name never appears** (and is not written into this planning doc either) — it becomes "a real local business" wherever the source named it. Rationale (Daniel): *consistency lets us track deviation* — a real name showing up anywhere is then a detectable anomaly.
+- **Verification law:** a published lesson is not done until an **independent grep** (not the author/render-agent's self-report — M5's witness principle) confirms zero forbidden tokens. Kept illustrative, non-secret material: model slugs, env-var *names*, `gh`/code identifiers, public third-party tools (Siteliner, Rich Results Test).
+- **Repo-docs note:** the client name is NOT in this repo's planning docs (sight corrected the reconstruction). Remaining names there are Daniel's own projects (LiftLens/CAS) + Chelsie — Chelsie stays per D8; the project names are an optional targeted redaction, not urgent. Decision records are not gutted to genericize.
+
+## D12 — Two-tier curriculum + the door-finder quiz. LOCKED 2026-07-21
+
+- **Two tiers, clearly separated so a non-technical visitor is never dropped into infrastructure (D3):** Tier 1 **The Honest Machine** — the principles; Tier 2 **Building the Machine** — the hands-on track (Mail Slot / Depth Chart / Fuse Box / First Lap / Kill Test), sourced from the Drive `Guess and Click` Chassis Curriculum. Tier 2 is more technical and builds on Tier 1; the index says so.
+- **"Find your door" quiz** (`/lessons/find-your-door/`): the Cognitive Profile diagnostic (10 forced-choice Qs → Builder/Architect/Translator/Validator, the same four doors every lesson offers) as a client-side interactive. **It collects nothing and sends nothing** — pure in-browser tally (INV-W3: nothing to take, no obligation incurred). Older curriculum machinery in the source doc (n8n, Compass/Maverick tracks, Exit Benchmarks) was dropped; only the four-door core was kept.
+- **Consistency over source fidelity of format:** the Drive modules used a richer "cognitive entry points / five primitives" layout; they were **normalized to the identical b4him lesson template** so all 13 lessons look like one system.

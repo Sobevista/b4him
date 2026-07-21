@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Mail Slot · Lessons · Beacon Ministries</title>
+<meta name="description" content="How to give a machine a scoped, expiring, revocable way into a protected repo — without handing over the keys to everything.">
+
+<meta property="og:title" content="The Mail Slot">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/mail-slot/">
+<meta property="og:description" content="How to give a machine a scoped, expiring, revocable way into a protected repo — without handing over the keys to everything.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">Building the Machine</a> · Lesson 1</p>
+    <h1>The Mail Slot</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> let a machine act on your project without
+      giving it the keys to everything — grant any agent a scoped, expiring, revocable channel
+      into a protected repo, and prove both that the channel works and that the secret behind it
+      never leaked.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — open the fine-grained token form and just look at it — repos, permissions, expiry — before you create anything.</li>
+      <li><strong>Architect</strong> — see the three separated parts first: the credential, the store, and the channel that reaches GitHub.</li>
+      <li><strong>Translator</strong> — a fortress with no doors gets a mail slot, sized for envelopes and not people. Start at the Bridge below.</li>
+      <li><strong>Validator</strong> — confirm branch protection, which repos the agent needs, and a secret store outside every file before you start.</li>
+    </ul>
+
+    <h2>Translator Bridge</h2>
+    <p>A bank doesn't give the armored-car company a vault key. It gives them a badge that opens
+    the loading dock — two doors, business hours, expires quarterly, revocable from the front desk.
+    Deliveries flow; the vault stays bank-only. The token is the badge; the env var is the badge
+    printer's safe; the MCP server is the loading dock itself.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> a badge names its holder; a token authenticates
+      whoever <em>possesses</em> it. Steal the badge and a guard might notice the face; steal the
+      token and GitHub cannot tell. That's why the secret's handling matters more than the badge's
+      scope — and why it never goes in a file, a chat, or a command that gets logged, and why it
+      expires.</p>
+    </div>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <ol>
+      <li><strong>Mint the badge</strong> (browser — deliberately human-only; GitHub offers no API for this). Fine-grained PAT: only the two repos; Contents + Pull requests read/write; Actions read-only; nothing else; 90 days. <em>You should see:</em> the token exactly once, on screen.</li>
+      <li><strong>Store it in the safe, blind.</strong> A PowerShell secure prompt (<code>Read-Host -AsSecureString</code>) into a user-scope environment variable. <em>You should see:</em> nothing — that's the point. Verify with a substring: first 14 characters only.</li>
+      <li><strong>Cut the slot.</strong> Register the official remote GitHub MCP server with the auth header written as the literal placeholder <code>${GITHUB_MESH_PAT}</code> — single-quoted so the shell can't expand it. <em>You should see:</em> config on disk containing the placeholder text, not the token. Grep the file to prove it.</li>
+      <li><strong>Prove the read path — and distrust good news.</strong> A one-shot agent subprocess, allowed exactly ONE tool: list PRs. Mine answered "zero open PRs" — which I verified against a second channel (<code>gh</code>) before believing it. An empty answer that flatters you is exactly the one to check.</li>
+      <li><strong>Prove the write path with a real errand.</strong> Have the agent create a branch, commit a file change, and open a PR entirely through the new channel — no local git. Mine wrote its own log entry into the build's running state file: the proof documents itself. <em>You should see:</em> a PR authored by the channel, gated by CI, merged by a human.</li>
+    </ol>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <p>Three parts, strictly separated: the CREDENTIAL (a fine-grained token = what the channel may
+    do), the STORE (an environment variable = where the secret lives, outside every file), and the
+    CHANNEL (an MCP server registration = how the agent reaches GitHub). The config references the
+    store by NAME (a <code>${VAR}</code> placeholder); the secret itself never enters any file,
+    command line, or log.</p>
+    <p>Why three separations instead of one convenience: if the credential leaks, scope limits the
+    blast (two repos, no admin, no merge); if the config leaks, there's nothing in it (a placeholder
+    name); if the agent misbehaves, the channel is one revocation away from dead — without touching
+    the fortress. Compare the failure modes of the shortcuts: a token in a config file is leaked by
+    any backup, sync, or paste of that file; a token on a command line is leaked to shell history and
+    logs; reusing a human's broad login (like <code>gh</code>'s OAuth) means the agent inherits
+    everything the human can do, including the things you specifically never want automated. The mail
+    slot's entire value is what it CANNOT do. Note also the two-channel doctrine: the orchestrator
+    keeps its own read/review channel, separate from the mesh's write channel — eyes and hands on
+    different circuits, so blinding one never severs the other. And merge-to-main stays outside the
+    credential entirely: the branch-protection lock doesn't care whose token asks.</p>
+
+    <h2>Validator Gates</h2>
+    <p>Pass each gate before moving on. These are permission to advance, not hazing.</p>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> The token exists in exactly one place (the env-var store) and appears in zero files — and I grepped the config to prove it.</li>
+      <li><strong>Gate 2:</strong> The agent listed real data through the channel, and the result was cross-checked against a second source.</li>
+      <li><strong>Gate 3:</strong> The agent opened a real PR through the channel, and the PR could NOT be merged by that same channel — only by me.</li>
+      <li><strong>Gate 4:</strong> I know the two revocation moves cold: delete the token at GitHub (kills the badge) and remove the server registration (bricks the slot).</li>
+      <li><strong>Gate 5 (own words):</strong> Why must the config hold the variable's NAME and not its VALUE?</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now give a machine hands that reach exactly two
+      rooms and nothing else, and prove it. Next: Lesson 2 — The Depth Chart, which staffs the minds
+      that will use those hands.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/">← All lessons</a>
+      <span class="spacer"></span>
+      <a href="/lessons/depth-chart/">Lesson 2: The Depth Chart →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

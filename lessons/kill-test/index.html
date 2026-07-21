@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Kill Test · Lessons · Beacon Ministries</title>
+<meta name="description" content="The graduation capstone of the Chassis tier: deliberately break your own project and prove the safety system catches it, blocks it, and survives the repair.">
+
+<meta property="og:title" content="The Kill Test">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/kill-test/">
+<meta property="og:description" content="Prove — not assume — that your truth machine catches bad work, refuses to publish it, and heals through the same gate.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">Building the Machine</a> · Graduation</p>
+    <h1>The Kill Test</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> answer the one question every safety system
+      owes you — <em>how do I know it actually works, before I trust it with anything real?</em>
+      You'll take any repo with a CI gate and <em>prove</em> three things in one sitting: the alarm
+      catches bad work, the lock blocks bad work from publishing, and a repair can flow back through
+      the same gate. Begin with the end in mind: you will deliberately break your own project, watch
+      the machine refuse it, and watch it heal.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — before reading anything: open a branch called killtest, break one thing on purpose (flip a sign, invert a condition), open a PR, and watch what turns red.</li>
+      <li><strong>Architect</strong> — this module chains all five primitives into one closed loop, then attacks the loop to test it: truth, judge, laws, and human judgment.</li>
+      <li><strong>Translator</strong> — it's a fire drill: you don't discover whether the alarm works during a real fire. Start at the Bridge below.</li>
+      <li><strong>Validator</strong> — work the Gates at the bottom; confirm first that CI has been green once, branch protection is on, and your invariant tests pass.</li>
+    </ul>
+
+    <h2>Translator Bridge</h2>
+    <p>A commercial kitchen installs a health-inspection station at the pass: no plate reaches the
+    dining room without the expeditor's check. The kill test is the day the head chef deliberately
+    sends out a bad plate — undercooked, on purpose, labeled — to prove three things: the expeditor
+    catches it (the alarm), the plate physically cannot reach the dining room (the lock), and a
+    corrected plate flows back through the same pass without special treatment (the repair).</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> the expeditor is human and can be sweet-talked,
+      tired, or bribed. CI cannot. That's the whole point of the chassis: the judge is deterministic
+      — it doesn't care who cooked the plate, who asks nicely, or whether you own the restaurant
+      (<code>enforce_admins</code> means even the chef-owner gets refused). Also: a real bad plate is
+      wasted; a kill-test branch costs nothing — its net change is zero and it merges or closes
+      cleanly.</p>
+    </div>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <ol>
+      <li><strong>Break it, on a branch.</strong> On a fresh branch off the default branch, reintroduce a real historic bug — mine was flipping <code>-math.pi/2 + deflect</code> to <code>- deflect</code> in a small game of mine, in the ball physics, the exact bug that once shipped. Commit with an honest message: "kill test: deliberately broken." Push, open the PR. <em>You should see:</em> the PR opens normally — nothing stops a proposal.</li>
+      <li><strong>Watch the alarm.</strong> Wait for CI. <em>You should see:</em> red, fast (mine: 11 seconds), and precise — 3 deflection invariants failed, the other 8 passed. Precision matters: it caught THE bug, not everything.</li>
+      <li><strong>Try to publish the lie.</strong> Run the merge command on the red PR. <em>You should see:</em> REFUSAL — "base branch policy prohibits the merge." This is the lock, distinct from the alarm. A gate you never saw hold is not a proven gate.</li>
+      <li><strong>Hire a blind repair.</strong> Hand a separate AI (or colleague) ONLY the raw failing CI log and the one broken file — no explanation, no history. Ask for the minimal fix as exact old-line &rarr; new-line. <em>You should see:</em> the correct fix from mechanical context alone. Mine came back byte-perfect in one round-trip (three allowed). Count your round-trips.</li>
+      <li><strong>Heal through the same gate.</strong> Apply the fix on the same branch, push. <em>You should see:</em> CI reruns green. Merge with the standard one-liner — now it works, because the truth changed. Log the result where your project keeps state (STATE OF BUILD), dated, with all three criteria.</li>
+    </ol>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <p>Three separable guarantees, often confused: the <strong>alarm</strong> (CI turns red on bad
+    work), the <strong>lock</strong> (the platform refuses to merge red — server-side branch
+    protection with the required check being the JOB name from the workflow,
+    <code>enforce_admins: true</code>), and the <strong>repair channel</strong> (a fix flows through
+    the same branch &rarr; PR &rarr; CI &rarr; merge path as any other change; no side door for
+    emergencies). Why a <em>deliberate</em> break instead of waiting for a real one: you control the
+    blast radius, you know the correct answer in advance so you can grade the repair, and the
+    branch's net change is zero. Why the repair must be <em>blind</em>: the future automated mesh
+    will hand its architect nothing but logs and files — if a human relay with only mechanical
+    context works, the machine relay will too. The kill test is the PROVING primitive pointed at your
+    own safety system.</p>
+
+    <h2>Validator Gates</h2>
+    <p>Pass each gate before moving on. These are permission to advance, not hazing. Confirm first:
+    CI runs on your PRs and you've seen it green at least once; branch protection is ON for the
+    default branch (check with <code>gh api repos/OWNER/REPO/branches/BRANCH/protection</code> — a
+    JSON wall, not a 404); your invariant tests exist and pass; you know the one-line merge command
+    and the one-line revert.</p>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> I saw CI fail on the broken PR, and the failures named the exact invariants that describe the bug.</li>
+      <li><strong>Gate 2:</strong> I ran the merge command on the red PR and was refused by policy (not by my own restraint).</li>
+      <li><strong>Gate 3:</strong> A repairer with only the CI log + the broken file produced the correct fix, in &le;3 round-trips.</li>
+      <li><strong>Gate 4:</strong> The fix merged through the normal loop — no admin override, no direct push.</li>
+      <li><strong>Gate 5 (active recall):</strong> Write it in your own words — what is the difference between the alarm and the lock? ______________</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now prove, not assume, that a truth machine
+      catches, blocks, and survives bad work; every automation you build on top of it inherits that
+      proof.</p>
+    </div>
+
+    <h2>The graduation build</h2>
+    <p>This module IS the graduation build for the Chassis tier. From scratch, in one session, no
+    guidance: take any repo with tests, stand up the gate (Modules 1–5), then run this kill test on
+    it. Completion criteria:</p>
+    <ol>
+      <li>A deliberately broken PR went red, and you can name which test caught it and why.</li>
+      <li>The merge of the red PR was refused by branch protection, with <code>enforce_admins</code> on, and you watched it refuse YOU.</li>
+      <li>A blind repair (log + file only) fixed it in &le;3 round-trips and merged green through the normal loop.</li>
+      <li>The lap is logged, dated, in the project's state file.</li>
+      <li>You can explain what each step does to someone who has never seen it.</li>
+    </ol>
+
+    <nav class="pager">
+      <a href="/lessons/first-lap/">← Lesson 4: The First Lap</a>
+      <span class="spacer"></span>
+      <a href="/lessons/">Back to all lessons →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

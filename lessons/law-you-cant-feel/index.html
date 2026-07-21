@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Law You Can't Feel · Lessons · Beacon Ministries</title>
+<meta name="description" content="The difference between a check that happened once and a law that holds every time — and how to enact a real law change on a protected repo using nothing but a browser.">
+
+<meta property="og:title" content="The Law You Can't Feel">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/law-you-cant-feel/">
+<meta property="og:description" content="The difference between a check that happened once and a law that holds every time — and how to enact a real law change on a protected repo using nothing but a browser.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">The Honest Machine</a> · Lesson 4</p>
+    <h1>The Law You Can't Feel: From "An Agent Checked Once" to "The Machine Enforces Every Time"</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> explain the difference between a check that
+      <em>happened</em> and a law that <em>holds</em> — and enact a real law change on a protected repo
+      using nothing but a browser.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — Builder Track: the one-line web edit that widened the law.</li>
+      <li><strong>Architect</strong> — Architect Track: the three regimes of rule-keeping.</li>
+      <li><strong>Translator</strong> — Bridge below.</li>
+      <li><strong>Validator</strong> — Gates at the bottom.</li>
+    </ul>
+
+    <h2>The story this comes from</h2>
+    <p>By July 2026, a tool I built had 45+ tests — but CI only <em>ran</em> nine of them (the
+    <code>tests/invariants/</code> folder). The rest had been run by an agent, once, on the day they
+    were written. Passing yesterday is not a law; it's a memory.</p>
+    <p>The fix was <strong>option 4</strong>: change one line in the CI recipe —
+    <code>tests/invariants/</code> → <code>tests/</code> — so the machine runs the <em>whole</em> test
+    tree on every proposal, forever. I enacted it myself from the GitHub website: pencil icon, edit one
+    line, commit. Main is protected, so GitHub forced the edit onto a branch and opened a PR; CI ran; I
+    merged. <strong>Zero terminal.</strong> The law changed hands from agent-memory to
+    machine-enforcement in one line.</p>
+
+    <h2>Translator Bridge</h2>
+    <p>A classroom rule that lives in the teacher's head works — while that teacher is in the room.
+    Write it into the <strong>school handbook</strong> and wire it to the <strong>bell schedule</strong>,
+    and it holds through substitutes, new students, and the teacher's sick days. "An agent checked once"
+    is the teacher remembering. CI running <code>tests/</code> is the handbook plus the bell: nobody has
+    to remember, because the building itself enforces it.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> a handbook still needs humans to read and choose to
+      obey it — enforcement is social. CI's enforcement is <em>mechanical</em>: the merge button
+      physically refuses until checks pass. There is no "we'll let it slide today" in a locked branch.
+      That's also the warning label: the machine enforces your law <em>exactly as written</em>,
+      including its mistakes — which is why writing the law (Lesson 3) is the human's job and stays
+      one.</p>
+    </div>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <ol>
+      <li>Open any repo's <code>.github/workflows/</code> folder on GitHub and find the verify/test
+      workflow file. Read the last lines — find <em>which paths</em> the tests run on. That scope IS the
+      law's reach.</li>
+      <li>Ask the option-4 question: "What exists in this repo that this file never runs?" The gap
+      between written tests and enforced tests is where regressions live.</li>
+      <li>Walk the enactment (or dry-run it): pencil icon → edit the path → Commit changes → GitHub
+      proposes a branch (main is locked — that refusal is the lock working) → Propose changes → Create
+      pull request → watch checks → merge.</li>
+      <li>Note what you did NOT need: a terminal, a local copy, git commands. Law changes are one-line
+      web edits when the chassis is right.</li>
+    </ol>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <p>Three regimes of rule-keeping, in ascending strength:</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Regime</th><th>Rule lives in</th><th>Fails when</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1. Intention</strong></td><td>someone's head</td><td>they forget, leave, or get busy</td></tr>
+        <tr><td><strong>2. Inspection</strong></td><td>a check someone ran once</td><td>the world changes after the check</td></tr>
+        <tr><td><strong>3. Enforcement</strong></td><td>the machine, on every change</td><td>only if the written law itself is wrong</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The whole trick of the truth machine is pushing every rule from regime 1 and 2 into regime 3.
+    Note the division of labor it creates: <strong>agents may propose laws</strong> (a
+    <code>PROPOSED_INVARIANTS.md</code> file), but <strong>only the human enacts them</strong> — because
+    regime 3 is absolute, the choice of what becomes absolute must stay with the human. You can't feel
+    the law when it's working; you only feel it when it refuses you. That refusal is the product.</p>
+
+    <h2>Validator Gates</h2>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> In one sentence: why is "the tests passed when we wrote them" not a
+      guarantee about today?</li>
+      <li><strong>Gate 2:</strong> Name the three regimes and give a household example of each.</li>
+      <li><strong>Gate 3:</strong> When GitHub refused to commit directly to main and forced a branch,
+      was that an error? What was it?</li>
+      <li><strong>Gate 4 (own words):</strong> Explain to a teammate why an agent may <em>propose</em>
+      an invariant but must not <em>enact</em> one.</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now tell a memory from a law, and change a law with
+      a pencil icon. Next: Lesson 5 — even a lawful machine can't grade its own homework.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/anti-false-positive/">← Lesson 3: The Anti-False-Positive Law</a>
+      <span class="spacer"></span>
+      <a href="/lessons/the-witness/">Lesson 5: The Witness Stays Outside →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

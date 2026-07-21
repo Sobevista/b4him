@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>About · Beacon Ministries</title>
+<meta name="description" content="Why this exists. Show the homework, invite others to play — and the five things I keep coming back to.">
+
+<meta property="og:title" content="About · Beacon Ministries">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://b4him.com/about/">
+<meta property="og:description" content="Why this exists — and the five things I keep coming back to.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<style>
+  /* ------------------------------------------------------------------
+     About — page-specific styles only. Shared chrome in /style.css.
+  ------------------------------------------------------------------ */
+  .label{
+    font-family:var(--sans); font-size:.7rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--gold); margin:0 0 1.2rem;
+  }
+  .about-hero{padding:13vh 0 0; max-width:22ch}
+  .about-hero h1{
+    font-size:clamp(2.4rem,6vw,3.7rem); line-height:1.05; margin:0;
+    font-weight:400; letter-spacing:-.02em;
+  }
+  .about-hero h1 em{font-style:italic; color:var(--gold-bright)}
+
+  /* readable measure — one column, generous line height */
+  .prose{max-width:38rem; margin:2.6rem 0 0}
+  .prose p{
+    font-size:1.12rem; line-height:1.72; margin:0 0 1.35rem; color:var(--ink);
+  }
+  .prose p.soft{color:var(--muted)}
+  .prose strong{color:var(--gold-bright); font-weight:400; font-style:italic}
+
+  /* the five beams — pillars, not a slogan strip (DECISIONS D10) */
+  .pillars{margin:5rem 0 0}
+  .pillars > .label{margin-bottom:1.6rem}
+  .pillar{
+    border-left:2px solid var(--gold); padding:.15rem 0 .15rem 1.4rem;
+    margin:0 0 2rem;
+  }
+  .pillar:last-child{margin-bottom:0}
+  .pillar h2{
+    font-family:var(--serif); font-size:1.3rem; font-weight:400; margin:0 0 .35rem;
+    color:var(--gold-bright); letter-spacing:-.01em;
+  }
+  .pillar p{margin:0; color:var(--muted); font-size:1rem; line-height:1.62; max-width:34rem}
+
+  .back{
+    margin:4.5rem 0 0; font-family:var(--sans); font-size:.83rem; letter-spacing:.04em;
+  }
+  .back a{
+    color:var(--gold); text-decoration:none; border-bottom:1px solid var(--line);
+    padding-bottom:.2rem; transition:color .2s ease, border-color .2s ease;
+  }
+  .back a:hover{color:var(--gold-bright); border-color:var(--gold)}
+
+  @media (max-width:34rem){
+    .about-hero{padding-top:10vh}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <!-- [ASSUMED stand-in] placeholder mark until assets/logo.png lands. See DECISIONS D9. -->
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/" aria-current="page">About</a>
+    </nav>
+  </header>
+
+  <section class="about-hero">
+    <p class="label">About</p>
+    <h1>I'm just showing my <em>homework</em>.</h1>
+  </section>
+
+  <div class="prose">
+    <p>My name's Daniel. This is where I keep the work — the lessons I'm figuring out,
+    the games I'm building, the notes, and the parts that broke along the way. Especially
+    the parts that broke. Those are usually the more useful half.</p>
+
+    <p>Most of what you'll find here isn't finished, and none of it is polished. That's on
+    purpose. I'd rather hand you something real and rough than something clean that took so
+    long to perfect it never left the drawer. <strong>Progress over perfection.</strong></p>
+
+    <p class="soft">A beacon is a lighthouse. It does two things at the same time — it
+    gathers your attention, and it throws light back out. That's the whole idea of this
+    place. Find somewhere to point your focus, and let what you learn there point back
+    outward, to the people around you. Light received, light given. Same motion, both ways.</p>
+
+    <p>It's also a family thing. My wife's work will show up here, and one day the kids'.
+    I'm not going to sand the rough edges off any of it — sanitized work would make a liar
+    out of the whole point. The fumbling <em>is</em> the record, and the record is what
+    might actually help someone.</p>
+
+    <p>So take anything here that's useful to you. That's the only ask.</p>
+  </div>
+
+  <section class="pillars" aria-labelledby="beams-label">
+    <p class="label" id="beams-label">The five beams</p>
+
+    <div class="pillar">
+      <h2>MBS — Mind, Body, Spirit</h2>
+      <p>The three things worth tending. Everything on this site is pointed at one of them.
+      Neglect any one for long enough and the other two start to wobble.</p>
+    </div>
+
+    <div class="pillar">
+      <h2>Progress over perfection</h2>
+      <p>A rough thing that exists beats a perfect thing that doesn't. Ship it, learn from
+      it, fix it in daylight. Perfection is mostly a hiding place.</p>
+    </div>
+
+    <div class="pillar">
+      <h2>1% better every day</h2>
+      <p>Small, boring, and relentless. Not a leap — a lean. Do the next slightly-better
+      thing often enough and the compounding does work you could never do in one push.</p>
+    </div>
+
+    <div class="pillar">
+      <h2>Be intentional with your suffering</h2>
+      <p>Hard things are coming whether you invite them or not. So choose the ones worth the
+      ache — the workout, the hard conversation, the problem you don't yet know how to solve —
+      and let them cost you something on purpose.</p>
+    </div>
+
+    <div class="pillar">
+      <h2>Seek failure</h2>
+      <p>The fastest way to find the edge of what you know is to walk off it deliberately.
+      I try to fail at something small every day, out loud, where it can teach me. Most of
+      this site is a record of exactly that.</p>
+    </div>
+  </section>
+
+  <p class="back"><a href="/#shelf">See what's here &rarr;</a></p>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Games · Beacon Ministries</title>
+<meta name="description" content="Nine games built from the floor up, re-deriving the arc of video games one rung at a time. Playable right here.">
+
+<meta property="og:title" content="Games · Beacon Ministries">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://b4him.com/games/">
+<meta property="og:description" content="Nine games built from the floor up. Playable right here.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<style>
+  /* ------------------------------------------------------------------
+     Games — page-specific styles only. Shared chrome in /style.css.
+     Cards are real links to the live arcade (single home, M5). JS upgrades
+     them to an in-page player; with JS off the link still plays the game.
+  ------------------------------------------------------------------ */
+  .label{
+    font-family:var(--sans); font-size:.7rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--gold); margin:0 0 1.2rem;
+  }
+  .games-hero{padding:12vh 0 0; max-width:30ch}
+  .games-hero h1{
+    font-size:clamp(2.3rem,5.6vw,3.5rem); line-height:1.05; margin:0;
+    font-weight:400; letter-spacing:-.02em;
+  }
+  .games-hero h1 em{font-style:italic; color:var(--gold-bright)}
+  .games-hero .lede{
+    font-size:clamp(1.05rem,2vw,1.2rem); line-height:1.62; color:var(--muted);
+    margin:1.6rem 0 0; max-width:46ch;
+  }
+
+  /* featured — Deliverance, the first resident */
+  .featured{
+    margin:3.6rem 0 0; display:block; text-decoration:none; color:inherit;
+    border:1px solid var(--line); background:var(--navy-700);
+    padding:2.2rem 2rem 2.3rem; transition:border-color .25s ease, background .25s ease;
+  }
+  .featured:hover{border-color:var(--gold); background:var(--navy-700)}
+  .featured .rung{
+    font-family:var(--sans); font-size:.68rem; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--gold);
+  }
+  .featured h2{font-size:2rem; font-weight:400; margin:.5rem 0 .5rem; letter-spacing:-.015em}
+  .featured p{margin:0; color:var(--ink); font-size:1.05rem; line-height:1.6; max-width:52ch}
+  .featured .play{
+    margin-top:1.3rem; display:inline-block; font-family:var(--sans);
+    font-size:.82rem; letter-spacing:.04em; color:var(--gold);
+    border-bottom:1px solid var(--line); padding-bottom:.15rem;
+  }
+  .featured:hover .play{color:var(--gold-bright)}
+
+  /* the progression grid */
+  .grid{
+    margin:1.5rem 0 0; display:grid; gap:1px;
+    grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));
+    background:var(--line); border:1px solid var(--line);
+  }
+  .game{
+    background:var(--navy-800); padding:1.8rem 1.6rem 2rem;
+    text-decoration:none; color:inherit; display:flex; flex-direction:column;
+    transition:background .25s ease;
+  }
+  .game:hover{background:var(--navy-700)}
+  .game .rung{
+    font-family:var(--sans); font-size:.66rem; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--gold);
+  }
+  .game h3{font-size:1.4rem; font-weight:400; margin:.45rem 0 .5rem; letter-spacing:-.012em}
+  .game p{margin:0; font-size:.92rem; line-height:1.58; color:var(--muted)}
+  .game .play{
+    margin-top:1.1rem; font-family:var(--sans); font-size:.72rem;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--gold);
+  }
+  .game:hover .play{color:var(--gold-bright)}
+
+  .note{
+    margin:2.4rem 0 0; font-family:var(--sans); font-size:.8rem; line-height:1.6;
+    color:var(--muted); max-width:52ch;
+  }
+
+  /* ---------- in-page player (JS-enhanced) ---------- */
+  .player[hidden]{display:none}
+  .player{
+    position:fixed; inset:0; z-index:50; background:var(--navy-900);
+    display:flex; flex-direction:column;
+  }
+  .player-bar{
+    flex:none; display:flex; align-items:center; gap:1rem;
+    padding:.7rem 1rem; border-bottom:1px solid var(--line);
+    font-family:var(--sans); font-size:.8rem;
+  }
+  .player-bar .ttl{color:var(--gold); letter-spacing:.06em}
+  .player-bar .spacer{margin-left:auto}
+  .player-bar a, .player-bar button{
+    font-family:var(--sans); font-size:.78rem; color:var(--muted);
+    background:none; border:0; cursor:pointer; text-decoration:none; padding:.3rem .2rem;
+  }
+  .player-bar a:hover, .player-bar button:hover{color:var(--gold-bright)}
+  .player-bar .close{font-size:1.1rem; line-height:1; color:var(--ink)}
+  .player iframe{flex:1 1 auto; width:100%; border:0; background:#000}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <!-- [ASSUMED stand-in] placeholder mark until assets/logo.png lands. See DECISIONS D9. -->
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/">Lessons</a>
+      <a href="/games/" aria-current="page">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="games-hero">
+    <p class="label">Games</p>
+    <h1>Nine games, built from the <em>floor up</em>.</h1>
+    <p class="lede">I'm re-deriving the arc of video games one rung at a time — working out for
+    myself what the originals must have spent years figuring out. Every one below is playable
+    right here. They run oldest to newest; start anywhere.</p>
+  </section>
+
+  <!-- Featured: Deliverance, the first resident (DECISIONS / README). -->
+  <a class="featured" href="https://sobevista.github.io/arcade-progression/rungs/07-deliverance/"
+     data-slug="deliverance" data-title="Deliverance">
+    <span class="rung">Rung 7 · NES class</span>
+    <h2>Deliverance</h2>
+    <p>An Exodus story told as NES-era platforming, with the jump-feel — gravity, momentum,
+    the exact arc of a leap — transcribed number-for-number from the real thing, then dressed
+    in all-original craft. The one I'd hand you first.</p>
+    <span class="play">▸ Play here</span>
+  </a>
+
+  <nav class="grid" aria-label="The progression">
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/02-invaders/"
+       data-slug="invaders" data-title="Invaders">
+      <span class="rung">Rung 2</span>
+      <h3>Invaders</h3>
+      <p>The first game that had to decide how a whole formation moves — and why it speeds up as you thin it out.</p>
+      <span class="play">Play here</span>
+    </a>
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/03-breakout/"
+       data-slug="breakout" data-title="Breakout">
+      <span class="rung">Rung 3</span>
+      <h3>Breakout</h3>
+      <p>One ball, one paddle, and a whole game hidden in exactly where the ball strikes.</p>
+      <span class="play">Play here</span>
+    </a>
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/04-galaga/"
+       data-slug="galaga" data-title="Galaga">
+      <span class="rung">Rung 4</span>
+      <h3>Galaga</h3>
+      <p>Enemies that fly in along paths, hold formation, then peel off to dive — two behaviours in one swarm.</p>
+      <span class="play">Play here</span>
+    </a>
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/05-ti994a/parsec/"
+       data-slug="parsec" data-title="Parsec">
+      <span class="rung">Rung 5 · TI-99/4A</span>
+      <h3>Parsec</h3>
+      <p>A side-scroller on a machine that couldn't scroll — motion faked by moving the world past a still ship.</p>
+      <span class="play">Play here</span>
+    </a>
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/05-ti994a/wumpus/"
+       data-slug="wumpus" data-title="Hunt the Wumpus">
+      <span class="rung">Rung 5 · TI-99/4A</span>
+      <h3>Hunt the Wumpus</h3>
+      <p>A game with no picture at all. You play it entirely by deduction, in the dark.</p>
+      <span class="play">Play here</span>
+    </a>
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/06-ti994a-2/anteater/"
+       data-slug="anteater" data-title="Anteater">
+      <span class="rung">Rung 6 · TI-99/4A</span>
+      <h3>Anteater</h3>
+      <p>Reach and retreat — the tongue is both the weapon and the thing that gets you killed.</p>
+      <span class="play">Play here</span>
+    </a>
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/06-ti994a-2/munchman/"
+       data-slug="munchman" data-title="Munch Man">
+      <span class="rung">Rung 6 · TI-99/4A</span>
+      <h3>Munch Man</h3>
+      <p>The maze chase — TI's own answer to Pac-Man, with pursuers that had to feel clever on almost no compute.</p>
+      <span class="play">Play here</span>
+    </a>
+    <a class="game" href="https://sobevista.github.io/arcade-progression/rungs/08-ti994a-3/alpiner/"
+       data-slug="alpiner" data-title="Alpiner">
+      <span class="rung">Rung 8 · TI-99/4A</span>
+      <h3>Alpiner</h3>
+      <p>A climb where patience is meant to pay, and a bolt-on speech chip that could add flavour but never information.</p>
+      <span class="play">Play here</span>
+    </a>
+  </nav>
+
+  <p class="note">Each game opens right here on the page. They live on the arcade project and
+  play the same whether you open them here or there — one home, two doors. Prefer a full window?
+  Every card is also a direct link.</p>
+
+  <!-- In-page player. Empty until a game is chosen; the iframe src is set on open
+       and cleared on close so no game loads until asked for. -->
+  <div class="player" id="player" hidden role="dialog" aria-modal="true" aria-label="Game player">
+    <div class="player-bar">
+      <span class="ttl" id="player-title"></span>
+      <span class="spacer"></span>
+      <a id="player-open" href="#" target="_blank" rel="noopener">Open in full window ↗</a>
+      <button type="button" class="close" id="player-close" aria-label="Close game">✕</button>
+    </div>
+    <iframe id="player-frame" title="" allow="fullscreen; gamepad; autoplay"></iframe>
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+
+<script>
+  // Progressive enhancement: the cards are real links and work with JS off.
+  // With JS, a click opens the game in-page and deep-links it via #slug.
+  (function(){
+    var cards = Array.prototype.slice.call(document.querySelectorAll('[data-slug]'));
+    var bySlug = {};
+    cards.forEach(function(c){ bySlug[c.getAttribute('data-slug')] = c; });
+
+    var player = document.getElementById('player');
+    var frame  = document.getElementById('player-frame');
+    var title  = document.getElementById('player-title');
+    var openLink = document.getElementById('player-open');
+    var lastFocus = null;
+
+    function open(card, pushHash){
+      var url = card.getAttribute('href');
+      var name = card.getAttribute('data-title');
+      lastFocus = document.activeElement;
+      title.textContent = name;
+      frame.setAttribute('title', name);
+      openLink.setAttribute('href', url);
+      frame.src = url;              // load only now
+      player.hidden = false;
+      document.body.style.overflow = 'hidden';
+      document.getElementById('player-close').focus();
+      if (pushHash) location.hash = card.getAttribute('data-slug');
+    }
+    function close(){
+      player.hidden = true;
+      frame.src = 'about:blank';    // stop the game, free it
+      document.body.style.overflow = '';
+      if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+
+    cards.forEach(function(card){
+      card.addEventListener('click', function(e){
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; // let new-tab clicks pass
+        e.preventDefault();
+        open(card, true);
+      });
+    });
+    document.getElementById('player-close').addEventListener('click', close);
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && !player.hidden) close();
+    });
+
+    // Deep link: /games/#deliverance opens straight into the game.
+    function fromHash(){
+      var slug = location.hash.replace('#','');
+      if (slug && bySlug[slug]) open(bySlug[slug], false);
+    }
+    fromHash();
+  })();
+</script>
+</body>
+</html>

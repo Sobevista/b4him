@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flagged, Not Scored · Lessons · Beacon Ministries</title>
+<meta name="description" content="The difference between a tool that measures and a tool that performs confidence — and how to rebuild any fake score into an honest flag.">
+
+<meta property="og:title" content="Flagged, Not Scored">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/flagged-not-scored/">
+<meta property="og:description" content="The difference between a tool that measures and a tool that performs confidence — and how to rebuild any fake score into an honest flag.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">The Honest Machine</a> · Lesson 2</p>
+    <h1>Flagged, Not Scored: How an Honest Tool Says "I Don't Have Proof"</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> tell the difference between a tool that
+      <em>measures</em> and a tool that <em>performs confidence</em> — and rebuild any fake score
+      you find into an honest flag.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — Builder Track: run the two detectors side by side and watch one lie.</li>
+      <li><strong>Architect</strong> — Architect Track: the two-column model of claim vs. evidence.</li>
+      <li><strong>Translator</strong> — Bridge below.</li>
+      <li><strong>Validator</strong> — Gates at the bottom.</li>
+    </ul>
+
+    <h2>The story this comes from</h2>
+    <p>A tool I built once judged duplicate content by <strong>word count</strong> — two pages with
+    similar word counts got flagged as "possible duplicates." That's a fake: word count says nothing
+    about whether the <em>words</em> match. It was replaced with <strong>shingle overlap</strong> —
+    slide a window across the text, collect every word-sequence "shingle," and measure how many
+    shingles two pages actually share. Same phone book weight ≠ same phone book. Shared sentences =
+    shared sentences.</p>
+    <p>And where the tool has real evidence, it still doesn't pretend to more than it has: pages are
+    <strong>flagged</strong> ("these two pages share 84% of their phrasing — look here"), never
+    <strong>scored</strong> ("your content health is 61/100"). A score implies a scale someone
+    validated. Nobody validated it. So the tool refuses to say it.</p>
+
+    <h2>Translator Bridge</h2>
+    <p>A flag is your teaching assistant saying: "these two book reports have whole identical
+    paragraphs — you should look at them side by side." A score is the same assistant announcing:
+    "Jimmy's academic integrity is 61 out of 100." The first hands you <em>evidence you can check
+    yourself</em>. The second hands you a verdict wearing a costume of precision — and you can't ask
+    61 any questions.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> a human assistant who overstates gets corrected by
+      the next awkward conversation. Software doesn't blush. A fake score will run identically,
+      confidently, thousands of times, and every run <em>deepens</em> trust in a number that means
+      nothing. That's why the fix has to be in the tool's design, not in the operator's caution.</p>
+    </div>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <ol>
+      <li>Take two texts you know share phrases (two drafts of the same email work well).</li>
+      <li>Word-count test: count words in each. Close counts? "Duplicate!" — feel how meaningless that verdict is; a recipe and a psalm can tie.</li>
+      <li>Shingle test by hand: take every 3-word run in text A ("the quick brown", "quick brown fox", …), same for B, count shared runs. Now the number <em>means</em> something you can point at.</li>
+      <li>Say the flag out loud, honestly: "These share N phrases, here they are." Notice you never needed a health score to be useful.</li>
+    </ol>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <p>Every claim a tool makes sits in one of two columns:</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Column A — has evidence</th><th>Column B — performs confidence</th></tr></thead>
+      <tbody>
+        <tr><td>"84% shingle overlap between /about and /services"</td><td>"Content quality: 61/100"</td></tr>
+        <tr><td>"No LocalBusiness schema found on 4 money pages"</td><td>"Local SEO grade: C+"</td></tr>
+        <tr><td>"This is a separate, later check — we can't see it yet"</td><td><em>(silence, hoping you assume it was checked)</em></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>The design law: <strong>every output must be traceable to something the tool actually
+    observed, or it must say out loud that it can't observe it.</strong> The tool's Local module names
+    its own blind spot in the report — your Google Business Profile is external data, a later check,
+    and the report says so. Column B isn't just weaker; it's <em>corrosive</em>, because one exposed
+    fake taints every honest flag beside it.</p>
+
+    <h2>Validator Gates</h2>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> In one sentence: what could a word-count duplicate check never tell you?</li>
+      <li><strong>Gate 2:</strong> A tool outputs "SEO health: 74/100." Ask the two questions that expose whether it belongs in Column A or B. (Who validated the scale? What observation produces the 74?)</li>
+      <li><strong>Gate 3:</strong> Why is "this is a separate, later check" a <em>feature</em>, not an admission of weakness?</li>
+      <li><strong>Gate 4 (own words):</strong> Define "flagged, not scored" for a client who's asking why your report has no overall grade.</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now smell a fake number. Next: Lesson 3, where
+      one honest flag nearly isn't enough — because one <em>false</em> flag can kill everything.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/git-chassis/">← Lesson 1: The Git Chassis</a>
+      <span class="spacer"></span>
+      <a href="/lessons/anti-false-positive/">Lesson 3: The Anti-False-Positive Law →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,106 @@
+/* ------------------------------------------------------------------
+   lesson.css — shared styles for the Lessons tier.
+   Linked alongside /style.css (tokens + chrome). Lesson pages only.
+------------------------------------------------------------------ */
+.lesson-hero{padding:11vh 0 0}
+.lesson-hero .label{
+  font-family:var(--sans); font-size:.7rem; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--gold); margin:0 0 1rem;
+}
+.lesson-hero h1{
+  font-size:clamp(2rem,4.8vw,3rem); line-height:1.09; margin:0;
+  font-weight:400; letter-spacing:-.02em; max-width:26ch;
+}
+.can-do{
+  margin:1.9rem 0 0; padding:1.1rem 1.3rem; border-left:2px solid var(--gold);
+  background:var(--navy-700); max-width:44rem;
+}
+.can-do p{margin:0; color:var(--ink); line-height:1.62}
+.can-do strong{color:var(--gold-bright); font-weight:400; font-style:italic}
+
+/* ---- prose ---- */
+.lesson{max-width:44rem}
+.lesson h2{
+  font-family:var(--serif); font-size:1.5rem; font-weight:400; color:var(--gold-bright);
+  margin:2.9rem 0 .9rem; letter-spacing:-.01em;
+}
+.lesson p{font-size:1.06rem; line-height:1.7; margin:0 0 1.15rem; color:var(--ink)}
+.lesson ul, .lesson ol{line-height:1.7; color:var(--ink); padding-left:1.3rem; margin:0 0 1.15rem}
+.lesson li{margin:.4rem 0}
+.lesson strong{color:var(--gold-bright); font-weight:600}
+.lesson em{color:var(--gold-bright); font-style:italic}
+.lesson a{color:var(--gold); text-decoration:none; border-bottom:1px solid var(--line)}
+.lesson a:hover{color:var(--gold-bright); border-color:var(--gold)}
+.lesson code{
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:.85em;
+  background:var(--navy-900); padding:.12em .42em; border-radius:3px; color:var(--gold-bright);
+}
+.lesson pre{
+  background:var(--navy-900); border:1px solid var(--line); border-radius:4px;
+  padding:1rem 1.2rem; overflow-x:auto; margin:1.2rem 0;
+  font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.8rem; line-height:1.55; color:var(--ink);
+}
+.lesson pre code{background:none; padding:0; color:inherit}
+
+/* ---- tables ---- */
+.lesson .tablewrap{overflow-x:auto; margin:1.2rem 0}
+.lesson table{border-collapse:collapse; width:100%; font-size:.94rem}
+.lesson th, .lesson td{
+  border:1px solid var(--line); padding:.55rem .75rem; text-align:left;
+  vertical-align:top; line-height:1.5;
+}
+.lesson th{
+  color:var(--gold); font-family:var(--sans); font-size:.7rem;
+  letter-spacing:.08em; text-transform:uppercase; font-weight:600; white-space:nowrap;
+}
+
+/* ---- "where the analogy ends" callout ---- */
+.analogy{
+  border-left:2px solid var(--gold-dim); background:var(--navy-800);
+  padding:.4rem 1.25rem; margin:1.3rem 0; max-width:44rem;
+}
+.analogy p{color:var(--muted); margin:.7rem 0}
+
+/* ---- choose your door ---- */
+.doors{margin:1.5rem 0; padding:0; list-style:none}
+.doors li{margin:.5rem 0; color:var(--muted); line-height:1.55}
+.doors strong{color:var(--gold-bright); font-weight:400}
+
+/* ---- validator gates ---- */
+.gates{margin:1rem 0; padding:0; list-style:none; counter-reset:gate}
+.gates li{margin:.65rem 0; padding-left:1.9rem; position:relative; line-height:1.62; color:var(--ink)}
+.gates li::before{content:"\2610"; position:absolute; left:0; color:var(--gold); font-size:1.1em}
+
+/* ---- module complete + pager ---- */
+.complete{
+  margin:2.5rem 0 0; padding:1.1rem 1.3rem; background:var(--navy-700);
+  border-left:2px solid var(--gold); color:var(--muted); line-height:1.6;
+}
+.complete strong{color:var(--gold-bright); font-weight:400}
+.pager{
+  margin:3.5rem 0 0; padding-top:1.5rem; border-top:1px solid var(--line);
+  display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+  font-family:var(--sans); font-size:.83rem;
+}
+.pager a{color:var(--gold); text-decoration:none}
+.pager a:hover{color:var(--gold-bright)}
+.pager .spacer{margin-left:auto}
+
+/* ---- lessons index ---- */
+.mods{margin:2.4rem 0 0; display:grid; gap:1px; background:var(--line); border:1px solid var(--line)}
+.mod{
+  background:var(--navy-800); padding:1.5rem 1.6rem; text-decoration:none; color:inherit;
+  display:flex; gap:1.2rem; align-items:baseline; transition:background .2s ease;
+}
+.mod:hover{background:var(--navy-700)}
+.mod .n{
+  font-family:var(--sans); font-size:.8rem; color:var(--gold); flex:none;
+  width:1.5rem; letter-spacing:.05em;
+}
+.mod h2{font-family:var(--serif); font-size:1.22rem; font-weight:400; margin:0 0 .3rem; letter-spacing:-.01em}
+.mod p{margin:0; color:var(--muted); font-size:.92rem; line-height:1.55}
+
+@media (max-width:34rem){
+  .lesson-hero{padding-top:9vh}
+  .mod{flex-direction:column; gap:.3rem}
+}

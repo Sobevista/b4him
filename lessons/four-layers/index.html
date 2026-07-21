@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Four Layers · Lessons · Beacon Ministries</title>
+<meta name="description" content="The four layers of a build system — Habitat, Project, Mesh, Harness — and the flywheel that carries a lesson from one project into every future project.">
+
+<meta property="og:title" content="The Four Layers">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/four-layers/">
+<meta property="og:description" content="The four layers of a build system, and the flywheel that carries a lesson from one project into every future project.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">The Honest Machine</a> · Lesson 6</p>
+    <h1>The Four Layers: Habitat, Project, Mesh, Harness</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> place any piece of the build system — a file, a
+      rule, a skill, a machine — on the correct layer, and trace how a lesson learned in one project
+      reaches every future project through the flywheel.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — Builder Track: sort real objects onto layers.</li>
+      <li><strong>Architect</strong> — Architect Track: the stack and the flywheel.</li>
+      <li><strong>Translator</strong> — Bridge below.</li>
+      <li><strong>Validator</strong> — Gates at the bottom.</li>
+    </ul>
+
+    <h2>The four layers (bottom-up)</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Layer</th><th>Name</th><th>What it is</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><strong>Habitat</strong></td><td>Any machine, treated as replaceable</td><td>home PC, a VM, a second laptop</td></tr>
+        <tr><td>2</td><td><strong>Project</strong></td><td>One repo per project, born with its chassis</td><td>a web tool, a coach app, a game project</td></tr>
+        <tr><td>3</td><td><strong>Mesh</strong></td><td>How work moves: roles, laps, branch→PR→CI→human gate</td><td>one agent orchestrates, another executes, I merge</td></tr>
+        <tr><td>4</td><td><strong>Harness</strong></td><td>Cross-project doctrine every project inherits</td><td>skills, START_HERE, Knowledge_Base, diary, scheduled sweeps</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>And the <strong>flywheel</strong> that connects them: lessons flow <strong>up</strong> (a
+    hard-won lesson in any project gets packaged into the harness as a skill or doctrine), and
+    doctrine flows <strong>down</strong> (every fresh session inherits the harness, zero
+    re-explaining). The whole point: memory lives in the builds, not in any one chat, machine, or
+    vendor.</p>
+
+    <h2>Translator Bridge</h2>
+    <p>A school district. <strong>Habitat</strong> = the buildings — a school is not its building; if
+    one floods, classes move. <strong>Project</strong> = each course, with its own binder and
+    gradebook (Lesson 1's chassis). <strong>Mesh</strong> = the schedule and staffing rules — who
+    teaches, who substitutes, who signs off on grade changes. <strong>Harness</strong> = the
+    district's teaching philosophy and teacher-training program: no single course owns it, every
+    course inherits it, and when one teacher discovers a technique that works, the training program
+    absorbs it and every future classroom gets it.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> a district's philosophy spreads at human speed —
+      workshops, years. The harness spreads at <em>session</em> speed: a lesson packaged as a skill
+      today is enforced behavior in tomorrow's first session. And unlike a district, layers here are
+      <em>swappable in both directions</em>: not just new buildings, but in principle a new AI (the
+      model-agnostic claim — which the stack map honestly labels a claim, not a proof: only Claude
+      has run the full harness so far).</p>
+    </div>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <p>Sort these onto layers 1–4 (answers at the bottom of the lesson; no peeking until committed):</p>
+    <ol>
+      <li><code>RESUME.md</code> in the repo of a tool I built</li>
+      <li>The nightly-diary-sweep scheduled task</li>
+      <li>The rule "only I merge"</li>
+      <li>A fresh VM stood up for a clean-state kill test</li>
+      <li>The teaching skill that produced this lesson</li>
+      <li>The anti-false-positive law in that tool's tests</li>
+      <li><code>START_HERE.md</code></li>
+    </ol>
+    <p>Then walk one real flywheel loop: find a lesson in this tier that started life inside one repo
+    (Lesson 3's law, in a tool I built) and name where it lives now (this lesson set — harness).</p>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <pre><code>        ▲ lessons up                    doctrine down ▼
+   L4 HARNESS  ── skills, START_HERE, KB, diary ── inherited by every session
+   L3 MESH     ── roles, laps, PR→CI→human gate ── how any work moves
+   L2 PROJECT  ── repo + chassis, born together ── where work lives
+   L1 HABITAT  ── disposable machines, VMs      ── where work runs</code></pre>
+    <p>Two design insights. First, <strong>each layer protects the one above from the one
+    below</strong>: projects don't care which machine (L1 is cattle); the mesh doesn't care which
+    project (same loop everywhere); the harness doesn't care which agent (doctrine is text). Second,
+    <strong>the harness is the flywheel's hub, which makes it the highest-value target</strong> — the
+    adversarial review caught exactly that: the most-leveraged layer had the least protection (no git,
+    no backup). The fix was a private repo for the shared doctrine — the harness now wears the same
+    chassis it prescribes. A system that exempts itself from its own laws isn't a system yet.</p>
+
+    <h2>Validator Gates</h2>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> Name the four layers bottom-up and give one resident of each.</li>
+      <li><strong>Gate 2:</strong> Which direction do lessons flow, and which direction does doctrine flow? What's the payoff of that loop?</li>
+      <li><strong>Gate 3:</strong> Why is "the harness wasn't in git" a more serious finding than a bug in any single project?</li>
+      <li><strong>Gate 4 (own words):</strong> Explain "machines are cattle" to someone who keeps everything on one laptop.</li>
+    </ol>
+
+    <p><em>Builder answers: 1→L2, 2→L4, 3→L3, 4→L1, 5→L4, 6→L2 (enforced by L2's CI; the pattern it teaches lives in L4), 7→L4.</em></p>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now see the whole machine at once. Next: Lesson 7 —
+      what happens when a layer <em>claims</em> a safety net it doesn't have.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/the-witness/">← Lesson 5: The Witness Stays Outside</a>
+      <span class="spacer"></span>
+      <a href="/lessons/backup-is-a-check/">Lesson 7: A Backup Is a Check You Run →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

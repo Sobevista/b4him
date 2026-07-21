@@ -4,12 +4,15 @@
 
 ## Where this stands
 
-**Phase 0 — scope + decision session. No code written yet, deliberately.**
+**v0 content complete and walkable — nothing deployed.** (Full detail in `BUILD_OUTLINE.md` STATE OF BUILD, 2026-07-21.)
 
-The repo was born 2026-07-20 with its chassis and nothing else. Two things block Phase 1:
+Every nav room is real: **About** (eye-gate passed), **Games** (9 arcade rungs playable in-page via iframe), **Lessons** (a 13-module two-tier curriculum + a "find your door" quiz), **Writing** (the 8 web laws + arcade pointers), **Videos**/**Blog** (honest "coming" shells). Shared design system in `/style.css` + `/lesson.css`. Phase-0 parameters are effectively settled (M1–M5, D9/D10, and D11/D12 for the lessons).
 
-1. **Seven human-owned parameters** are unruled (host, DNS, build step, catalogue shape, what is cleared to publish, games embedded-vs-linked, tone floor). They are listed in `BUILD_OUTLINE.md` § Phase 0(a). Claude does not assume them.
-2. **The SCOPE has no visual criteria yet, and no visual reference has been gathered.** This is a hard gate, not a nicety — see below.
+**Blocking a real launch (Daniel's, not Claude's):**
+1. **`assets/logo.png`** — the real logo binary. Until it lands, the header mark is a placeholder SVG and og:image/favicon wait on it.
+2. **Deploy = Phase 4** — GitHub Pages + DNS. Not done; the site is local-only on localhost.
+
+**Un-added from the Drive discovery (Daniel's call):** the older n8n curriculum, glossary, flashcards.
 
 ## The law this build was born under
 
@@ -27,4 +30,4 @@ v0 static only. v1 (embedded YouTube) and v2 (owned comments/Patreon) are writte
 
 ## Next action
 
-Run the Phase 0 decision session: rule the seven parameters, gather visual reference, write the SCOPE with visual criteria in it. Then Phase 1.
+Get `assets/logo.png` from Daniel → wire the real mark + og:image + favicon → then Phase 4 (Pages + DNS) to take it live. Optionally: eyeball the five tier-2 lesson pages (verified by grep + serve + coherence-sample, not each individually), and decide whether the older n8n curriculum / glossary / flashcards join the shelf.

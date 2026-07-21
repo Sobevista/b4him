@@ -109,3 +109,23 @@ Daniel supplied the Beacon Ministries logo — the first real visual reference t
 Known-not-done, on the face of it: `about.html` is linked twice and does not exist (both links 404); the header mark is an inline SVG `[ASSUMED stand-in]` awaiting `assets/logo.png`; small gold metadata text has **not** been contrast-measured (sent to research as 0(c) item 7).
 
 **Then Daniel paused the build for research** — see 0(c). His instruction was explicit: go and do the research, do not assume. The scope grew past the landing page: a real header across all pages, a legal-complete footer, a blog with easy posting, and the alignment question. Also opened **0(d)** — extract the invariants of website-building so the next site is more plug-and-play.
+
+### 2026-07-21 — the home built out end to end (laptop session, LAPTOP-3GLEQ7L1)
+Daniel's framing: *"we need a home for all of this work."* Went from a local landing shell to a full, walkable site in one session. **Nothing deployed — all local (localhost:8000).**
+
+**Infrastructure:** shared `/style.css` (the design system in ONE home — palette, beam, header + footer chrome; `index.html` refactored onto it, killing the copy-paste-into-every-page drift before it started — INV-W1's family) + `/lesson.css`.
+
+**Rooms built — the nav now fully resolves:**
+- `about/` — D1 first-person, D10 mantras as the five pillars. **Daniel's eye-gate PASSED** (his wife read it as his voice; he teared up reading it). Exactly the visual gate D9 was built to wait for.
+- `games/` — the 9 arcade rungs, **playable in-page** via a lazy iframe player (progressive enhancement: real links with JS off; in-page overlay + `#slug` deep-links with JS on). **M5's open `[ASSUMED]` resolved: GitHub Pages sends no `X-Frame-Options`/CSP, so embedding works** — verified live (open→play→close→deep-link, zero console errors). Single-home preserved (iframes the live arcade, copies nothing). Residual: real-device touch/keyboard inside the frame not tested (can't, through automation).
+- `writing/` — the 8 `WEB_INVARIANTS` rendered reader-facing (the homework of building this very site) + pointers to the public arcade trove.
+- `videos/`, `blog/` — honest "coming" shells (D6: the shelf gets its place at v0; blog's easy-posting problem stays open).
+- `lessons/` — a **13-module, two-tier curriculum + an interactive quiz** (below).
+
+**Lessons — the centerpiece.** Reviewed all 16 harness Teaching modules; published **Tier 1 "The Honest Machine" (8)** as the curated starter set (self-contained, Chelsie-level). A Drive discovery pass (`Guess and Click / Dan - Teaching`) surfaced more homework → **Tier 2 "Building the Machine" (5)**: Mail Slot → Depth Chart → Fuse Box → First Lap → Kill Test (capstone) — the hands-on infra track, normalized to the same template. **"Find your door" quiz** built from the Cognitive Profile diagnostic (10 Qs → Builder/Architect/Translator/Validator; scoring tested; collects/sends nothing — INV-W3). Graduation Builds on both tiers.
+
+**Genericization (Daniel's rulings):** publish the modules but genericize product/client names — LiftLens → "a tool I built"; the real client's name → "a real local business" (hard line, non-negotiable — the name is not written here either); Chelsie → "a teammate"; `Sobevista-mesh`/`Pong_Tower`/Daniel → generic / first-person. Applied consistently ("consistency lets us track deviation"). **Independent grep across all 13 modules = zero forbidden tokens** — the witness check (M5), run on our own terms, not the render-agents' self-reports. Sight corrected a reconstruction: the client name was never in the repo docs at all (the earlier flag was the broad pattern matching LiftLens/CAS/Chelsie).
+
+**Method:** tier-1 modules 2–8 and all 5 tier-2 modules were fanned out to parallel subagents against a Daniel-approved Module-1 exemplar; every output grep-gated + eye-sampled before acceptance. Show-one-before-eight, then verify.
+
+Status: **v0 content complete and walkable; nothing deployed.** Next: Daniel's `assets/logo.png` (unblocks header mark + og:image + favicon), then Phase 4 (Pages + DNS). Un-added from discovery (Daniel's call): the older n8n curriculum, glossary, flashcards.

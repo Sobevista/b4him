@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Git Chassis · Lessons · Beacon Ministries</title>
+<meta name="description" content="The five moving parts of any project on GitHub — Repo, Branch, PR, CI, Merge — and how a change travels safely from idea to real.">
+
+<meta property="og:title" content="The Git Chassis — Five Primitives">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/git-chassis/">
+<meta property="og:description" content="The five moving parts of any project on GitHub, and how a change travels safely from idea to real.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">The Honest Machine</a> · Lesson 1</p>
+    <h1>The Git Chassis: Five Primitives</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> look at any software project on GitHub and
+      name the five moving parts — Repo, Branch, PR, CI, Merge — say what each one protects, and
+      follow a real change from "idea" to "safely part of the product" without touching a terminal.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — jump to the Builder Track. Open a real repo and click around before reading anything.</li>
+      <li><strong>Architect</strong> — jump to the Architect Track. See the whole pipeline as one diagram first.</li>
+      <li><strong>Translator</strong> — start at the Bridge below.</li>
+      <li><strong>Validator</strong> — work the Gates at the bottom, one at a time, in order.</li>
+    </ul>
+
+    <h2>Translator Bridge</h2>
+    <p>A repo is like a <strong>classroom master binder</strong>: the one official copy of every
+    lesson plan, and it remembers every version that ever existed.</p>
+    <ul>
+      <li><strong>Branch</strong> = photocopying a section to mark up at your desk. The binder stays untouched while you experiment.</li>
+      <li><strong>PR (pull request)</strong> = putting your marked-up copy in the principal's tray with a note: "I propose we replace pages 12–14 with these."</li>
+      <li><strong>CI</strong> = the school's checklist clerk who automatically proof-checks every proposal — spelling, page numbers, whether it contradicts the fire-drill policy — before the principal even looks.</li>
+      <li><strong>Merge</strong> = the principal signs off and the new pages go into the master binder. From that moment, it's what everyone teaches from.</li>
+    </ul>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> a binder holds paper — the master binder can't
+      <em>test itself</em>. In software, CI actually runs the product against dozens of checks every
+      single time, and a locked main branch physically refuses the merge if any check fails. The
+      principal in our world literally <em>cannot</em> sign a proposal the clerk has stamped red.
+      Also: photocopies drift from the binder, but a branch can be refreshed from the master at any
+      time — the copy machine runs backward.</p>
+    </div>
+
+    <h2>The five primitives</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Primitive</th><th>What it is</th><th>What it protects</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Repo</strong></td><td>The one official home of the project + its full history</td><td>Truth: "where does this project actually live?"</td></tr>
+        <tr><td><strong>Branch</strong></td><td>A parallel copy where change happens safely</td><td>The working product, from your experiments</td></tr>
+        <tr><td><strong>PR</strong></td><td>A proposed change, visible and reviewable before it lands</td><td>Everyone's right to see what's changing and why</td></tr>
+        <tr><td><strong>CI</strong></td><td>Automatic checks that run on every proposal</td><td>The product, from broken or self-graded work</td></tr>
+        <tr><td><strong>Merge</strong></td><td>The human decision that a checked change becomes real</td><td>The human's place as the final gate</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>One sentence to keep: <strong>change happens on a branch, gets proposed in a PR, gets tested
+    by CI, and only a human merge makes it real.</strong></p>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <ol>
+      <li>Open any public repo on GitHub you can browse — a large open-source project works well. Find the <strong>branch picker</strong> (top-left of the file list). Count the branches. Each one is a safe copy.</li>
+      <li>Click <strong>Pull requests</strong> → open a closed (merged) one. Read the description like a proposal memo. Find the <strong>Files changed</strong> tab — that's the marked-up photocopy.</li>
+      <li>On the PR page, find the <strong>checks</strong> section (green checkmark near the merge area). Click it. That's CI's stamped report.</li>
+      <li>Find the purple <strong>Merged</strong> badge. That was the human gate — a person clicked that, after the checks went green.</li>
+      <li>Now say out loud what you just walked through: branch → PR → CI → merge. You've traced the whole machine.</li>
+    </ol>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <pre><code> idea → [Branch] → work happens → [PR opened] → [CI runs checks]
+                                                      │
+                                            red ──────┤────── green
+                                             │                 │
+                                     fix &amp; push again   [Human merges]
+                                                               │
+                                                        main (the product)</code></pre>
+    <p>The design insight: every arrow is a <em>narrowing</em>. Anyone can branch; only a PR makes
+    change visible; only green CI makes it mergeable; only a human makes it real. Main stays
+    trustworthy because nothing reaches it without passing every gate. This is the same shape the
+    honest reporting in a tool I built follows: <strong>a number + the assumption behind it + a cited
+    basis</strong> — a claim only counts when it carries its evidence, exactly like a PR only counts
+    when it carries green checks.</p>
+
+    <h2>Validator Gates</h2>
+    <p>Pass each gate before moving on. These are permission to advance, not hazing.</p>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> Name the five primitives without looking.</li>
+      <li><strong>Gate 2:</strong> Which two primitives exist purely to <em>protect</em> something rather than to <em>do</em> something? (CI protects the product; merge-as-human-gate protects judgment.) Explain why in one sentence each.</li>
+      <li><strong>Gate 3:</strong> True or false: work done on a branch changes the product immediately. Say why.</li>
+      <li><strong>Gate 4 (own words):</strong> Write the branch → PR → CI → merge journey as if explaining to a fifth grader. No jargon allowed except the four names themselves.</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now read any GitHub project like a floor plan.
+      Next: Lesson 2, where the machine learns to say "I don't know."</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/">← All lessons</a>
+      <span class="spacer"></span>
+      <a href="/lessons/flagged-not-scored/">Lesson 2: Flagged, Not Scored →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

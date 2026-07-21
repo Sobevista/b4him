@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Find Your Door · Lessons · Beacon Ministries</title>
+<meta name="description" content="A 5-minute read on how you best walk into new territory — Builder, Architect, Translator, or Validator. Nothing saved, nothing sent.">
+
+<meta property="og:title" content="Find Your Door">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://b4him.com/lessons/find-your-door/">
+<meta property="og:description" content="Which of the four doors is yours? A 5-minute, 10-question read. Nothing saved, nothing sent.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+<style>
+  .q{margin:0 0 2.2rem; border:0; padding:0; max-width:44rem}
+  .q legend{
+    font-family:var(--serif); font-size:1.12rem; color:var(--ink); line-height:1.5;
+    padding:0; margin:0 0 .9rem;
+  }
+  .q .qn{font-family:var(--sans); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); display:block; margin-bottom:.4rem}
+  .opt{
+    display:block; position:relative; margin:.5rem 0; padding:.75rem 1rem .75rem 2.6rem;
+    border:1px solid var(--line); border-radius:4px; color:var(--muted); cursor:pointer;
+    line-height:1.5; transition:border-color .15s ease, background .15s ease, color .15s ease;
+  }
+  .opt:hover{border-color:var(--gold-dim); color:var(--ink)}
+  .opt input{position:absolute; left:.9rem; top:.95rem; accent-color:var(--gold)}
+  .opt.chosen{border-color:var(--gold); background:var(--navy-700); color:var(--ink)}
+
+  .quiz-actions{margin:1rem 0 0; display:flex; align-items:center; gap:1.2rem; flex-wrap:wrap}
+  .btn{
+    font-family:var(--sans); font-size:.85rem; letter-spacing:.03em; cursor:pointer;
+    background:var(--gold); color:var(--navy-900); border:0; border-radius:4px;
+    padding:.7rem 1.4rem; transition:background .15s ease;
+  }
+  .btn:hover{background:var(--gold-bright)}
+  .btn:disabled{background:var(--navy-700); color:var(--muted); cursor:not-allowed}
+  .progress{font-family:var(--sans); font-size:.8rem; color:var(--muted)}
+
+  .result{margin:2.5rem 0 0; border:1px solid var(--gold); background:var(--navy-700); padding:2rem 1.9rem}
+  .result[hidden]{display:none}
+  .result .door{font-family:var(--sans); font-size:.72rem; letter-spacing:.16em; text-transform:uppercase; color:var(--gold)}
+  .result h2{font-family:var(--serif); font-size:2rem; font-weight:400; color:var(--gold-bright); margin:.4rem 0 .2rem; letter-spacing:-.01em}
+  .result .motto{font-style:italic; color:var(--ink); margin:0 0 1.1rem}
+  .result p{color:var(--muted); line-height:1.65; margin:0 0 1rem; max-width:44rem}
+  .result .tally{font-family:var(--sans); font-size:.78rem; color:var(--muted); margin-top:1.2rem; letter-spacing:.03em}
+  .result .cta{margin-top:1.4rem}
+  .result .cta a{color:var(--gold); text-decoration:none; border-bottom:1px solid var(--line); padding-bottom:.15rem}
+  .result .cta a:hover{color:var(--gold-bright); border-color:var(--gold)}
+  .retake{background:none; border:0; color:var(--muted); font-family:var(--sans); font-size:.78rem; cursor:pointer; text-decoration:underline; padding:0}
+  .retake:hover{color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">Lessons</a> · Find your door</p>
+    <h1>Which door is <em>yours</em>?</h1>
+    <div class="can-do">
+      <p>Every lesson here has four ways in — Builder, Architect, Translator, Validator. This is a
+      5-minute read on which one fits how you actually learn. <strong>There are no right answers,
+      nothing is saved, and nothing is sent anywhere</strong> — it all happens right here in your
+      browser. Answer for the real you, not the ideal one.</p>
+    </div>
+  </section>
+
+  <form class="lesson" id="quiz" aria-label="Find your door quiz"></form>
+
+  <div class="lesson">
+    <div class="quiz-actions">
+      <button type="button" class="btn" id="see" disabled>See my door</button>
+      <span class="progress" id="progress">0 of 10 answered</span>
+    </div>
+
+    <div class="result" id="result" hidden aria-live="polite"></div>
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  // A = Builder, B = Architect, C = Translator, D = Validator (fixed mapping).
+  var QUESTIONS = [
+    ["You just got access to a new tool that could save you hours every week. What do you do in the first 10 minutes?",
+     ["Open it and start clicking around — I'll figure it out as I go.",
+      "Find a getting-started guide and read through it first.",
+      "Think about similar tools I've used and look for the same patterns here.",
+      "Try one basic function, make sure it works, then try the next thing."]],
+    ["Someone's explaining something complicated and it finally clicks. What made it click?",
+     ["I tried it myself and it just made sense in my hands.",
+      "They explained the underlying logic from the ground up and I saw the whole system.",
+      "They compared it to something I already knew how to do.",
+      "They walked through it step by step and confirmed I understood each part."]],
+    ["You've been stuck on something new for 20 minutes. What do you actually do?",
+     ["Keep pushing — I just need more time alone with it.",
+      "Step back and think about what should logically be happening, then re-approach.",
+      "Ask someone, or find an example of someone solving the same thing.",
+      "Go back to the last thing I know worked and trace forward step by step."]],
+    ["You made a mistake that set something back. What's your honest first reaction?",
+     ["Move on immediately — what's next? Dwelling doesn't help.",
+      "Stop and understand exactly what went wrong before touching anything else.",
+      "Talk it through with someone — processing out loud helps me sort it.",
+      "Document what happened and make a checklist so it can't recur the same way."]],
+    ["You learn a new skill fastest when:",
+     ["Someone throws me in the deep end and I have to figure it out.",
+      "I have complete documentation and can work through it alone at my own pace.",
+      "I'm learning alongside others, with someone to bounce ideas off.",
+      "There's a structured program with clear milestones I can track."]],
+    ["When you start something new and unfamiliar, you tend to:",
+     ["Start immediately and adjust as problems appear.",
+      "Sketch out the full picture first before touching anything.",
+      "Look at how others have done similar things and adapt from there.",
+      "Break it into ordered steps and complete them one at a time."]],
+    ["You know you've truly learned something new when:",
+     ["I've used it to solve a real problem — results are my proof.",
+      "I can explain the whole system in my own words, from scratch.",
+      "Others around me can see it in how I work — it's visible.",
+      "I've tested it enough that I'm confident in every scenario I might face."]],
+    ["When trying to understand something unfamiliar, you'd rather:",
+     ["See a real working example first, then figure out the rules from it.",
+      "Understand the rules and principles first, then see examples.",
+      "See it in a context that connects to something I already do.",
+      "Have a clear step-by-step breakdown I can follow precisely."]],
+    ["What frustrates you most when learning something new?",
+     ["Being slowed down by too much explanation when I could just try it.",
+      "Being asked to do something before I understand why it works.",
+      "When the teaching ignores how I'd actually use this in the real world.",
+      "When steps are skipped or the sequence isn't clearly defined."]],
+    ["In a group working on something unfamiliar, you naturally become the person who:",
+     ["Gets started and has things working before others finish planning.",
+      "Maps out the system and makes sure everyone understands the structure.",
+      "Translates what's happening into terms the whole group can relate to.",
+      "Makes sure nothing falls through the cracks and every step is accounted for."]]
+  ];
+  var KEYS = ["builder","architect","translator","validator"];
+  var DOORS = {
+    builder:{sym:"⚙", name:"The Builder", motto:"“Give me the tool and get out of my way.”",
+      blurb:"You learn by doing, breaking, and reverse-engineering the wreckage. Results are your proof; long preambles are friction.",
+      use:"In each lesson, jump straight to the <strong>Builder Track</strong> and do the exercise before you read a word of theory. Come back for the why only if you want it."},
+    architect:{sym:"▣", name:"The Architect", motto:"“Show me the whole system before I touch a node.”",
+      blurb:"You want the map before the territory. Once you see how the parts fit, execution is precise and fast.",
+      use:"Start each lesson at the <strong>Architect Track</strong> — the model or diagram first. With the whole shape in view, the rest falls into place."},
+    translator:{sym:"⇄", name:"The Translator", motto:"“I know how to do this — I just need the connection.”",
+      blurb:"You learn by mapping the new onto something you already own. When the analogy lands, your confidence spikes — and you often become the best teacher of it later.",
+      use:"Begin each lesson at the <strong>Translator Bridge</strong>. When it says <em>“where the analogy ends”</em>, that's your signpost for what's genuinely new."},
+    validator:{sym:"✓", name:"The Validator", motto:"“I move when I know the last step worked.”",
+      blurb:"You learn by testing, confirming, then advancing — not because you're slow, but because you're thorough. You catch what everyone else missed.",
+      use:"Work the <strong>Validator Gates</strong> at the bottom of each lesson, one at a time, in order. They're checkpoints you'll look forward to."}
+  };
+  var HYBRIDS = {
+    "builder+architect":"The Systems Builder — you need the framework but won't wait long for it.",
+    "builder+translator":"The Analog Pioneer — you learn by doing, but filter everything through a real-world analogy.",
+    "builder+validator":"The Precision Starter — you want to move fast, but need each thing to work before advancing.",
+    "architect+translator":"The Bridge Builder — you want the system, and you want it grounded in your world. The most common blend.",
+    "architect+validator":"The Deep Systematic — the most thorough learner there is, and the highest retention.",
+    "translator+validator":"The Collaborative Precise — you need both the analogy and the structure; a study partner helps most."
+  };
+
+  var form = document.getElementById('quiz');
+  var LETTER = ["A","B","C","D"];
+  QUESTIONS.forEach(function(item, qi){
+    var fs = document.createElement('fieldset');
+    fs.className = 'q';
+    var lg = document.createElement('legend');
+    lg.innerHTML = '<span class="qn">Question ' + (qi+1) + ' of 10</span>' + item[0];
+    fs.appendChild(lg);
+    item[1].forEach(function(text, oi){
+      var lab = document.createElement('label');
+      lab.className = 'opt';
+      var inp = document.createElement('input');
+      inp.type = 'radio';
+      inp.name = 'q' + qi;
+      inp.value = KEYS[oi];
+      lab.appendChild(inp);
+      lab.appendChild(document.createTextNode(text));
+      inp.addEventListener('change', function(){
+        Array.prototype.forEach.call(fs.querySelectorAll('.opt'), function(o){ o.classList.remove('chosen'); });
+        lab.classList.add('chosen');
+        update();
+      });
+      fs.appendChild(lab);
+    });
+    form.appendChild(fs);
+  });
+
+  var see = document.getElementById('see');
+  var progress = document.getElementById('progress');
+  var result = document.getElementById('result');
+
+  function answered(){
+    var n = 0;
+    for (var i=0;i<QUESTIONS.length;i++){ if (form.querySelector('input[name="q'+i+'"]:checked')) n++; }
+    return n;
+  }
+  function update(){
+    var n = answered();
+    progress.textContent = n + ' of 10 answered';
+    see.disabled = n < QUESTIONS.length;
+  }
+
+  see.addEventListener('click', function(){
+    var tally = {builder:0,architect:0,translator:0,validator:0};
+    for (var i=0;i<QUESTIONS.length;i++){
+      var sel = form.querySelector('input[name="q'+i+'"]:checked');
+      if (sel) tally[sel.value]++;
+    }
+    var ranked = KEYS.slice().sort(function(a,b){ return tally[b]-tally[a]; });
+    var top = ranked[0], second = ranked[1];
+    var d = DOORS[top];
+    var hybrid = (tally[top] - tally[second]) <= 1;
+    var hy = '';
+    if (hybrid){
+      var pair = [top, second].sort().join('+');
+      hy = '<p><strong>You’re a hybrid.</strong> ' + top + ' and ' + second +
+           ' came within one point — ' + (HYBRIDS[pair] || 'honor both, not the average.') +
+           ' Lead with your ' + d.name.replace('The ','') + ' approach and lean on the other where it helps.</p>';
+    }
+    result.innerHTML =
+      '<p class="door">' + d.sym + ' Your door</p>' +
+      '<h2>' + d.name + '</h2>' +
+      '<p class="motto">' + d.motto + '</p>' +
+      '<p>' + d.blurb + '</p>' +
+      '<p>' + d.use + '</p>' + hy +
+      '<p class="tally">Builder ' + tally.builder + ' · Architect ' + tally.architect +
+      ' · Translator ' + tally.translator + ' · Validator ' + tally.validator + '</p>' +
+      '<p class="cta"><a href="/lessons/#lessons-list">Start the lessons with your door →</a></p>' +
+      '<p style="margin-top:1rem"><button type="button" class="retake" id="retake">Retake</button></p>';
+    result.hidden = false;
+    result.scrollIntoView({behavior:'smooth', block:'start'});
+    document.getElementById('retake').addEventListener('click', function(){
+      form.reset();
+      Array.prototype.forEach.call(form.querySelectorAll('.opt'), function(o){ o.classList.remove('chosen'); });
+      result.hidden = true;
+      update();
+      form.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+
+  update();
+})();
+</script>
+</body>
+</html>

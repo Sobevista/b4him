@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Anti-False-Positive Law · Lessons · Beacon Ministries</title>
+<meta name="description" content="One noisy flag and trust dies — why a false alarm costs more than a miss, and how a named, machine-enforced law keeps any checker you build from crying wolf.">
+
+<meta property="og:title" content="The Anti-False-Positive Law">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/anti-false-positive/">
+<meta property="og:description" content="One noisy flag and trust dies — why a false alarm costs more than a miss, and how a named, machine-enforced law keeps any checker you build from crying wolf.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">The Honest Machine</a> · Lesson 3</p>
+    <h1>The Anti-False-Positive Law: One Noisy Flag and Trust Dies</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> write one named, testable law for any checker
+      you build — the law that guarantees the tool never cries wolf — and explain why every module
+      needs exactly such a law.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — Builder Track: normalize two phone numbers by hand and watch the false alarm vanish.</li>
+      <li><strong>Architect</strong> — Architect Track: the trust-budget model.</li>
+      <li><strong>Translator</strong> — Bridge below.</li>
+      <li><strong>Validator</strong> — Gates at the bottom.</li>
+    </ul>
+
+    <h2>The story this comes from</h2>
+    <p>The Local module of a tool I built compares the phone number a page <em>shows visitors</em>
+    against the number its structured data <em>tells Google</em>. Real mismatches matter. But the
+    same number wears many outfits: <code>tel:+15125551234</code> in the code,
+    <code>(512) 555-1234</code> on the page. A naive comparison flags those as different — and the
+    flag is false.</p>
+    <p>So the module carries a named law: <strong>the same phone in different formats must NEVER flag
+    as a mismatch.</strong> Numbers are stripped to bare digits before any comparison. A flag
+    therefore always means <em>genuinely different numbers</em>. The law isn't a comment or a hope —
+    it's a test (part of the 32/32 green suite), enforced on every future change.</p>
+
+    <h2>Translator Bridge</h2>
+    <p>Think of a smoke detector. A detector that misses one fire is a tragedy — but a detector that
+    shrieks at every slice of toast gets its battery pulled, and <em>then</em> misses the fire. The
+    false positive doesn't just annoy; it disarms the whole system, because humans stop believing it.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> you can hear a smoke detector cry wolf and judge
+      for yourself — there's toast right there. A software flag arrives with no kitchen attached: the
+      client can't smell the toast. They either trust the report or they don't. That asymmetry is why
+      software needs the law <em>written and machine-enforced</em>, not just a builder's good
+      intention.</p>
+    </div>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <ol>
+      <li>Write these on paper: <code>tel:+15125551234</code> and <code>(512) 555-1234</code>.</li>
+      <li>Compare them character by character. Different? Wildly. A naive checker flags this.</li>
+      <li>Now normalize: delete everything that isn't a digit, drop the leading country-code 1. Both become <code>5125551234</code>.</li>
+      <li>Compare again. Identical. The flag disappears — and now invent a <em>real</em> mismatch (change one digit) and confirm the flag survives normalization. That last step is the law: kill false alarms <em>without</em> killing true ones.</li>
+      <li>Name your law in one sentence, like the original: "Same number, different costume, never a flag."</li>
+    </ol>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <p>Model the client's trust as a budget: it starts small and every honest, verifiable flag earns
+    a deposit. But the exchange rate is brutal — <strong>one false flag withdraws more than ten true
+    flags deposit</strong>, because the client generalizes: "if it's wrong about my phone number, what
+    else is it wrong about?"</p>
+    <p>Design consequences:</p>
+    <ul>
+      <li>Every checking module needs <strong>one named anti-false-positive law</strong> — named so it can be discussed, tested so it can't regress.</li>
+      <li>The law lives in the <strong>conformance corpus</strong>: fixture inputs where the right answer is known, including the tricky same-thing-different-costume cases.</li>
+      <li>CI (Lesson 1) runs the corpus on every change, so the law holds even when a future edit — by human or agent — forgets it exists.</li>
+    </ul>
+    <p>Naming matters: an unnamed rule is folklore; a named law is architecture.</p>
+
+    <h2>Validator Gates</h2>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> State the phone-number law from memory, in one sentence.</li>
+      <li><strong>Gate 2:</strong> Why does a false positive cost more trust than a false negative in a client-facing report?</li>
+      <li><strong>Gate 3:</strong> What are the <em>two</em> directions the Builder Track's step 4 protects, and why do you need both?</li>
+      <li><strong>Gate 4 (own words):</strong> You're building a checker that compares business hours on a website vs. its schema. Write its anti-false-positive law. (Hint: "9am–5pm" vs "09:00–17:00".)</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now design a flag people keep believing.
+      Next: Lesson 4 — who <em>enforces</em> your law when nobody's looking.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/flagged-not-scored/">← Lesson 2: Flagged, Not Scored</a>
+      <span class="spacer"></span>
+      <a href="/lessons/law-you-cant-feel/">Lesson 4: The Law You Can't Feel →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

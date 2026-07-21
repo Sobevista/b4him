@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Depth Chart · Lessons · Beacon Ministries</title>
+<meta name="description" content="How to staff AI roles — Architect, Drafter, Sandbox — so any model can fill any seat, swappable by a one-line human-reviewed change, and prove every seat is alive before trusting it.">
+
+<meta property="og:title" content="The Depth Chart">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/depth-chart/">
+<meta property="og:description" content="Staff AI roles so any model can fill any seat — swappable by a one-line human-reviewed change — and prove every seat is alive before trusting it.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">Building the Machine</a> · Lesson 2</p>
+    <h1>The Depth Chart</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> wire three AI "seats" — Architect, Drafter,
+      Sandbox — so that each is filled by whichever model currently fits the job (one running free on
+      your own graphics card, two rented by the word), and swap any occupant with a one-line,
+      human-reviewed change. You'll also be able to prove every seat is actually alive before
+      trusting it.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — before reading anything, open a terminal and run <code>ollama list</code>. Whatever you believed was on your machine, the list is what's actually there.</li>
+      <li><strong>Architect</strong> — three parts, strictly separated: the Seat, the Occupant, and the Shim. See the whole depth chart first.</li>
+      <li><strong>Translator</strong> — think of a football depth chart: the position is permanent, the player is whoever's name is written on that line this week. Start at the Bridge below.</li>
+      <li><strong>Validator</strong> — work the Gates at the bottom, one at a time: prove every seat is alive before you trust it.</li>
+    </ul>
+
+    <h2>Translator Bridge</h2>
+    <p>A team doesn't rebuild its playbook when the quarterback changes. The position — its
+    responsibilities, its place in every play — is fixed; the depth chart says who plays it this
+    week. Coaches bench a struggling starter with a pen stroke, not a stadium renovation. Our
+    manifest is that chart: <strong>Architect, Drafter, Sandbox</strong> are positions;
+    <code>claude-sonnet-5</code>, <code>hermes3:8b</code>, <code>gemini-3.1-flash-lite</code> are
+    this week's starters. The Drafter even plays for free — it lives on our own graphics card, so
+    every snap costs zero dollars.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> players practice together, adapt, and remember last
+      week's game. Models do none of that — swapping a seat swaps the entire mind, with no memory
+      carried over, which is exactly why the build keeps all real state in the repo, never in the
+      model. And unlike players, every model speaks the identical interface, so there is no "system
+      fit" risk: if it answers the dialect, it can sit in the seat.</p>
+    </div>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <ol>
+      <li><strong>Look, don't guess.</strong> Inventory the machine: <code>ollama list</code>, check
+      LM Studio. <em>We found:</em> the planned local hire didn't exist anywhere — and the
+      "it's CPU-served" note in our own docs was a myth. The hardware check (one GPU query) showed a
+      12&nbsp;GB card sitting idle.</li>
+      <li><strong>Make the local hire real.</strong> <code>ollama pull hermes3:8b</code>, then serve
+      it — and here's the trap: the tray app's managed server can be dead while its icon looks
+      healthy. Run <code>ollama serve</code> in the foreground in its own labeled window; it prints
+      its GPU discovery immediately. Confirm residence with <code>ollama ps</code> — you want 100%
+      GPU. <em>You should see:</em> the model answering locally, for free.</li>
+      <li><strong>Verify cloud hires against the LIVE menu — never memory.</strong> Model catalogs
+      change faster than any AI's training data. And the full list endpoint truncates, so absence
+      proves nothing: verify each exact slug with the per-model endpoints API. Pin exact slugs; a
+      "latest" alias is an unreviewed hire that can change minds overnight.</li>
+      <li><strong>Write the depth chart.</strong> Each manifest seat gets endpoint + exact model
+      string + the NAME of its key variable (never the value). The local seat's key reference is
+      <code>null</code> — nothing secret exists for it to leak. <em>You should see:</em> zero
+      placeholder entries left, and no secrets anywhere in the file.</li>
+      <li><strong>Smoke the whole roster through the one shim the mesh will use.</strong> One command
+      per seat: "You are the Drafter. Reply with the single word: READY." <em>We hit two live
+      gotchas:</em> a freshly stored key is invisible to already-open terminal windows (load it in
+      place, don't re-type it), and the local model REFUSED a bare instruction but obeyed instantly
+      once the prompt carried its role. <em>You should see:</em> three READYs — through your pipe,
+      not the provider's chat page.</li>
+    </ol>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <p>Three parts, strictly separated: the <strong>Seat</strong> (a named role with a job
+    description — Architect, Drafter, Sandbox), the <strong>Occupant</strong> (whichever model
+    currently holds the seat: a provider, an endpoint URL, one exact model string), and the
+    <strong>Shim</strong> (one small piece of code that speaks the same OpenAI-style dialect to every
+    seat, resolving secrets only at the moment of the call). The manifest file is the depth chart: it
+    names each seat's occupant. Changing a line changes the starter; nothing else in the system
+    moves.</p>
+    <p>Why seats instead of hard-coded models: a hard-coded model is a marriage — swapping it means
+    touching code, retesting everything, and hoping nothing else depended on its quirks. A seat is
+    employment at will, and the divorce is a one-line diff that a human reviews like any other change.
+    Hiring policy follows the resource ladder: cheapest capable executor first. The Drafter runs local
+    because its marginal cost is literally zero and its output is CI-gated anyway — a wrong draft
+    costs nothing but electrons; the gate catches it. The Sandbox seat is <em>escalation-only</em>:
+    the first rung for log triage is deterministic filtering (no model at all), and the long-context
+    model is consulted only when filtered context genuinely overflows. The Architect seat stays
+    premium because structure errors are the expensive kind. Note what the shim deliberately does NOT
+    do: no retries, no fallbacks. Retry policy is the circuit breaker's job (next module) — a client
+    that quietly retries is a client that quietly spends, and hidden spending is exactly what the
+    safety layer exists to make impossible. Keys are resolved from the environment at call time, never
+    persisted, never logged, and the error message for a missing key names the variable — not the
+    value.</p>
+
+    <h2>Validator Gates</h2>
+    <p>Pass each gate before moving on. These are permission to advance, not hazing.</p>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> The manifest contains zero placeholder entries and zero secret values — and I checked the file, not my memory of it.</li>
+      <li><strong>Gate 2:</strong> Every seat answered through the shim itself, not through a provider's website.</li>
+      <li><strong>Gate 3:</strong> Every cloud slug was verified against the provider's live catalog <em>this session</em>, pinned, not floating.</li>
+      <li><strong>Gate 4:</strong> The local seat is GPU-resident and I proved it (<code>ollama ps</code>), not assumed it.</li>
+      <li><strong>Gate 5:</strong> I know the swap move cold: one manifest line, one PR, one human merge.</li>
+      <li><strong>Gate 6 (active recall):</strong> In your own words — why is "the Drafter is free" not the same as "the Drafter is trusted"? ______________</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now staff a roster where every seat is a decision,
+      not a dependency: local where free, rented where necessary, swappable by PR always.
+      Next: Lesson 3 — The Fuse Box.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/mail-slot/">← Lesson 1: The Mail Slot</a>
+      <span class="spacer"></span>
+      <a href="/lessons/fuse-box/">Lesson 3: The Fuse Box →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

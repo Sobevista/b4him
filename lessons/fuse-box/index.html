@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Fuse Box · Lessons · Beacon Ministries</title>
+<meta name="description" content="The safety layer for autonomous work in five verbs — Meter, Retry, Trip, Notify, Recover — and why the machine can never un-trip itself.">
+
+<meta property="og:title" content="The Fuse Box">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/fuse-box/">
+<meta property="og:description" content="The safety layer for autonomous work in five verbs — Meter, Retry, Trip, Notify, Recover — and why the machine can never un-trip itself.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.6" stroke="#d8b45c" stroke-width="1" opacity=".55"/>
+      <circle cx="16" cy="16" r="13.1" stroke="#d8b45c" stroke-width=".5" opacity=".35"/>
+      <path d="M16 6.4 17.7 10.6h-3.4L16 6.4Z" fill="#f2dda0"/>
+      <path d="M9.4 9.1 12.9 11M22.6 9.1 19.1 11" stroke="#f2dda0" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
+      <path d="M14.4 11.8h3.2l1.1 9.4h-5.4l1.1-9.4Z" stroke="#d8b45c" stroke-width="1" fill="none"/>
+      <path d="M14.1 15.4h3.8" stroke="#d8b45c" stroke-width=".7" opacity=".8"/>
+      <path d="M11.4 21.6c1.6-.5 2.6.4 4.6.4s3-.9 4.6-.4" stroke="#d8b45c" stroke-width="1" stroke-linecap="round" fill="none"/>
+      <path d="M10.6 23.6c1.8-.5 2.8.4 5.4.4s3.6-.9 5.4-.4" stroke="#d8b45c" stroke-width=".8" stroke-linecap="round" opacity=".6" fill="none"/>
+    </svg>
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">Building the Machine</a> · Lesson 3</p>
+    <h1>The Fuse Box</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> explain why the mesh cannot spend more than
+      $1.00 without a human decision, deliberately trip the circuit breaker and recover from it,
+      read a decision-window issue and act on it in under a minute, and say — precisely — what this
+      safety layer does <em>not</em> protect against.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <h2>The domain in five primitives</h2>
+    <p>Every safety layer for autonomous work reduces to five verbs. Learn these and you can read
+    any circuit breaker, anywhere:</p>
+    <ol>
+      <li><strong>Meter</strong> — measure what each action costs, pessimistically (an unpriced call is never free; it's charged the worst-case flat rate).</li>
+      <li><strong>Retry</strong> — allow a bounded number of second chances (here: 2 retries = 3 attempts), never unbounded.</li>
+      <li><strong>Trip</strong> — when the ceiling or the retry budget is exhausted, fail CLOSED: refuse all further work. A corrupt ledger also trips — if you can't prove what was spent, you stop.</li>
+      <li><strong>Notify</strong> — deliver ONE decision window to the human: what happened, one decision, what success looks like. Never an open thread.</li>
+      <li><strong>Recover</strong> — a human, and only a human, opens a new lap. The machine cannot un-trip itself.</li>
+    </ol>
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — jump to the Builder Track. Trip the breaker and recover it with your own hands before reading anything.</li>
+      <li><strong>Architect</strong> — jump to the Architect Track. See the four modules and the one policy home first.</li>
+      <li><strong>Translator</strong> — start at the Bridge below: it's the electrical panel in your house.</li>
+      <li><strong>Validator</strong> — work the Gates at the bottom, one at a time, in order.</li>
+    </ul>
+
+    <h2>Builder Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(DO FIRST)</span></h2>
+    <p>Do this first — it's free, it's real, do it on your machine:</p>
+    <pre><code>py TEMP_SEED_SCRIPT.py            (seed the ledger to the ceiling)
+
+py -m mesh.breaker drafter --file RESUME.md</code></pre>
+    <p>Watch it refuse BEFORE spending anything: <code>BREAKER TRIPPED ... decision window: &lt;issue URL&gt;</code>.
+    Then run the recovery move the issue tells you to run:</p>
+    <pre><code>py -m mesh.breaker new-lap "post-trip"
+
+py -m mesh.breaker status</code></pre>
+    <p>Spend $0.0000, tripped: false. You just operated the whole safety layer with your own hands.
+    Now read the Architect section to see what you actually did.</p>
+
+    <h2>Architect Track <span style="font-family:var(--sans);font-size:.7rem;letter-spacing:.1em;color:var(--muted)">(MODEL FIRST)</span></h2>
+    <p>Four modules, one policy home:</p>
+    <ul>
+      <li><code>mesh/client.py</code> talks to seats and deliberately has NO retry logic. A client that quietly retries quietly spends.</li>
+      <li><code>mesh/breaker.py</code> owns ALL retry and spend policy, in one enforced, testable place: the per-lap ledger (<code>.mesh/ledger.json</code>, gitignored), the $1.00 ceiling, the 3 attempts, the trip.</li>
+      <li><code>mesh/notify.py</code> owns the decision window: a GitHub issue in the chassis repo; GitHub's own notifier delivers the email — zero new secrets on the machine, and the window lives at a stable URL.</li>
+      <li><code>mesh/sanitize.py</code> owns untrusted input: CI logs and provider errors are stripped, length-bounded, fenced as data, and marker-spoofing is defanged before any agent reads them. A log can DESCRIBE a failure; it must never be able to INSTRUCT an agent.</li>
+    </ul>
+    <p>One subtle ordering rule worth owning: the breaker charges the ledger BEFORE validating the
+    response shape — a malformed 200 still spent real money, and a call is never silently free.</p>
+
+    <h2>Translator Bridge</h2>
+    <p>In your world this is like the electrical panel in your house. Every circuit (lap) has a
+    budget; a surge (runaway spend or endless retries) flips the breaker; the whole circuit goes
+    dark until a person walks to the panel and flips it back. The email is the alarm that tells you
+    WHICH breaker flipped so you don't tour the house checking outlets.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> a house breaker is physics — current physically
+      cannot flow past it. This breaker is software running on the honor of the process it guards:
+      calling the client directly, or deleting the ledger file, walks right around it. It is a
+      TRIPWIRE against runaway automation, not a wall. The wall — the thing that is physics in this
+      system — is branch protection plus CI plus the human merge. Never let the fuse box make you
+      feel safer than that.</p>
+    </div>
+
+    <h2>Validator Gates</h2>
+    <p>Confirm each before advancing; write each answer in your own words before checking it.</p>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> Why does a corrupt ledger trip the breaker instead of resetting to $0.00? (If you can't prove what was spent, the safe assumption is "too much." Fail closed.)</li>
+      <li><strong>Gate 2:</strong> The mesh's PAT is my own identity. Why did the trip email never arrive on the first live test — and what are the two fixes? (GitHub doesn't notify you of your own actions. Interim: enable "include your own updates." Permanent: a machine-user account for the mesh — which also unlocks CODEOWNERS enforcement.)</li>
+      <li><strong>Gate 3:</strong> A cloud response arrives priced at -$0.30. What does the meter record and why? (The pessimistic unpriced rate. Providers are untrusted input; a negative cost is a lie, not a refund.)</li>
+      <li><strong>Gate 4:</strong> Why must decision windows be issues instead of comment threads? (An invariant user input window: one summary, one decision, success-looks-like — a stable URL a human can act on in a minute. Open threads invite negotiation with a machine that should be halted.)</li>
+      <li><strong>Gate 5 (the honesty gate):</strong> Name one thing this safety layer does NOT protect against, from memory. (Any of: direct client calls, ledger deletion, cross-process races, a malicious agent — the wall for those is the chassis, not the fuse box.)</li>
+    </ol>
+
+    <p>This module was smoke-tested LIVE on 2026-07-05: ledger seeded to ceiling → trip refused the
+    call before spending → a decision-window issue filed → email landed (after the self-notification
+    gotcha was found and fixed live) → new-lap recovery proved. The lesson sequence you just read is
+    the lap that actually happened.</p>
+
+    <div class="complete">
+      <p><strong>Lesson complete</strong> — you can now operate the whole safety layer with your own
+      hands, and say precisely where its protection ends. Next: Lesson 4 — The First Lap, where the
+      machine takes its first unattended run.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/depth-chart/">← Lesson 2: The Depth Chart</a>
+      <span class="spacer"></span>
+      <a href="/lessons/first-lap/">Lesson 4: The First Lap →</a>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

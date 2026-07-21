@@ -1,0 +1,77 @@
+/* ------------------------------------------------------------------
+   Beacon Ministries — shared stylesheet
+   One home for the design system: palette (DECISIONS.md D9), the beam,
+   the header/footer chrome, base type. Every page links this file.
+   A linked stylesheet is NOT a build step (M3) — it is one file, fetched once.
+   Page-specific styles stay in that page's own <style> block.
+   INV-W1: never write a colour literal into a rule; take it from a token.
+------------------------------------------------------------------ */
+:root{
+  --navy-900:#0f1729;
+  --navy-800:#152039;   /* page background — contrast ratios measured against this */
+  --navy-700:#1c2b4a;
+  --gold:#d8b45c;        /* 8.17:1 — AA + AAA at any size */
+  --gold-bright:#f2dda0; /* 12.04:1 */
+  --gold-dim:#8d7434;    /* 3.61:1 — large text / non-text UI ONLY, never normal body */
+  --ink:#e7e3d8;         /* 12.62:1 — body text */
+  --muted:#9aa4ba;       /* 6.47:1 — secondary text, AA pass */
+  --line:rgba(216,180,92,.20);
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--navy-800); color:var(--ink);
+  font-family:var(--serif); -webkit-font-smoothing:antialiased;
+  overflow-x:hidden; position:relative;
+}
+/* the beam — the mark's light, thrown across the page */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(115vw 62vh at 50% -16vh, rgba(242,221,160,.15), transparent 60%),
+    radial-gradient(65vw 38vh at 50% -6vh, rgba(216,180,92,.13), transparent 58%),
+    radial-gradient(100vw 60vh at 50% 112vh, rgba(15,23,41,.85), transparent 62%);
+}
+.wrap{position:relative; z-index:1; max-width:64rem; margin:0 auto; padding:0 1.6rem}
+
+/* ---------- header ---------- */
+header{
+  padding:2.2rem 0 0; display:flex; align-items:center;
+  gap:.85rem 1.6rem; flex-wrap:wrap;
+}
+/* Wordmark sits top-left AND links home — the unopposed convention (CHASSIS §4). */
+.brand{
+  display:flex; align-items:center; gap:.85rem;
+  text-decoration:none; flex:none;
+}
+.mark{width:1.9rem; height:1.9rem; flex:none}
+.wordmark{
+  font-family:var(--sans); font-size:.72rem; letter-spacing:.26em;
+  text-transform:uppercase; color:var(--gold); font-weight:600;
+}
+/* All sections visible. No hidden/hamburger nav on desktop; wraps on mobile. */
+header nav{
+  margin-left:auto; display:flex; flex-wrap:wrap; gap:.5rem 1.5rem;
+  font-family:var(--sans); font-size:.78rem; letter-spacing:.06em;
+}
+header nav a{
+  color:var(--muted); text-decoration:none; transition:color .2s ease;
+  padding:.25rem 0;
+}
+header nav a:hover{color:var(--gold-bright)}
+header nav a[aria-current="page"]{color:var(--gold-bright)}
+@media (max-width:34rem){
+  header{gap:.9rem}
+  header nav{margin-left:0; width:100%; gap:.4rem 1.1rem}
+}
+
+/* ---------- footer ---------- */
+footer{
+  margin:6rem 0 0; padding:2.1rem 0 3.5rem; border-top:1px solid var(--line);
+  font-family:var(--sans); font-size:.77rem; color:var(--muted);
+  display:flex; justify-content:space-between; flex-wrap:wrap; gap:.7rem;
+}
+footer a{color:var(--muted); text-decoration:none}
+footer a:hover{color:var(--gold)}
