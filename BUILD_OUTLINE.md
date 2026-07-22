@@ -129,3 +129,8 @@ Daniel's framing: *"we need a home for all of this work."* Went from a local lan
 **Method:** tier-1 modules 2–8 and all 5 tier-2 modules were fanned out to parallel subagents against a Daniel-approved Module-1 exemplar; every output grep-gated + eye-sampled before acceptance. Show-one-before-eight, then verify.
 
 Status: **v0 content complete and walkable; nothing deployed.** Next: Daniel's `assets/logo.png` (unblocks header mark + og:image + favicon), then Phase 4 (Pages + DNS). Un-added from discovery (Daniel's call): the older n8n curriculum, glossary, flashcards.
+
+### 2026-07-22 - DEPLOYED LIVE + visual identity landed
+b4him.com is live (GitHub Pages main/root + DNS + custom domain; all pages HTTP 200; HTTPS cert auto-provisioning - tick Enforce HTTPS when it finishes). Real logo wired site-wide: gold crest -> header mark on all 21 pages + root favicon.ico/apple-touch-icon.png; lockup -> assets/og.png (1200x630 social). Masters + assets/brand/make_assets.py preserved.
+Visual identity (homepage-approved, then rolled out site-wide): Fraunces self-hosted via /style.css (INV-W9 - type is part of the message); Option D transparent-crest watermark on the homepage hero (keyed off the navy to kill the pasted-disc halo); title-case applied to all 21 H1s; hero leans into failure; invitation kept but demoted to a quiet second beat.
+Open (Daniel's): Enforce HTTPS when the cert lands; watermark could extend to section-landing heroes if wanted.
