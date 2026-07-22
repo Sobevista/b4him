@@ -68,6 +68,12 @@ It would have shipped as a green light.
 
 **Corollary, learned in the same ten minutes:** once the tool *could* see the overlay, it flagged 14 of 26 elements — technically true, practically noise, since one full-viewport overlay affects everything. A warning that fires on half the page trains the reader to ignore it. Group findings by cause: *"14 elements painted over by `body::before`"* is one fact. Fourteen separate warnings are a habit of dismissal.
 
+## INV-W9 — Type is part of the message; a default face is a message chosen by no one
+
+**Bought:** b4him's hero shipped in the site's inherited serif stack (Iowan/Palatino) — a competent, neutral face that read as *corporate*. But the identity is a hand-built, learning-in-public, "fumbling included" ministry, and none of that was in the type: the face was inherited, not chosen. Daniel caught it by eye — *"change the font to something appropriate for the message vs the Claude-normal seeming."* Swapping to Fraunces — an old-style serif with deliberately soft, slightly imperfect curves (its `WONK` axis on for display) — put the voice *into* the type.
+
+**The law:** a typeface is never neutral delivery — it carries tone before a single word is read. A geometric sans says "startup," a blackletter says "institution," a soft old-style serif says "made by a person." Shipping the default face is the same failure as INV-W1's inline colour: a value that bypassed the deliberate system, so it says whatever it happens to say rather than what you meant. Choose the face to fit the message, on purpose — and self-host it (one file, no build step) so the choice can't silently fall back.
+
 ## Candidate laws — not yet earned
 
 Held here deliberately rather than promoted, because nothing has paid for them yet in this build:

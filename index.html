@@ -37,19 +37,43 @@
      No build step, no dependencies, no external requests. (DECISIONS M3)
   ------------------------------------------------------------------ */
 
-  /* ---------- hero ---------- */
-  .hero{padding:17vh 0 0; max-width:34ch}
+  /* ---------- type: Fraunces, self-hosted (no build step, no external request) ----
+     Type is part of the message (WEB_INVARIANTS W9): Fraunces's soft, slightly
+     imperfect old-style curves carry "hand-built, sincere, fumbling included"
+     where a geometric sans would read "startup". Its WONK axis is on for display. */
+  @font-face{font-family:"Fraunces";src:url("/assets/fonts/fraunces-normal.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+  @font-face{font-family:"Fraunces";src:url("/assets/fonts/fraunces-italic.woff2") format("woff2");font-weight:100 900;font-style:italic;font-display:swap}
+
+  /* ---------- hero (Option D watermark · Layout 3 — heading low, sky above) ---------- */
+  .wrap{position:relative}
+  header{position:relative; z-index:2}          /* header stays above the watermark */
+  .beam-crest{
+    position:absolute; top:-3.5rem; right:-5rem; width:min(560px,60vw);
+    opacity:.12; z-index:0; border-radius:50%; pointer-events:none; user-select:none;
+  }
+  .hero{position:relative; z-index:1; padding:20vh 0 0; max-width:32ch}
   h1{
-    font-size:clamp(2.9rem,7.6vw,4.7rem); line-height:1.03; margin:0;
-    font-weight:400; letter-spacing:-.022em;
+    font-family:"Fraunces",Georgia,serif;
+    font-variation-settings:"opsz" 144,"wght" 440,"WONK" 1,"SOFT" 50;
+    font-size:clamp(2.9rem,7.6vw,4.7rem); line-height:1.02; margin:0;
+    font-weight:400; letter-spacing:-.02em; text-wrap:balance;
   }
-  h1 em{font-style:italic; color:var(--gold-bright)}
+  h1 em{font-style:italic; color:var(--gold-bright); font-variation-settings:"opsz" 144,"wght" 480,"WONK" 1}
   .lede{
-    font-size:clamp(1.08rem,2.1vw,1.28rem); line-height:1.62;
-    color:var(--muted); margin:1.8rem 0 0; max-width:47ch;
+    font-family:"Fraunces",Georgia,serif; font-variation-settings:"opsz" 28,"wght" 380;
+    font-size:clamp(1.08rem,2.1vw,1.26rem); line-height:1.6;
+    color:var(--ink); margin:1.7rem 0 0; max-width:44ch;
   }
+  .lede em{font-style:italic; color:var(--gold-bright); font-variation-settings:"opsz" 40,"wght" 470}
+  /* the invitation, demoted to a quiet second beat (Version A — kept, not cut) */
+  .invite{
+    font-family:var(--sans); font-size:.9rem; line-height:1.55;
+    color:var(--muted); max-width:40ch; margin:.85rem 0 0; letter-spacing:.01em;
+  }
+  /* shelf headings share the display face for a cohesive homepage */
+  .card h2{font-family:"Fraunces",Georgia,serif; font-variation-settings:"opsz" 60,"wght" 470,"WONK" 1}
   .hero-cta{
-    margin:2.4rem 0 0; display:flex; gap:1.6rem; align-items:center;
+    margin:2.2rem 0 0; display:flex; gap:1.6rem; align-items:center;
     font-family:var(--sans); font-size:.83rem; letter-spacing:.04em;
   }
   .hero-cta a{color:var(--gold); text-decoration:none; border-bottom:1px solid var(--line); padding-bottom:.2rem; transition:color .2s ease, border-color .2s ease}
@@ -85,6 +109,8 @@
 </head>
 <body>
 <div class="wrap">
+  <!-- Option D ambient watermark: the crest as the room's light, up in the sky. -->
+  <img class="beam-crest" src="/assets/crest-lg.jpg" alt="" aria-hidden="true">
 
   <header>
    <a class="brand" href="/" aria-label="Beacon Ministries — home">
@@ -107,12 +133,12 @@
   </header>
 
   <section class="hero">
-    <h1>Somewhere to shine <em>your</em> focus.</h1>
-    <p class="lede">I'm learning in public — the lessons, the games, the notes, and the parts
-    that broke. Take anything here that's useful to you. That's the whole idea.</p>
+    <h1>Somewhere to Shine <em>Your</em> Focus.</h1>
+    <p class="lede">I'm learning in public — the lessons, the games, the notes, and <em>especially what broke.</em></p>
+    <p class="invite">Take anything that's useful to you. That's the whole idea.</p>
     <div class="hero-cta">
-      <a href="#shelf">See what's here</a>
-      <a href="/about/">Why I'm doing this</a>
+      <a href="#shelf">See What's Here</a>
+      <a href="/about/">Why I'm Doing This</a>
     </div>
   </section>
 

@@ -37,6 +37,12 @@ crest.resize((180, 180), Image.LANCZOS).convert("RGB").save(
 crest.resize((256, 256), Image.LANCZOS).save(
     REPO / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
 
+# large crest for the homepage watermark (Option D ambient treatment).
+# JPEG, not PNG: it sits on navy and is CSS-clipped to a circle, so it needs no
+# transparency -- and JPEG is ~6x lighter than PNG for this textured art.
+crest.convert("RGB").resize((600, 600), Image.LANCZOS).save(
+    ASSETS / "crest-lg.jpg", quality=82, optimize=True)
+
 # --- og:image 1200x630 from the lockup ------------------------------------
 # Scale to width 1200 (keeps aspect), then center-crop the height to 630.
 scaled = lockup.resize((1200, round(731 * 1200 / 1280)), Image.LANCZOS)
