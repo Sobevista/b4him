@@ -11,7 +11,7 @@ Rerun anytime the source art changes -- this is the one place the sizes live.
 """
 
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
 
 REPO = Path(__file__).resolve().parents[2]
 ASSETS = REPO / "assets"
@@ -37,11 +37,22 @@ crest.resize((180, 180), Image.LANCZOS).convert("RGB").save(
 crest.resize((256, 256), Image.LANCZOS).save(
     REPO / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
 
-# large crest for the homepage watermark (Option D ambient treatment).
-# JPEG, not PNG: it sits on navy and is CSS-clipped to a circle, so it needs no
-# transparency -- and JPEG is ~6x lighter than PNG for this textured art.
-crest.convert("RGB").resize((600, 600), Image.LANCZOS).save(
-    ASSETS / "crest-lg.jpg", quality=82, optimize=True)
+# transparent gold watermark for the homepage (Option D). The source art is gold
+# on navy; keying the navy OUT by luminance lets the crest float as gold linework
+# on the PAGE's own navy -- no pasted disc, no halo (the "copy-paste photo" tell).
+_wm = crest.convert("RGB").resize((480, 480), Image.LANCZOS)
+# posterize trims the metallic-gradient entropy (invisible at watermark opacity)
+# so the PNG compresses far smaller.
+_wm = ImageOps.posterize(_wm, 5)
+_lum = _wm.convert("L")
+# alpha ramp: darker than LO -> transparent (the navy ground, ~p75 luma 64);
+# brighter than HI -> opaque (gold linework/beam/stars, ~p90 luma 143); soft ramp
+# between for clean edges. Cut sits in the luma valley between navy and gold.
+LO, HI = 70, 135
+_ramp = [0 if i < LO else (255 if i > HI else int((i - LO) / (HI - LO) * 255)) for i in range(256)]
+_out = _wm.convert("RGBA")
+_out.putalpha(_lum.point(_ramp))
+_out.save(ASSETS / "crest-watermark.png", optimize=True)
 
 # --- og:image 1200x630 from the lockup ------------------------------------
 # Scale to width 1200 (keeps aspect), then center-crop the height to 630.
