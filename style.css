@@ -6,6 +6,12 @@
    Page-specific styles stay in that page's own <style> block.
    INV-W1: never write a colour literal into a rule; take it from a token.
 ------------------------------------------------------------------ */
+/* Fraunces, self-hosted — the brand voice, site-wide (WEB_INVARIANTS INV-W9:
+   type is part of the message). WONK axis on for the hand-built character. */
+@font-face{font-family:"Fraunces";src:url("/assets/fonts/fraunces-normal.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:"Fraunces";src:url("/assets/fonts/fraunces-italic.woff2") format("woff2");font-weight:100 900;font-style:italic;font-display:swap}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif; font-variation-settings:"opsz" 96,"wght" 460,"WONK" 1}
+
 :root{
   --navy-900:#0f1729;
   --navy-800:#152039;   /* page background — contrast ratios measured against this */
