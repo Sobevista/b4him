@@ -5,7 +5,7 @@
 **RUNWAY: 0.0 weeks** — **BELOW FLOOR** - stop opening new rungs, drain the queue  
 *(target 6w · floor 3w · 0 piece(s) at stage ≥ PREVIEWED ÷ 2/week)*
 
-12 in the pipeline · 0 published · cadence Tue + Fri, hard cap 2 per 7 days
+14 in the pipeline · 0 published · cadence Tue + Fri, hard cap 2 per 7 days
 
 ## Waiting on Daniel
 
@@ -32,18 +32,20 @@
 
 ## The pipeline, by stage
 
-**SOURCE** (build session) — 11
+**SOURCE** (build session) — 13
   - Glossary II - Intermediate & Advanced terms · source: `Knowledge_Base/Teaching/_laptop_recovered/Automation_Vocabulary_Glossary.docx`
   - Advanced 1 - Orchestration · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 2 - Resilience · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 3 - Instrumentation · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 4 - Customization · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 5 - Handoff + the Graduation Build · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
-  - Detection gap vs logging gap - the distinction no rule can fix · source: `purple-team ranges/rung01_access_control/laps/FINDINGS.md F9`
+  - Detection gap vs logging gap - the distinction no rule can fix · source: `purple-team teaching/Module_02_Seeing_It.md (written 2026-08-16 from the lap that earned it)` · **BLOCKED: RUNG1_CROSS.md - the whole rung is reviewed by a family that is not its author before any of it is taught publicly**
   - Rung 1 write-up - broken access control, flaw and fix · source: `purple-team ranges/rung01_access_control/laps/FINDINGS.md F1-F10` · **BLOCKED: blue-seat review (red never self-clears) + Daniel's per-piece ruling**
   - Workbook exercises - beginner (34) · source: `Knowledge_Base/Teaching/_laptop_recovered/Companion_Workbook_Beginner.docx`
   - Workbook exercises - advanced (25) · source: `Knowledge_Base/Teaching/_laptop_recovered/Companion_Workbook_Advanced.docx`
   - Flashcards - the verified subset · source: `purple-team teaching/flashcards/terms.jsonl` · **BLOCKED: verification step 2 (VERIFY_CONTRACT.md) - 197 cards, none verified yet**
+  - The two numbers - why a detection that cries wolf catches nothing · source: `purple-team teaching/Module_02_Seeing_It.md + detections/cross_owner_note_read.yml v1 vs v2` · **BLOCKED: RUNG1_CROSS.md**
+  - Blue team words, four ways each · source: `purple-team teaching/Module_02_Seeing_It.md section 'The jargon, four ways'` · **BLOCKED: RUNG1_CROSS.md**
 
 **DRAFTED** (Claude) — 1
   - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js` · **BLOCKED: REVIEWED (stage 2) - the genericization grep must come from a seat that did not write the page. The author's own scan ran clean (0 forbidden tokens, 18 terms, 72/72 cells, 0 colour literals) and does NOT satisfy D11**
