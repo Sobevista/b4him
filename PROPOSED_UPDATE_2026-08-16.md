@@ -1,11 +1,25 @@
 # Proposed update — 2026-08-16
 
-> **THIS IS A PROPOSAL. Nothing here is built and nothing is published.** Daniel is the merge
-> gate. Written on LAPTOP-3GLEQ7L1 at his ask: *"end with a b4him pass and get the proposed
-> update loaded and ready for review."*
+> **RULED IN SESSION 2026-08-16. D13, D14, D15 and D16 are LOCKED in `DECISIONS.md`; D17 is
+> still open.** This file is now the *record of the proposal*, not the live board — read
+> `DECISIONS.md` for what is in force.
 >
-> Decisions are numbered **D13–D17** to continue `DECISIONS.md`. They are not decisions until
-> he rules them there.
+> Daniel: *"No more putting off things on a list that I can rule on now."* All four were ruled
+> in the same session they were written, from the laptop, roughly an hour after the material
+> was inventoried.
+>
+> | | ruling |
+> |---|---|
+> | **D13** cyber publishing | **`PUBLICATION_GATE.md` ADOPTED AS WRITTEN, in force.** Blue holds the gate, red never self-clears, per-piece rulings. P9 a named gap, not a blocker |
+> | **D14** Guess & Click tier | **APPROVE** — convert from the recovered generators, not the `.docx`. Glossary first. D11 genericization + independent grep bind |
+> | **D15** cadence | **APPROVE** — 2 pages/week, Tue + Fri, hard cap 2 per 7 days. Editorial rationale only; **no SEO claim** |
+> | **D16** flashcards | **SPLIT** — run verification step 2 first, publish only verified cards, state the held count |
+> | **D17** exercises | **OPEN** — printable / self-checked / storing nothing is proposed, not ruled |
+>
+> Still nothing built and nothing published: no page added, changed or removed by this pass.
+> The rulings authorise the work; they are not the work.
+>
+> *Original proposal text follows unchanged, so the reasoning that was ruled on stays legible.*
 
 ---
 

@@ -171,3 +171,81 @@ Rejected directions are **named in the STATE OF BUILD log and their files delete
 - **Two tiers, clearly separated so a non-technical visitor is never dropped into infrastructure (D3):** Tier 1 **The Honest Machine** — the principles; Tier 2 **Building the Machine** — the hands-on track (Mail Slot / Depth Chart / Fuse Box / First Lap / Kill Test), sourced from the Drive `Guess and Click` Chassis Curriculum. Tier 2 is more technical and builds on Tier 1; the index says so.
 - **"Find your door" quiz** (`/lessons/find-your-door/`): the Cognitive Profile diagnostic (10 forced-choice Qs → Builder/Architect/Translator/Validator, the same four doors every lesson offers) as a client-side interactive. **It collects nothing and sends nothing** — pure in-browser tally (INV-W3: nothing to take, no obligation incurred). Older curriculum machinery in the source doc (n8n, Compass/Maverick tracks, Exit Benchmarks) was dropped; only the four-door core was kept.
 - **Consistency over source fidelity of format:** the Drive modules used a richer "cognitive entry points / five primitives" layout; they were **normalized to the identical b4him lesson template** so all 13 lessons look like one system.
+
+## D13 — The cyber track may publish, through the gate. LOCKED 2026-08-16
+
+**Ruled in session.** `purple-team/PUBLICATION_GATE.md` was **ADOPTED AS WRITTEN** and is in
+force. It had been a draft since 2026-08-15 and was already blocking real work, which is the
+cheapest possible proof that an unruled gate is not a neutral state.
+
+- **What it means for b4him:** a rung write-up is publishable when it is about a **class**, not
+  a target; when the reader leaves with **understanding** rather than a bare capability; and
+  when it would survive being read back by the owner of the system it describes. Our own rung
+  is a target we own, so its full write-up — flaw *and* fix — qualifies. That is the b4him
+  promise: show the homework, fumbling included.
+- **Every cyber piece ships with its blue half attached.** A break published without its
+  detection is half a lesson and the wrong half.
+- **The blue seat holds the gate; red may not self-clear.** Same never-self-grade law as the
+  rest of the system, and it makes governance a seat rather than a title.
+- **Daniel rules per-piece.** Not delegated, not inherited from a previous approval.
+- **P9 (coordinated disclosure / CVD / safe-harbour) is a named gap, not a blocker.** He was
+  offered the option of holding the whole track behind that research and declined it. Until it
+  lands, "we found something real" routes to him rather than being improvised.
+
+## D14 — Publish the recovered Guess & Click tier. LOCKED 2026-08-16
+
+**What ships:** the advanced tier (`The_5System_Curriculum`), the two companion workbooks
+(**59 exercises**) and the **20-term** automation glossary — recovered 2026-08-16 from an app
+cache after being named missing from the entire estate, now tracked at
+`Knowledge_Base/Teaching/_laptop_recovered/` in the harness.
+
+- **D11 held Tiers 2–3 as "mesh/CAS-heavy." That reasoning does not apply here.** Guess & Click
+  is generic automation teaching with no harness internals — which is why D12 already sourced
+  Tier 2 from it. This is the rest of that source, including the tier that was out of reach
+  when D12 was locked.
+- **Convert from the generators, not the Word files.** All 19 build scripts were recovered
+  alongside the documents. Regenerating is cheaper than transcribing and it is reproducible.
+- **D11's genericization rule and its verification law both bind**, unchanged: an
+  **independent** grep confirms zero forbidden tokens, never the rendering agent's self-report.
+- **The glossary ships first** — 20 self-contained terms, no dependencies, and it gives every
+  other lesson something to link to.
+
+## D15 — Release cadence: two pages a week. LOCKED 2026-08-16
+
+**Tuesday and Friday, one page each. Hard cap: never more than 2 pages in any 7-day window,
+even when a batch is ready.** Order: glossary → advanced tier → workbook exercises → cyber.
+Roughly seven weeks for the Guess & Click set.
+
+- **The rationale is editorial and is stated as such.** A steady cadence reads as a person still
+  working; a bulk drop reads as an archive dump, and the site's whole premise is ongoing
+  homework.
+- **No SEO or spam-threshold claim is made, in this file or in public copy.** We hold no sourced
+  evidence about what search engines treat as a spam signal, and asserting one would be `INV-W6`
+  — *a widely-repeated fact with no primary source is a belief* — committed on the site whose
+  own laws contain it. If the indexing question is ever worth answering, it is a research task
+  with a source requirement, not a sentence in a decision record.
+
+## D16 — Flashcards: verify first, publish only the verified. LOCKED 2026-08-16
+
+197 cards exist in `purple-team/teaching/flashcards/terms.jsonl`. **Step 2 — verify each
+against an outside definition per `VERIFY_CONTRACT.md` — is unchecked**, and
+`NEEDS_DEFINITION.md` runs to 166 lines.
+
+- **Run step 2 as its own task before any rendering work.** Daniel's ask was that they "look
+  good"; doing the styling first builds a nice-looking wrong thing.
+- **`terms.jsonl` already carries a `verification` field — that field decides what publishes.**
+  Verified cards ship; the rest are held.
+- **The page states the held count.** A partial set that says so is honest; a partial set that
+  looks complete is not.
+- **Publishing 197 unverified definitions on a site whose premise is honesty was the option
+  declined.**
+
+## D17 — Where exercises live. OPEN, not yet ruled
+
+The 59 workbook exercises would be the first thing on this site that invites an answer.
+`INV-W3` says *collection is the trigger, not audience*, and `find-your-door` was deliberately
+built to collect nothing and send nothing.
+
+**Proposal awaiting Daniel:** exercises are printable / self-checked, in-browser only, storing
+nothing — the same posture as the quiz. Any future exercise wanting a submitted answer is a new
+decision under `INV-W3`, not an implementation detail.
