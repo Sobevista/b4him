@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glossary I: Beginner Terms · The n8n Track · Beacon Ministries</title>
+<meta name="description" content="Eighteen automation words, each said four ways — technical, plain, analogy, and the mistake it causes. A word you can only say one way is a word you have not learned yet.">
+
+<meta property="og:title" content="Glossary I: Beginner Terms">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/glossary-beginner/">
+<meta property="og:description" content="Eighteen automation words, each said four ways — technical, plain, analogy, and the mistake it causes.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+<style>
+  /* Glossary-specific. Page-local per style.css's routing note; every colour
+     comes from the token table (INV-W1). */
+
+  /* the invariant — a structural row, not a closing remark (DECISIONS D18) */
+  .invariant{
+    margin:2.4rem 0 0; padding:1.2rem 1.4rem; background:var(--navy-900);
+    border-left:2px solid var(--gold); max-width:44rem;
+  }
+  .invariant .label{
+    font-family:var(--sans); font-size:.66rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--gold); margin:0 0 .7rem;
+  }
+  .invariant p.rule{
+    margin:0 0 .9rem; font-size:1.14rem; line-height:1.55; color:var(--gold-bright);
+    font-style:italic;
+  }
+  .invariant p.why{margin:0; color:var(--muted); line-height:1.62; font-size:.98rem}
+  .invariant p.why strong{color:var(--ink); font-weight:400}
+
+  /* jump index */
+  .jump{
+    margin:1.6rem 0 0; padding:0; list-style:none; display:flex; flex-wrap:wrap;
+    gap:.35rem .9rem; font-family:var(--sans); font-size:.78rem; max-width:44rem;
+  }
+  .jump a{color:var(--gold); text-decoration:none; border-bottom:1px solid transparent}
+  .jump a:hover{color:var(--gold-bright); border-color:var(--gold)}
+
+  /* one term */
+  .term{margin:2.6rem 0 0; max-width:44rem; scroll-margin-top:1.5rem}
+  .term-head{display:flex; align-items:baseline; gap:.85rem; flex-wrap:wrap; margin:0 0 .85rem}
+  .term-head h2{margin:0; font-size:1.42rem}
+  .term-head .tier{
+    margin:0; font-family:var(--sans); font-size:.63rem; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  .rows{margin:0}
+  .rows .row{
+    display:grid; grid-template-columns:10rem 1fr;
+    border-top:1px solid var(--line);
+  }
+  .rows .row:last-child{border-bottom:1px solid var(--line)}
+  .rows dt{
+    font-family:var(--sans); font-size:.64rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--gold); padding:.85rem 1rem .85rem 0;
+    line-height:1.5;
+  }
+  .rows dd{
+    margin:0; padding:.85rem 0; color:var(--ink); line-height:1.66; font-size:1rem;
+  }
+  /* the mistake row is the one people skip, so it gets its own weight —
+     shape and ground, not a new colour */
+  .rows .row.mistake{background:var(--navy-700); border-left:2px solid var(--gold-dim)}
+  .rows .row.mistake dt{padding-left:.9rem; color:var(--gold-bright)}
+  .rows .row.mistake dd{padding-right:1rem; color:var(--ink)}
+
+  .totop{
+    margin:.7rem 0 0; font-family:var(--sans); font-size:.72rem; letter-spacing:.04em;
+  }
+  .totop a{color:var(--muted); text-decoration:none}
+  .totop a:hover{color:var(--gold)}
+
+  @media (max-width:34rem){
+    .rows .row{grid-template-columns:1fr}
+    .rows dt{padding:.8rem 0 .1rem}
+    .rows dd{padding:0 0 .85rem}
+    .rows .row.mistake dt{padding-left:.9rem}
+    .rows .row.mistake dd{padding:0 .9rem .85rem .9rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <img class="mark" src="/assets/logo.png" alt="" width="30" height="30" style="border-radius:50%" aria-hidden="true">
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">The n8n Track</a> · Glossary I</p>
+    <h1>Eighteen Words, Each Said <em>Four Ways</em>.</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> say any of these eighteen words four ways —
+      the precise definition, the one a non-technical colleague would understand, the everyday
+      thing it's like, and the mistake it causes — and notice, in your own speech, which words
+      you can only say one way.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <div class="invariant">
+      <p class="label">The invariant</p>
+      <p class="rule">A word you cannot say four ways — technical, plain, analogy, and the mistake
+      it causes — is a word you have not learned. You have only heard it.</p>
+      <p class="why"><strong>Why it matters:</strong> this is not about n8n. Every field hands you
+      vocabulary that <em>sounds</em> like understanding, and the gap only shows up under load —
+      the moment you have to explain it to someone who doesn't share your jargon, or the moment
+      the thing breaks and you discover you knew the word but not the failure it causes. The four
+      rows below are a test you can run on any word in any field: if you can only fill one row,
+      you found a hole. This page is a tool glossary. The invariant under it isn't.</p>
+    </div>
+
+    <h2>Why this page exists</h2>
+    <p>I kept nodding along. Somebody would say <em>idempotent</em> or <em>payload</em> and I'd
+    nod, because I sort of knew, and asking felt like admitting I'd been nodding for a while
+    already. Then something would break and I'd find out that "sort of knew" and "knew" are not
+    the same shelf.</p>
+    <p>So I started writing every word down four ways. The technical row, because that's the one
+    the documentation speaks. The plain row, because if I can't say it to someone outside the
+    room I don't have it yet. The analogy, because that's the one that actually sticks. And the
+    common mistake, because <strong>most of these words cost me something before I understood
+    them</strong>, and the cost is the part worth handing over.</p>
+    <p>The fourth row is the one I'd skip if I were you, so it's the one I gave its own shading.
+    Read it <em>before</em> you think you need it.</p>
+
+    <h2>Choose your door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — read the PLAIN row only, top to bottom, then go build
+      something and come back for the rest.</li>
+      <li><strong>Architect</strong> — read TECHNICAL only; the eighteen together are one system,
+      and you'll see the graph.</li>
+      <li><strong>Translator</strong> — the ANALOGY row is yours. It was written for you, before
+      this site existed.</li>
+      <li><strong>Validator</strong> — start at the COMMON MISTAKE rows, then the gates at the
+      bottom.</li>
+    </ul>
+    <p style="font-size:1.02rem;color:var(--muted)">Not sure which is yours?
+    <a href="/lessons/find-your-door/">Take the 5-minute quiz →</a>&nbsp;Nothing saved, nothing
+    sent.</p>
+
+    <h2>Where the analogies end</h2>
+    <p>Every analogy below is a ladder, and a ladder is for climbing off.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> the everyday comparisons here — the dishwasher,
+      the conveyor belt, the doorbell — all describe machines you can <em>see stop</em>. You know
+      when the dishwasher didn't run. Software's whole difficulty is that it fails <em>quietly</em>:
+      a workflow can not-run for six days and look exactly like a workflow that ran perfectly.
+      Every analogy on this page is missing that. Keep the picture; drop the reassurance that
+      comes with it.</p>
+    </div>
+
+    <h2>The eighteen</h2>
+    <ul class="jump" id="top">
+      <li><a href="#append">Append</a></li>
+      <li><a href="#automation">Automation</a></li>
+      <li><a href="#branch">Branch</a></li>
+      <li><a href="#canvas">Canvas</a></li>
+      <li><a href="#condition">Condition</a></li>
+      <li><a href="#connection">Connection</a></li>
+      <li><a href="#credential">Credential</a></li>
+      <li><a href="#data-panel">Data Panel</a></li>
+      <li><a href="#execution">Execution</a></li>
+      <li><a href="#expression">Expression</a></li>
+      <li><a href="#item">Item</a></li>
+      <li><a href="#json">JSON</a></li>
+      <li><a href="#mapping">Mapping</a></li>
+      <li><a href="#node">Node</a></li>
+      <li><a href="#payload">Payload</a></li>
+      <li><a href="#schema">Schema</a></li>
+      <li><a href="#trigger">Trigger</a></li>
+      <li><a href="#workflow">Workflow</a></li>
+    </ul>
+
+    <article class="term" id="append">
+      <div class="term-head"><h2>Append</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A write operation that adds a new row (or record) to a data store on every execution, regardless of whether an identical record already exists.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>Every time the workflow runs, it adds a new entry — like a growing list of receipts.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A hotel clerk who checks every guest into a new room without ever checking if they already have one. Efficient for truly new data. Dangerous for data that might repeat.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Using Append when the same event can fire more than once (for example, webhook retries). Leads to duplicate records. Fix: use Upsert with a unique identifier, or deduplicate upstream.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="automation">
+      <div class="term-head"><h2>Automation</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A sequence of programmatic operations triggered by an event and executed without ongoing human input.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>A set of instructions that run themselves when something happens, so you do not have to.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A dishwasher. You load it (trigger), press start (activation), and it runs the full cycle (workflow) without you standing there washing each item by hand.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Confusing automation with elimination. Automation removes repetitive manual steps — it does not eliminate the need to design, monitor, and occasionally fix the process.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="branch">
+      <div class="term-head"><h2>Branch</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A conditional routing operation where the execution path diverges based on the evaluation of one or more conditions against the current item's data.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>A fork in the road. The workflow checks a rule, then goes left or right depending on what it finds.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A post office sorting machine. Every package goes through the same scanner, but the scanner reads the ZIP code and flips the right switch — this package goes to the Chicago belt, this one to Miami.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Testing only one branch path and assuming the other works. Always test the TRUE path <em>and</em> the FALSE path (and every Switch output) before activating a workflow.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="canvas">
+      <div class="term-head"><h2>Canvas</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>The visual workspace in n8n where nodes are placed and connected to form a workflow graph.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The whiteboard where you draw your automation by placing boxes (nodes) and connecting them with arrows.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A whiteboard in a planning session — except this whiteboard executes itself. The arrows you draw become real data pipelines.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Using the canvas view as a substitute for reading the data panel. The canvas shows you the structure of your workflow. The data panel shows you what actually happened when it ran. You need both.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="condition">
+      <div class="term-head"><h2>Condition</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A boolean expression evaluated at a Branch node that determines which execution path an item takes. Conditions compare values using operators (equals, greater than, contains, and so on).</dd></div>
+        <div class="row"><dt>Plain</dt><dd>A rule the workflow checks. If the rule is true, go this way. If not, go that way.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>An eligibility check on an application form. "Annual income must be greater than $50,000." The form either passes you through or rejects you based on whether your number meets the rule.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Writing a condition with a type mismatch — comparing a string <code>"50"</code> to a number <code>50</code> using a numeric operator. The condition never matches even when the value looks right. Always check the data type in the data panel before writing a condition.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="connection">
+      <div class="term-head"><h2>Connection</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A directed edge in the workflow graph that carries item arrays from the output of one node to the input of the next. Connections carry output types: main, error, or custom.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The arrow between two nodes. It carries your data from one step to the next.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A conveyor belt between two sorting stations in a warehouse. The belt carries packages (items) from one station's output tray to the next station's input tray.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Assuming a connection exists because nodes are visually close on the canvas. A connection is only real when you can see the arrow drawn between the nodes. Unconnected nodes do not share data.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="credential">
+      <div class="term-head"><h2>Credential</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A stored authentication object in n8n (OAuth token, API key, username/password, service account file) that grants a node permission to access an external service.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>A saved login that n8n uses to access your apps on your behalf — like a key you give it so it can open one specific door.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A key card for a specific building. The key card is issued by the building (the external service), stored in your wallet (the Credentials list), and handed to the door reader (the node) each time you need access.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Embedding API keys directly in node configuration fields instead of using the Credentials system. Embedded keys cannot be rotated without touching every node that uses them. Always use a named credential.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="data-panel">
+      <div class="term-head"><h2>Data Panel</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>The inspection interface in n8n that displays the input and output item arrays for a selected node after an execution run.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The display that shows you exactly what each node received and what it produced when the workflow ran.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>The readout on a factory quality-control station. After each piece passes through, the readout shows what went in and what came out. If something looks wrong, you look at the readout, not at the machine.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Debugging workflows by reading the node configuration instead of the data panel. The configuration tells you what you <em>intended</em>. The data panel tells you what actually happened. Always read the data panel when something is wrong.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="execution">
+      <div class="term-head"><h2>Execution</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A single run of a workflow from trigger firing to completion or failure. Each execution produces a timestamped record in the Execution Log with per-node input/output data.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>One time your workflow ran — from start to finish, or to wherever it stopped.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>One batch in a cookie factory. The same recipe (workflow), the same equipment (nodes), but one distinct production run with its own record: start time, end time, what came out.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Using the terms "execution" and "workflow" interchangeably. A workflow is the blueprint. An execution is one run of that blueprint. A workflow runs many executions.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="expression">
+      <div class="term-head"><h2>Expression</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A dynamic value written inside double curly braces <code>{{ }}</code> that is evaluated at runtime against the current item, node output, or environment variable.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>A formula you write in a node field that gets filled in with real data when the workflow runs.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A mail-merge field in a letter template. The template says "Dear <code>{{ first_name }}</code>," and the merge fills in the real name when the letter is printed. The expression is filled in when the workflow executes.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Writing an expression that references a field name incorrectly — wrong case, wrong nesting level, a typo. The expression evaluates to undefined silently: no error, just missing data. Always verify field names in the data panel before writing expressions.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="item">
+      <div class="term-head"><h2>Item</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>The fundamental unit of data in n8n. A single JSON object processed by a node in one pass. Nodes receive arrays of items and produce arrays of items.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>One piece of data. If your webhook receives one form submission, that is one item. If it receives a batch of 50, that is 50 items.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>One customer in a queue. The cashier (node) processes one customer at a time, but can process the entire queue (array of items) in sequence. Each customer carries their own basket (JSON object) of data.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Expecting one output item when the upstream node produced five. Item counts can change at any node. Check the item-count badge on each node after an execution to confirm how many items are flowing through.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="json">
+      <div class="term-head"><h2>JSON</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>JavaScript Object Notation. A lightweight, human-readable data format using key-value pairs, arrays, nested objects, strings, numbers, booleans, and nulls. The native data format of n8n.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The format n8n uses to store and move data — a structured list of labelled values, written in curly braces.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A standardized form. Every field has a label ("name") and a value ("Maria"). Nested sections — like <code>"address": { "city": "Austin" }</code> — are sub-forms attached to the main form. Arrays are tables with multiple rows on it.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Confusing JSON strings with JSON numbers. <code>{ "score": "87" }</code> contains a string. <code>{ "score": 87 }</code> contains a number. They look similar and behave differently in conditions and calculations. Always check the data type, not just the value.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="mapping">
+      <div class="term-head"><h2>Mapping</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>The configuration of a node that specifies which input fields are read and how they are assigned to output fields, node parameters, or external service columns.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>Telling a node which data goes where — like filling out a form by pulling answers from a previous document.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A customs declaration form at the border. You have a passport (your data), and the form has specific fields. You map your passport information into the form fields in the right order.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Assuming field names are case-insensitive. <code>Email</code> and <code>email</code> are different field names in JSON. A mapping that references the wrong case will silently produce empty values.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="node">
+      <div class="term-head"><h2>Node</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A discrete processing unit in a workflow. Nodes receive item arrays, perform an operation (transform, request, decision, and so on), and produce item arrays. Each node type has a defined set of configurable parameters.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>One step in your automation. Each box on the canvas is a node — it does one specific job.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A workstation on an assembly line. Each station receives the work, does its specific task — drill, paint, inspect — and passes it to the next station. The product (data) is transformed at each station.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Adding a node to the canvas and assuming it runs. A node only runs if it is connected to the active execution path and the workflow is either in test mode or activated.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="payload">
+      <div class="term-head"><h2>Payload</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>The data body of an HTTP request received by a Webhook trigger node. Typically a JSON object containing the event data sent by the external system.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The data that arrives with a webhook request — the content of the message, not the envelope.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>The contents of a package, as distinct from the shipping label (the HTTP headers). The label tells you where it came from and how it was shipped. The payload is what is inside.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Confusing the HTTP headers with the payload body. Both are available, but most workflows operate on the payload body, not the headers. If your expected field is missing, check whether it arrived in the headers instead.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="schema">
+      <div class="term-head"><h2>Schema</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>The defined structure of a data object: its field names, data types, required versus optional status, and valid value ranges. In n8n, schemas are implicit — not enforced by default — unless validation logic is added.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The template that says what fields your data must have, what type each value should be, and which fields are required.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A standardized form with labelled fields and type requirements. "Date of birth: MM/DD/YYYY (required)." Submit it in the wrong format and it should be rejected. Without schema enforcement, the wrong format gets through silently.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Assuming the tool enforces a schema automatically. It does not. If a field is missing or the wrong type, it will usually continue without error, and the bad data reaches your database. Schema enforcement must be added explicitly.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="trigger">
+      <div class="term-head"><h2>Trigger</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>The first node in a workflow, defining the event or schedule that initiates execution. Without a trigger, a workflow does not run. Three types: push (Webhook), pull (Schedule), and manual.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The on-switch for your workflow. Something has to happen first — a trigger defines what that something is.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A doorbell. Your workflow is inside the house. The doorbell wakes it up when someone rings. Without a doorbell, the workflow never knows anyone arrived.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Confusing the trigger with the workflow. The trigger is just the first node. If the trigger fires but a later node fails, the workflow errored — the trigger worked correctly. Check the execution log at the node level to find where the failure actually occurred.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <article class="term" id="workflow">
+      <div class="term-head"><h2>Workflow</h2><p class="tier">Beginner</p></div>
+      <dl class="rows">
+        <div class="row"><dt>Technical</dt><dd>A directed acyclic graph of connected nodes, beginning with a trigger and defining the full sequence of operations to be performed on incoming data.</dd></div>
+        <div class="row"><dt>Plain</dt><dd>The complete automation — all the steps connected together, from the trigger that starts it to the final node that ends it.</dd></div>
+        <div class="row"><dt>Analogy</dt><dd>A recipe. The trigger is "preheat the oven." Each node is a step: mix, pour into the pan, bake, plate. The workflow is the full recipe from start to finish. Running it once is making the dish once.</dd></div>
+        <div class="row mistake"><dt>Common mistake</dt><dd>Editing a workflow while it is activated and receiving live traffic. Changes to an activated workflow can cause in-flight executions to use inconsistent node configurations. Deactivate, edit, test, then reactivate.</dd></div>
+      </dl>
+      <p class="totop"><a href="#top">↑ back to the list</a></p>
+    </article>
+
+    <h2>What isn't here yet</h2>
+    <p>The source glossary carries twenty terms. Two of them — <strong>Idempotency</strong> and
+    <strong>Run_ID</strong> — belong to the intermediate tier, and they're held for
+    <strong>Glossary II</strong>, which isn't written yet. I'd rather you see the gap than not
+    notice it.</p>
+    <p>They're the two that matter most the day something fires twice, so they're worth the wait.
+    <em>Append</em>'s mistake row above is the shadow they cast.</p>
+
+    <h2>Validator Gates</h2>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> Without looking, say the difference between a
+      <em>workflow</em> and an <em>execution</em>. One sentence each.</li>
+      <li><strong>Gate 2:</strong> Four of the mistake rows above send you to the same place when
+      something goes wrong. Find all four, and say in one sentence what they have in common.</li>
+      <li><strong>Gate 3:</strong> Why does the Append entry point forward to a term that isn't
+      on this page? What does that tell you about the order these words should be learned in?</li>
+      <li><strong>Gate 4 (own words):</strong> Pick a word from <em>your own</em> field — one you
+      use weekly and have never defined out loud. Write its four rows. If the fourth row is
+      blank, you have found something worth knowing, and that is the point of this page.</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Glossary complete</strong> — and if the four-row habit is the only thing you take
+      from it, you got the invariant and can drop the tool. Next: Glossary II, the intermediate
+      and advanced terms. Not yet written; it's next in the queue.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/">← All lessons</a>
+      <span class="spacer"></span>
+      <span style="color:var(--muted)">Glossary II — not yet written</span>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+</body>
+</html>

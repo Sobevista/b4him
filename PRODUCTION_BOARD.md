@@ -32,8 +32,7 @@
 
 ## The pipeline, by stage
 
-**SOURCE** (build session) — 12
-  - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/Automation_Vocabulary_Glossary.docx`
+**SOURCE** (build session) — 11
   - Glossary II - Intermediate & Advanced terms · source: `Knowledge_Base/Teaching/_laptop_recovered/Automation_Vocabulary_Glossary.docx`
   - Advanced 1 - Orchestration · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 2 - Resilience · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
@@ -46,7 +45,8 @@
   - Workbook exercises - advanced (25) · source: `Knowledge_Base/Teaching/_laptop_recovered/Companion_Workbook_Advanced.docx`
   - Flashcards - the verified subset · source: `purple-team teaching/flashcards/terms.jsonl` · **BLOCKED: verification step 2 (VERIFY_CONTRACT.md) - 197 cards, none verified yet**
 
-**DRAFTED** (Claude) — 0
+**DRAFTED** (Claude) — 1
+  - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js` · **BLOCKED: REVIEWED (stage 2) - the genericization grep must come from a seat that did not write the page. The author's own scan ran clean (0 forbidden tokens, 18 terms, 72/72 cells, 0 colour literals) and does NOT satisfy D11**
 
 **REVIEWED** (the other seat) — 0
 
