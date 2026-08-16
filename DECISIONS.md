@@ -199,10 +199,15 @@ cheapest possible proof that an unruled gate is not a neutral state.
 cache after being named missing from the entire estate, now tracked at
 `Knowledge_Base/Teaching/_laptop_recovered/` in the harness.
 
-- **D11 held Tiers 2–3 as "mesh/CAS-heavy." That reasoning does not apply here.** Guess & Click
-  is generic automation teaching with no harness internals — which is why D12 already sourced
-  Tier 2 from it. This is the rest of that source, including the tier that was out of reach
-  when D12 was locked.
+- ~~**D11 held Tiers 2–3 as "mesh/CAS-heavy." That reasoning does not apply here.** Guess &
+  Click is generic automation teaching with no harness internals.~~ **CORRECTED 2026-08-16, same
+  day: that argument was made from filenames.** Opening the documents shows **all four are
+  n8n-specific** — the glossary is subtitled *"n8n Terms"*, the advanced tier is *"n8n
+  Automation — From Workflows to Systems"*, and 34 of the 59 exercises name n8n nodes. **D12
+  had already dropped exactly this machinery** when it built Tier 2 from the same source. The
+  approval stands, but on **D18's** reasoning rather than this one. *Recorded rather than
+  rewritten: a decision argued from a document instead of from the thing itself is the house
+  defect, and hiding the correction would waste the lesson.*
 - **Convert from the generators, not the Word files.** All 19 build scripts were recovered
   alongside the documents. Regenerating is cheaper than transcribing and it is reproducible.
 - **D11's genericization rule and its verification law both bind**, unchanged: an
@@ -249,3 +254,72 @@ built to collect nothing and send nothing.
 **Proposal awaiting Daniel:** exercises are printable / self-checked, in-browser only, storing
 nothing — the same posture as the quiz. Any future exercise wanting a submitted answer is a new
 decision under `INV-W3`, not an implementation detail.
+
+## D17 — Exercises are printable, self-checked, and store nothing. LOCKED 2026-08-16
+
+The 59 workbook exercises would be the first thing on this site that invites an answer.
+`INV-W3` says **collection is the trigger, not audience**, and `find-your-door` was built to
+collect nothing and send nothing.
+
+- **Pure in-browser. Nothing stored, nothing transmitted, no accounts, no progress sync** —
+  the same posture as the quiz.
+- **Printable is a first-class output, not a fallback.** A workbook is a thing you write on.
+- Local-only saved progress was offered and **declined**: it is state we do not currently keep,
+  and `INV-W3` deserves a fresh look before that changes.
+- Any future exercise wanting a submitted answer is **a new decision under `INV-W3`**, never an
+  implementation detail.
+
+## D18 — We teach the tool AND the invariant under it. LOCKED 2026-08-16
+
+*The answer to "does b4him teach a tool?", and it is bigger than the question. Daniel's words:*
+
+> *"Yes we teach specific tools as they were learned by me, but then we also extract what
+> universal first principle / invariants we can extract from them. Building n8n to networks to
+> all of it touching the same foundational principles. We label the separate track while on the
+> teaching side ensuring we are reinforcing the foundations in form and manner."*
+
+**This supersedes the reasoning in D12 that dropped n8n machinery as noise.** The tool is the
+**vehicle**; the invariant is the **cargo**. Stripping the tool removes the evidence that the
+principle was ever learned rather than asserted — and *"as they were learned by me"* is the b4him
+promise, not a stylistic note.
+
+**Three things this binds:**
+
+1. **Tool tracks are labelled, not hidden.** Tier 1 and Tier 2 stay tool-agnostic and remain the
+   front door (D3, D12) — a non-technical visitor is never dropped into infrastructure. A reader
+   chooses the n8n track.
+2. **Every tool lesson names the invariant it instantiates**, explicitly, on the page. n8n,
+   networks and the cyber rungs are different windows onto the same foundations, and the page has
+   to say which foundation it is showing or the claim is decoration.
+3. **The form reinforces the foundation.** *"…in form and manner."* The lesson template carries
+   the invariant as a **structural row**, not a closing remark.
+
+**The template already exists and is proven.** `purple-team/ranges/rung01_access_control/laps/
+FINDINGS.md` runs *What I did · What came back · Noise · **The invariant** · Why it matters*, and
+describes that row as **"the link from my one lap to the field."** That is D18 in working form.
+**The n8n track and the cyber track therefore share one lesson shape**, which is also why the two
+tracks reinforce each other instead of reading as two sites.
+
+## D19 — Publish the two tracks that exist and say so. LOCKED 2026-08-16
+
+The advanced tier ships **Builder and Architect only**. The site offers four doors and
+`find-your-door` routes readers to all four.
+
+- **Publish the two, and state plainly on the page that Translator and Validator are not yet
+  written.** A reader who took the quiz and got Translator finds an honest absence rather than a
+  silent one.
+- **Writing the missing two was declined**: that is Claude authoring curriculum Daniel never
+  approved, and it would delay the tier by weeks.
+- Consistent with the site's premise — show the homework, fumbling included, gaps visible.
+
+## D20 — The glossary ships as two pages. LOCKED 2026-08-16
+
+20 terms, ~2,590 words, each carrying **TECHNICAL / PLAIN / ANALOGY / COMMON MISTAKE**.
+
+- **Split Beginner terms from Intermediate & Advanced** — it matches the tiering the document
+  already declares, fills two slots, and avoids one very long scroll.
+- **The ANALOGY row is already speaking the site's language**: the source says it is
+  *"especially useful for Translator-profile learners."* That is a four-door hook the glossary
+  brought with it, and it is the cheapest possible link between the tool track and Tier 1.
+- **Drafting is approved and starts now.** The glossary is the first piece into the pipeline
+  because it is self-contained and gives every other lesson something to link to.
