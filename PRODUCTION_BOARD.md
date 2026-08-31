@@ -1,6 +1,6 @@
 # PRODUCTION BOARD
 
-*Generated 2026-08-16 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
+*Generated 2026-08-31 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
 **RUNWAY: 0.0 weeks** — **BELOW FLOOR** - stop opening new rungs, drain the queue  
 *(target 6w · floor 3w · 0 piece(s) at stage ≥ PREVIEWED ÷ 2/week)*
@@ -17,10 +17,6 @@
 
 | slot | piece | review by | note |
 |---|---|---|---|
-| **2026-08-18** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
-| **2026-08-21** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
-| **2026-08-25** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
-| **2026-08-28** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-09-01** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-09-04** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-09-08** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
@@ -29,6 +25,10 @@
 | **2026-09-18** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-09-22** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-09-25** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-09-29** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-10-02** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-10-06** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-10-09** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 
 ## The pipeline, by stage
 
