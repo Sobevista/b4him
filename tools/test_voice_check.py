@@ -42,6 +42,13 @@ def test_a_term_named_after_its_plain_definition_counts_as_glossed():
     assert vc.measure(base + "I lost the real body of research findings (the corpus) for hours.")["unglossed"] == []
 
 
+def test_an_appositive_or_meaning_gloss_counts_and_a_bare_term_still_fails():
+    base = "I built it and I broke it and we fixed it. " * 10
+    assert vc.measure(base + "It caught real drift, things that had quietly slipped out of line.")["unglossed"] == []
+    assert vc.measure(base + "Reconstruction drifts, meaning what you rebuild from memory changes.")["unglossed"] == []
+    assert vc.measure(base + "It caught real drift on its first run that day.")["unglossed"] != []
+
+
 def test_the_page_title_is_not_visible_text():
     page = "<html><head><title>Grade Each Leg</title></head><body><main><p>I wrote this.</p></main></body></html>"
     assert "Leg" not in vc.visible_text(page)

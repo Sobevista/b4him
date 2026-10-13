@@ -30,7 +30,9 @@ FIRST_PERSON = re.compile(r"\b(i|me|my|mine|myself|i'm|i've|i'd|i'll|we|us|our|o
 # invariant", "Validator Gates"), explained by the template on every page.
 JARGON = ["harness", "seam", "breaker", "seat", "rung", "ledger", "cog", "pipe", "occupant", "applier", "oracle",
           "corpus", "lap", "leg", "orchestrator", "receipt", "spine", "steward", "drift"]
-GLOSS_MARK = re.compile(r"\(|—|–| - |\bmeans\b|\bis\b|\bare\b|\bwhich\b|\bcalled\b|\bi\.e\.|:", re.I)
+GLOSS_MARK = re.compile(r"\(|—|–| - |\bmeans\b|\bmeaning\b|\bis\b|\bare\b|\bwhich\b|\bcalled\b|\bi\.e\.|:", re.I)
+# An appositive gloss: the term followed straight away by ", <plain words>" ("drift, things that had slipped").
+APPOSITIVE = re.compile(r"^s?,\s+[a-z]", re.I)
 CHROME = re.compile(r"<(head|header|footer|nav)\b.*?</\1>", re.S | re.I)
 DROP = re.compile(r"<(script|style)\b.*?</\1>", re.S | re.I)
 TAG = re.compile(r"<[^>]+>")
@@ -53,7 +55,8 @@ def measure(text: str) -> dict:
         m = re.search(rf"\b{term}s?\b", text, re.I)
         # glossed before the term counts too: "the real body of findings (the corpus)"
         glossed_before = re.search(r"\((the |a |an )?$", text[max(0, m.start() - 6):m.start()]) if m else None
-        if m and not glossed_before and not GLOSS_MARK.search(text[m.end():m.end() + GLOSS_WINDOW]):
+        after = text[m.end():m.end() + GLOSS_WINDOW] if m else ""
+        if m and not glossed_before and not APPOSITIVE.match(after) and not GLOSS_MARK.search(after):
             unglossed.append(f"{term}: …{text[max(0, m.start() - 40):m.end() + 50]}…")
     rate = 1000.0 * fp / n
     return {"words": n, "first_person": fp, "rate": round(rate, 1), "unglossed": unglossed,
