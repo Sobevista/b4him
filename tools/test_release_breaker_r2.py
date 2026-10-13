@@ -209,12 +209,13 @@ def test_publishes_only_pinned_bytes_so_another_tracks_furniture_edited_after_ap
     b0 = blob_of(b"<h1>Zero</h1>\n")
     entry0 = {**ENTRY, "href": "/lessons/zero/", "title": "Zero"}
     put(page0, b0)
-    write_queue(published("P0", page0, b0, entry0))
+    p0 = published("P0", page0, b0, entry0)        # pins the furniture as it stands NOW, before the hand edit
+    write_queue(p0)
     furn = root / FURN
     furn.write_text(furn.read_text(encoding="utf-8") + "<p>UNAPPROVED TEXT</p>\n", encoding="utf-8", newline="\n")
     commit_all(root, "hand edit to n8n furniture, no approval")
     entry4 = {"track": "tier4", "numeral": "I", "href": "/lessons/glossary-beginner/", "title": "Four", "blurb": "b"}
-    write_queue(published("P0", page0, b0, entry0), racked("NEW", PAGE, blob, 5, entry=entry4))
+    write_queue(p0, racked("NEW", PAGE, blob, 5, entry=entry4))   # the SAME row: P0's approval predates the edit
     d = release.plan(TUE)
     if d["outcome"] == "PUBLISH":
         try:
@@ -222,6 +223,28 @@ def test_publishes_only_pinned_bytes_so_another_tracks_furniture_edited_after_ap
         except release.ReleaseError:
             return
     assert "UNAPPROVED TEXT" not in (root / "lessons" / "index.html").read_text(encoding="utf-8")
+
+
+@pytest.mark.xfail(strict=True, reason="NIT, outside the registered families: live_drift skips a PUBLISHED row whose "
+                   "index_entry was deleted from the queue (approved_index_entry left behind), so an approved entry "
+                   "silently disappears from the live index with the next release. Content vanishing, not unapproved "
+                   "content appearing. Remove this marker when fixed (an approved_index_entry with no index_entry is "
+                   "drift).")
+def test_NIT_a_published_entry_deleted_from_the_queue_vanishes_from_the_live_index(site):
+    root, blob, write_queue, blob_of, put = site
+    page0 = "lessons/zero/index.html"
+    b0 = blob_of(b"<h1>Zero</h1>\n")
+    put(page0, b0)
+    p0 = published("P0", page0, b0, {**ENTRY, "href": "/lessons/zero/", "title": "Zero"})
+    gone = {k: v for k, v in p0.items() if k != "index_entry"}       # approved_index_entry stays
+    write_queue(gone, racked("NEW", PAGE, blob, 5))
+    d = release.plan(TUE)
+    if d["outcome"] == "PUBLISH":
+        try:
+            release.apply(TUE, d)
+        except release.ReleaseError:
+            return
+    assert (root / "lessons" / "index.html").read_text(encoding="utf-8").count('class="mod"') == 1
 
 
 def test_publishes_only_pinned_bytes_so_a_pin_that_rehashes_differently_refuses_and_commits_nothing(site):
@@ -285,6 +308,24 @@ def test_push_sends_only_the_release_never_a_merge_commit_that_lists_no_paths(si
     monkeypatch.setattr(release.dt, "date", FakeDate)
     release.main(["--apply", "--push"])
     assert g(bare, "show", "main:lessons/a/index.html") == "<p>a</p>"
+
+
+def test_push_sends_only_the_release_never_an_index_edit_riding_as_the_stranded_release(site, tmp_path, monkeypatch):
+    """ATTACK on the fix round: a stranded release is now recognised by its paths, and lessons/index.html is one of
+    the paths a release may touch, but nothing pins the index's bytes. Today's release is pushed; a later hand edit
+    to the index alone, unpushed, must not be taken for 'the stranded release' and pushed on the same-day re-run."""
+    root, blob, write_queue, _, _ = site
+    write_queue(piece(blob))
+    bare = with_origin(root, tmp_path)
+    monkeypatch.setattr(release.dt, "date", FakeDate)
+    assert release.main(["--apply", "--push"]) == 0
+    released = g(bare, "show", "main:lessons/index.html")
+    index = root / "lessons" / "index.html"
+    index.write_text(index.read_text(encoding="utf-8").replace("<footer></footer>", "<footer>UNAPPROVED</footer>"),
+                     encoding="utf-8", newline="\n")
+    commit_all(root, "footer tweak, never approved")
+    release.main(["--apply", "--push"])
+    assert g(bare, "show", "main:lessons/index.html") == released
 
 
 def test_push_sends_only_the_release_and_refuses_when_main_is_behind_origin(site, tmp_path, monkeypatch):
@@ -621,6 +662,7 @@ def test_tap_pins_the_tiled_commit_so_a_ruling_naming_an_untiled_commit_moves_no
 
 
 def test_NIT_a_refused_ruling_leaves_the_approved_tag_on_the_racked_commit(drafts):
+    """Was a strict xfail (approvals.apply tagged before mark_board could refuse); fixed in f248db1."""
     root, _ = drafts
     t1, t2, led = _rack_then_move_on(root)
     led.rule(f"APPROVE G2 at {t2[:7]} — Glossary II", "APPROVE")
