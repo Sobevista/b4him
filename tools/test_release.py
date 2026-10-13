@@ -43,7 +43,7 @@ def site(tmp_path, monkeypatch):
     shutil.copy(HERE / "tracks" / "n8n.html", root / "tools" / "tracks" / "n8n.html")
     (root / "lessons" / "a" / "index.html").write_text("<p>a</p>\n", encoding="utf-8")
     (root / "lessons" / "index.html").write_text(INDEX, encoding="utf-8", newline="\n")
-    (root / ".gitignore").write_text("release_log.jsonl\n__pycache__/\n", encoding="utf-8")
+    (root / ".gitignore").write_text("release_log.jsonl\nrelease_alarm.md\n__pycache__/\n", encoding="utf-8")
     g(tmp_path, "init", "-q", "-b", "main", str(root))
     g(root, "config", "user.email", "t@example.invalid")
     g(root, "config", "user.name", "test")
@@ -203,6 +203,22 @@ def test_a_page_commit_cannot_ride_out_by_naming_itself_like_bookkeeping(site, t
     g(root, "commit", "-q", "-am", "APPROVED X at abc1234: Daniel's tap")
     with pytest.raises(release.ReleaseError, match="unapproved"):
         release.preflight(TUE)
+
+
+def test_a_failed_run_raises_a_tile_the_harness_gate_can_read_and_a_good_run_clears_it(site):
+    root, blob, write_queue = site
+    write_queue(piece(blob))
+    release.alarm({"outcome": "FAIL", "date": "2026-10-20", "piece": "GC-GLOSS-1", "why": "network down"})
+    text = (root / "release_alarm.md").read_text(encoding="utf-8")
+    gate = pathlib.Path(r"C:\Users\dansl\Claude\Projects\Data Import\Connection\tools\control_room")
+    if gate.exists():
+        sys.path.insert(0, str(gate))
+        import decision_gate as dg
+        tiles = dg.itemize_board(text.splitlines())
+        assert len(tiles) == 1 and "Release run failed" in tiles[0]["title"]
+    assert g(root, "status", "--porcelain") == ""          # ignored: never dirties a release
+    release.alarm({"outcome": "SKIP"})
+    assert not (root / "release_alarm.md").exists()
 
 
 def test_apply_refuses_any_day_but_today(site, capsys):

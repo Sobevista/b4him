@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 # The release heartbeat: one line per run on this machine. Local evidence, not site content.
 release_log.jsonl
+# A failed run's tile for the harness app (written by release.py on FAIL, removed by the next good run).
+release_alarm.md

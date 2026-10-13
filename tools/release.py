@@ -315,6 +315,27 @@ def log(entry: dict) -> None:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def alarm(entry: dict) -> None:
+    """A FAIL must reach Daniel, not sit in a log nobody opens. The harness app tiles any b4him *.md carrying a
+    decision block and an open DANIEL marker (review_inbox SIBLING_ROOTS), so a failed run writes one; the next run
+    that does not fail removes it. The file is git-ignored, so it never dirties the tree a release needs clean."""
+    path = repo() / "release_alarm.md"
+    if entry.get("outcome") != "FAIL":
+        path.unlink(missing_ok=True)
+        return
+    path.write_text(
+        "# b4him release alarm\n\n"
+        f"### Release run failed {entry.get('date')} — {entry.get('piece') or 'no piece'}\n\n"
+        f"- **What this is to the build.** The scheduled publish (`tools/release.py`) refused or broke: "
+        f"{entry.get('why', '?')}\n"
+        f"- **Why this decision exists.** A release that fails silently is a site that looks abandoned; this tile "
+        f"is the run telling you rather than a log line nobody reads.\n"
+        f"- **What changes if you approve.** Approve means 'seen, have Claude fix it next session'. Nothing "
+        f"publishes from this tile.\n"
+        f"- **Recommendation.** Approve, and start a b4him session; the full line is in `release_log.jsonl`.\n\n"
+        "**DANIEL:** _pending_\n", encoding="utf-8", newline="\n")
+
+
 def run(a, day: dt.date, entry: dict) -> int:
     if a.push:
         stranded = preflight(day)
@@ -372,6 +393,7 @@ def main(argv=None) -> int:
             entry.update(outcome="FAIL", why=f"{type(e).__name__}: {e}{where}")
             code = 1
         log(entry)
+        alarm(entry)
     print(f"{entry['outcome']}  {day} {day:%a}  {entry.get('piece', '')}  {entry.get('why', '')}"
           + (f"  commit {entry['commit'][:7]}" if entry.get("commit") else "")
           + (f"  {entry['live']}" if entry.get("live") else ""))

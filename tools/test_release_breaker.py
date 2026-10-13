@@ -56,7 +56,7 @@ def site(tmp_path, monkeypatch):
     shutil.copy(HERE / "tracks" / "n8n.html", root / "tools" / "tracks" / "n8n.html")
     (root / "lessons" / "a" / "index.html").write_text("<p>a</p>\n", encoding="utf-8")
     (root / "lessons" / "index.html").write_text(INDEX, encoding="utf-8", newline="\n")
-    (root / ".gitignore").write_text("release_log.jsonl\n__pycache__/\n", encoding="utf-8")
+    (root / ".gitignore").write_text("release_log.jsonl\nrelease_alarm.md\n__pycache__/\n", encoding="utf-8")
     (root / ".gitattributes").write_text("* text=auto eol=lf\n", encoding="utf-8")
     g(tmp_path, "init", "-q", "-b", "main", str(root))
     g(root, "config", "user.email", "t@example.invalid")
