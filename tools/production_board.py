@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import pathlib
 import sys
@@ -82,6 +83,36 @@ def stage_index(row: dict) -> int:
         return 0
 
 
+def blob_sha(path: pathlib.Path) -> str | None:
+    """The git blob id of a file as this repo stores it (.gitattributes: text=auto eol=lf), computed without git."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if b"\0" not in data:                     # text: git stores it with LF line endings
+        data = data.replace(b"\r\n", b"\n")
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def approval_drift(row: dict) -> list[str]:
+    """Files whose bytes are no longer the ones Daniel approved. RULED and PREVIEWED cover the bytes he saw,
+    recorded as `approved_blobs` {path: git blob id}; a later edit is a new piece of work, never inherited."""
+    out = []
+    for rel, want in (row.get("approved_blobs") or {}).items():
+        have = blob_sha(REPO / rel)
+        if have != want:
+            out.append(f"{rel} (approved {want[:12]}, now {have[:12] if have else 'missing'})")
+    return out
+
+
+def ready_date(row: dict) -> dt.date | None:
+    """The day the piece reached PREVIEWED: the ISO date its `previewed` field starts with, if any."""
+    try:
+        return dt.date.fromisoformat(str(row.get("previewed", ""))[:10])
+    except ValueError:
+        return None
+
+
 def build(today: dt.date) -> str:
     rows = load_queue()
     broken = [r for r in rows if r.get("_broken")]
@@ -89,7 +120,10 @@ def build(today: dt.date) -> str:
 
     published = [r for r in live if stage_index(r) >= STAGES.index("PUBLISHED")]
     pipeline = [r for r in live if stage_index(r) < STAGES.index("PUBLISHED")]
-    eligible = [r for r in pipeline if stage_index(r) >= ELIGIBLE_STAGE]
+    # A piece whose approved bytes changed holds no slot until Daniel rules and previews it again.
+    drifted = {r.get("id"): d for r in pipeline if stage_index(r) >= STAGES.index("RULED")
+               for d in [approval_drift(r)] if d}
+    eligible = [r for r in pipeline if stage_index(r) >= ELIGIBLE_STAGE and r.get("id") not in drifted]
 
     runway_weeks = len(eligible) / PER_WEEK_CAP if PER_WEEK_CAP else 0
     if runway_weeks < RUNWAY_FLOOR_WEEKS:
@@ -100,17 +134,29 @@ def build(today: dt.date) -> str:
         runway_state = "healthy"
 
     slots = next_slots(today, 12)
-    # eligible pieces fill slots in queue order; the rest are printed as skips
+    # Eligible pieces fill slots in queue order; the rest are printed as skips. A piece with a recorded preview
+    # date takes the earliest open slot whose review-by date (T-7) it met, so a piece previewed today never lands
+    # in a slot whose window closed last week. A piece with no recorded date keeps the old rule: the next open
+    # slot, flagged when its window has already passed.
     queue_order = sorted(eligible, key=lambda r: (r.get("order", 999), r.get("id", "")))
+    taken: dict[dt.date, dict] = {}
+    for piece in queue_order:
+        ready = ready_date(piece)
+        for s in slots:
+            if s in taken or (ready and ready > s - dt.timedelta(days=REVIEW_LEAD_DAYS)):
+                continue
+            taken[s] = piece
+            break
     assigned: list[tuple[dt.date, dict | None, str]] = []
-    idx = 0
     for s in slots:
-        if idx < len(queue_order):
-            piece = queue_order[idx]
-            deadline = s - dt.timedelta(days=REVIEW_LEAD_DAYS)
-            note = "" if today <= deadline else "review window already passed"
+        deadline = s - dt.timedelta(days=REVIEW_LEAD_DAYS)
+        piece = taken.get(s)
+        if piece is not None:
+            note = "" if (ready_date(piece) or today) <= deadline else "review window already passed"
             assigned.append((s, piece, note))
-            idx += 1
+        elif any(ready_date(r) and ready_date(r) > deadline for r in queue_order):
+            assigned.append((s, None, "SLOT SKIPS - the next ready piece was previewed after this slot's "
+                                      "review-by date (recorded, not backfilled)"))
         else:
             assigned.append((s, None, "no eligible piece - SLOT SKIPS (recorded, not backfilled)"))
 
@@ -140,8 +186,20 @@ def build(today: dt.date) -> str:
             A(f"- `{b['id']}` — {b['title']}")
         A("")
 
+    if drifted:
+        A("## ⚠ CHANGED SINCE DANIEL'S APPROVAL")
+        A("")
+        A("*RULED and PREVIEWED cover the bytes he saw (`approved_blobs`). These files changed after that, so "
+          "the piece holds no slot until he rules and previews it again (`PRODUCTION_PLAN` §2: never inherited "
+          "from a previous yes).*")
+        A("")
+        for r in pipeline:
+            if r.get("id") in drifted:
+                A(f"- {r.get('title','?')}: " + "; ".join(drifted[r.get("id")]))
+        A("")
+
     # ---- what is blocked on Daniel -----------------------------------------
-    on_daniel = [r for r in pipeline if r.get("stage") in ("RULED", "REVIEWED")]
+    on_daniel = [r for r in pipeline if r.get("stage") in ("RULED", "REVIEWED") or r.get("id") in drifted]
     A("## Waiting on Daniel")
     A("")
     if not on_daniel:
@@ -150,7 +208,10 @@ def build(today: dt.date) -> str:
         A("| piece | at stage | he owes | since |")
         A("|---|---|---|---|")
         for r in sorted(on_daniel, key=lambda x: x.get("since", "")):
-            owes = "a per-piece RULING" if r["stage"] == "REVIEWED" else "a rendered PREVIEW"
+            if r.get("id") in drifted:
+                owes = "a new RULING and PREVIEW: changed since he approved it"
+            else:
+                owes = "a per-piece RULING" if r["stage"] == "REVIEWED" else "a rendered PREVIEW"
             A(f"| {r.get('title','?')} | {r['stage']} | {owes} | {r.get('since','unknown')} |")
     A("")
 
@@ -227,6 +288,9 @@ def main() -> int:
     out = build(today)
 
     if a.to_stdout:
+        # A Windows console or pipe hands the process cp1252, which has no "≥": pin UTF-8 at the boundary.
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         print(out)
         return 0
 

@@ -12,6 +12,12 @@ Every nav room is real: **About** (eye-gate passed), **Games** (9 arcade rungs p
 1. **Blue-seat review** — rung 1 is written + previewed in `purple-team/publications/` but cannot cross the publication gate: ruling E00189 forbids the red seat self-clearing, so it needs Chelsie's blue-seat review.
 2. **PT-6 — the cyber tier name** — owed by Daniel. Per `PRODUCTION_BOARD.md` (2026-08-31): runway 0.0 weeks, 12 pieces at SOURCE, 0 published.
 
+**2026-10-13: the first piece is through Daniel's gates, on a branch.** Glossary I (GC-GLOSS-1, `lessons/glossary-beginner/`):
+- Local branch `draft/gc-gloss-1` at `cde8b20` (origin has `832daba`). Daniel RULED it ("Approval on the Glossary as is") and PREVIEWED it ("Previewed and approved"), harness ledger E00470 and E00471. That branch's board gives it **Tue 2026-10-20**. Publishing that day is merging the branch into main, then Daniel's push. Main's `PRODUCTION_BOARD.md` cannot see the branch's queue until then: it still shows GC-GLOSS-1 at SOURCE.
+- **Do not edit `lessons/glossary-beginner/index.html` before it publishes.** The approval is pinned to its bytes (`approved_blobs` in the queue row). An edit pulls it from its slot and needs a new RULED and PREVIEWED. Daniel's idea to fold each word's four rows is queued as GC-GLOSS-1-R1, deferred by him until after publication.
+- The board generator now gives a piece the first slot whose review-by date it met, and pulls a piece whose approved bytes changed (`tools/test_production_board.py`). These fixes are on main too.
+- Phone previews: never one full-page screenshot. Chromium wraps past 16,384 device pixels, and the 10-12 proof repeated the page (harness LESSONS L-012). Capture tiles and check them against the page.
+
 **Un-added from the Drive discovery (Daniel's call):** the older n8n curriculum, glossary, flashcards.
 
 ## The law this build was born under
@@ -30,4 +36,8 @@ v0 static only. v1 (embedded YouTube) and v2 (owned comments/Patreon) are writte
 
 ## Next action
 
-The site is live (deploy done 2026-07-22). The open work is PUBLISHING, not building: unblock rung 1 (blue-seat review + PT-6 cyber tier name) and drain the SOURCE queue so the runway climbs off 0.0 weeks. Optionally: decide whether the older n8n curriculum / glossary / flashcards join the shelf.
+The site is live (deploy done 2026-07-22). The open work is PUBLISHING, not building.
+- Glossary I publishes Tue 2026-10-20: merge `draft/gc-gloss-1`, then Daniel pushes.
+- Drain the SOURCE queue so the runway climbs: Glossary II (GC-GLOSS-2) is next in order, from the same source and template, with D20 locked. Draft it on its own branch through the same stages.
+- Unblock rung 1: blue-seat review, and the PT-6 cyber tier name.
+- Optionally, decide whether the older n8n curriculum, glossary and flashcards join the shelf.
