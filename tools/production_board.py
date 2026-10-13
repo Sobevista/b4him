@@ -24,6 +24,7 @@ import datetime as dt
 import hashlib
 import json
 import pathlib
+import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -94,14 +95,29 @@ def blob_sha(path: pathlib.Path) -> str | None:
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
+def blob_in_store(blob: str) -> bool:
+    """Is this blob in the repo's object store? An approved page waits there until release day."""
+    try:
+        return subprocess.run(["git", "-C", str(REPO), "cat-file", "-e", f"{blob}^{{blob}}"],
+                              capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
 def approval_drift(row: dict) -> list[str]:
     """Files whose bytes are no longer the ones Daniel approved. RULED and PREVIEWED cover the bytes he saw,
-    recorded as `approved_blobs` {path: git blob id}; a later edit is a new piece of work, never inherited."""
+    recorded as `approved_blobs` {path: git blob id}; a later edit is a new piece of work, never inherited.
+
+    A file not yet in the tree is not drift while its approved blob sits in the object store: that is a piece
+    racked for release (tools/release.py writes those exact bytes on its slot). Once PUBLISHED it must be in the
+    tree, and a missing file is drift again."""
     out = []
+    unpublished = stage_index(row) < STAGES.index("PUBLISHED")
     for rel, want in (row.get("approved_blobs") or {}).items():
         have = blob_sha(REPO / rel)
-        if have != want:
-            out.append(f"{rel} (approved {want[:12]}, now {have[:12] if have else 'missing'})")
+        if have == want or (have is None and unpublished and blob_in_store(want)):
+            continue
+        out.append(f"{rel} (approved {want[:12]}, now {have[:12] if have else 'missing'})")
     return out
 
 
@@ -113,6 +129,32 @@ def ready_date(row: dict) -> dt.date | None:
         return None
 
 
+def eligible_pieces(rows: list[dict]) -> tuple[list[dict], dict]:
+    """(pieces that may hold a slot, {id: drift}). A piece whose approved bytes changed holds no slot until
+    Daniel rules and previews it again."""
+    pipeline = [r for r in rows if not r.get("_broken") and stage_index(r) < STAGES.index("PUBLISHED")]
+    drifted = {r.get("id"): d for r in pipeline if stage_index(r) >= STAGES.index("RULED")
+               for d in [approval_drift(r)] if d}
+    eligible = [r for r in pipeline if stage_index(r) >= ELIGIBLE_STAGE and r.get("id") not in drifted]
+    return eligible, drifted
+
+
+def assign_slots(eligible: list[dict], slots: list[dt.date]) -> tuple[list[dict], dict[dt.date, dict]]:
+    """Eligible pieces fill slots in queue order. A piece with a recorded preview date takes the earliest open
+    slot whose review-by date (T-7) it met, so a piece previewed today never lands in a slot whose window closed
+    last week. A piece with no recorded date keeps the old rule: the next open slot."""
+    queue_order = sorted(eligible, key=lambda r: (r.get("order", 999), r.get("id", "")))
+    taken: dict[dt.date, dict] = {}
+    for piece in queue_order:
+        ready = ready_date(piece)
+        for s in slots:
+            if s in taken or (ready and ready > s - dt.timedelta(days=REVIEW_LEAD_DAYS)):
+                continue
+            taken[s] = piece
+            break
+    return queue_order, taken
+
+
 def build(today: dt.date) -> str:
     rows = load_queue()
     broken = [r for r in rows if r.get("_broken")]
@@ -120,10 +162,7 @@ def build(today: dt.date) -> str:
 
     published = [r for r in live if stage_index(r) >= STAGES.index("PUBLISHED")]
     pipeline = [r for r in live if stage_index(r) < STAGES.index("PUBLISHED")]
-    # A piece whose approved bytes changed holds no slot until Daniel rules and previews it again.
-    drifted = {r.get("id"): d for r in pipeline if stage_index(r) >= STAGES.index("RULED")
-               for d in [approval_drift(r)] if d}
-    eligible = [r for r in pipeline if stage_index(r) >= ELIGIBLE_STAGE and r.get("id") not in drifted]
+    eligible, drifted = eligible_pieces(live)
 
     runway_weeks = len(eligible) / PER_WEEK_CAP if PER_WEEK_CAP else 0
     if runway_weeks < RUNWAY_FLOOR_WEEKS:
@@ -134,19 +173,8 @@ def build(today: dt.date) -> str:
         runway_state = "healthy"
 
     slots = next_slots(today, 12)
-    # Eligible pieces fill slots in queue order; the rest are printed as skips. A piece with a recorded preview
-    # date takes the earliest open slot whose review-by date (T-7) it met, so a piece previewed today never lands
-    # in a slot whose window closed last week. A piece with no recorded date keeps the old rule: the next open
-    # slot, flagged when its window has already passed.
-    queue_order = sorted(eligible, key=lambda r: (r.get("order", 999), r.get("id", "")))
-    taken: dict[dt.date, dict] = {}
-    for piece in queue_order:
-        ready = ready_date(piece)
-        for s in slots:
-            if s in taken or (ready and ready > s - dt.timedelta(days=REVIEW_LEAD_DAYS)):
-                continue
-            taken[s] = piece
-            break
+    # Eligible pieces fill slots (assign_slots); the rest are printed as skips, a missed window flagged.
+    queue_order, taken = assign_slots(eligible, slots)
     assigned: list[tuple[dt.date, dict | None, str]] = []
     for s in slots:
         deadline = s - dt.timedelta(days=REVIEW_LEAD_DAYS)

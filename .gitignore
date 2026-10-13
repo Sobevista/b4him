@@ -1,0 +1,5 @@
+# tools/release.py refuses to publish on a dirty tree, so anything a run leaves behind must be ignored here.
+__pycache__/
+.pytest_cache/
+# The release heartbeat: one line per run on this machine. Local evidence, not site content.
+release_log.jsonl
