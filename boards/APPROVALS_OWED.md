@@ -122,3 +122,14 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** _pending_
+
+### APPROVE T5-L4 at 2dffd67 — The Instrument Measures You First
+
+- **What this is to the build.** The Instrument Measures You First (tier5 track), drafted 2026-10-13 on `draft/tier5`. The invariant it teaches: *before you compare things you did not build, subtract your own apparatus*. **The rendered proof: https://claude.ai/artifact/9azvBdcePjfhnXRGATahhX**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `lessons/instrument-measures-you/index.html` = blob `0abde004ddbe`; `tools/tracks/tier5.html` = blob `e4c34bcd9943`. The lessons index gains: **The Instrument Measures You First** — Rank things you didn't build and the first thing you measure is your own rig. Zero the scale before you read it.. It takes the first open slot on or after 2026-10-20.
+- **What it does to the aggregate, measured.** Runway rises by 0.5 weeks (one piece ÷ 2 a week).
+- **Cross-checked by, including where it is weak.**  | 2026-10-13 - the pages were then RE-VOICED into Daniel's first person (E00480) and re-read by an independent Fable seat against d50b52c and the diaries: invariant blocks byte-identical; PASS 4, PASS-WITH-FLAGS 1 (L1 habit line, left for Daniel), FAIL 1 (L3: who ran the two legs). The L3 fix (the two legs were outside AIs put the same ten questions; the language hole was in our threads, found by the searching outside AI) and advisories (L4 'with me', L5 'my comparisons') applied by the orchestrating seat, not re-read. voice_check PASS 6/6.
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
