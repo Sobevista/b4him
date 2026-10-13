@@ -37,6 +37,16 @@ def test_an_unglossed_estate_term_fails_and_a_glossed_one_passes():
     assert vc.measure(good)["unglossed"] == []
 
 
+def test_a_term_named_after_its_plain_definition_counts_as_glossed():
+    base = "I built it and I broke it and we fixed it. " * 10
+    assert vc.measure(base + "I lost the real body of research findings (the corpus) for hours.")["unglossed"] == []
+
+
+def test_the_page_title_is_not_visible_text():
+    page = "<html><head><title>Grade Each Leg</title></head><body><main><p>I wrote this.</p></main></body></html>"
+    assert "Leg" not in vc.visible_text(page)
+
+
 def test_offer_refuses_a_lesson_tier_page_that_fails_the_voice_check(tmp_path, monkeypatch):
     import approvals
     rows = {"id": "T9-L1", "track": "tier9", "page": "lessons/x/index.html", "stage": "DRAFTED"}

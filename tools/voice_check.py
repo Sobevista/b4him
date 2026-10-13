@@ -31,7 +31,7 @@ FIRST_PERSON = re.compile(r"\b(i|me|my|mine|myself|i'm|i've|i'd|i'll|we|us|our|o
 JARGON = ["harness", "seam", "breaker", "seat", "rung", "ledger", "cog", "pipe", "occupant", "applier", "oracle",
           "corpus", "lap", "leg", "orchestrator", "receipt", "spine", "steward", "drift"]
 GLOSS_MARK = re.compile(r"\(|—|–| - |\bmeans\b|\bis\b|\bare\b|\bwhich\b|\bcalled\b|\bi\.e\.|:", re.I)
-CHROME = re.compile(r"<(header|footer|nav)\b.*?</\1>", re.S | re.I)
+CHROME = re.compile(r"<(head|header|footer|nav)\b.*?</\1>", re.S | re.I)
 DROP = re.compile(r"<(script|style)\b.*?</\1>", re.S | re.I)
 TAG = re.compile(r"<[^>]+>")
 
@@ -51,7 +51,9 @@ def measure(text: str) -> dict:
     unglossed = []
     for term in JARGON:
         m = re.search(rf"\b{term}s?\b", text, re.I)
-        if m and not GLOSS_MARK.search(text[m.end():m.end() + GLOSS_WINDOW]):
+        # glossed before the term counts too: "the real body of findings (the corpus)"
+        glossed_before = re.search(r"\((the |a |an )?$", text[max(0, m.start() - 6):m.start()]) if m else None
+        if m and not glossed_before and not GLOSS_MARK.search(text[m.end():m.end() + GLOSS_WINDOW]):
             unglossed.append(f"{term}: …{text[max(0, m.start() - 40):m.end() + 50]}…")
     rate = 1000.0 * fp / n
     return {"words": n, "first_person": fp, "rate": round(rate, 1), "unglossed": unglossed,
