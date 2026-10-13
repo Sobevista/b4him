@@ -37,6 +37,41 @@ line (claude-mythos-5-1, max effort; response in session 1b87b74c's scratchpad `
 
 **DANIEL:** _pending_
 
+### B4-UNATTENDED — may an unattended job push to the public site?
+
+- **What this is to the build.** The daily 08:30 task (`tools/daily.cmd`) pushes approved, byte-pinned pieces to the
+  public b4him repo, which publishes them. You ruled one-tap auto-publish (E00472).
+- **Why this decision exists.** `STANDING_AUTHORITY.md` §4 says unattended jobs hold no outward capability:
+  external contact is "excluded from every clock forever, by his ruling." E00472 was never ruled against that line;
+  the session that built the job did not read it until afterwards.
+- **What changes if you approve.** (a) b4him only, narrowly: the job may push, and only bytes your tap pinned (as
+  built; it refuses everything else). If you reject: (b) the 08:30 job prepares the release and raises a tile, and the
+  push stays your one command each Tue/Fri.
+- **What it does to the aggregate, measured.** (a) zero clicks per release; (b) one command per release, about twice a
+  week.
+- **Cross-checked by, including where it is weak.** The release code is going through the build gate tonight
+  (`b4him-release-cockpit`, independent Fable breaker). Not yet reviewed by an outside model family.
+- **Recommendation.** Approve (a), b4him only, pinned bytes only, as a written exception to §4.
+
+**DANIEL:** _pending_
+
+### B4-INBOX — where pitches reach you
+
+- **What this is to the build.** The planned transcript runner proposes up to five lessons a week. You asked for them
+  to "drop … at my email."
+- **Why this decision exists.** Your harness app is the canonical decision surface (DOC-2), and §4 bars unattended
+  outward contact. An email to yourself may or may not count.
+- **What changes if you approve.** Pitches land as tiles in the app (the same way approvals do), plus a short email
+  notice to you ("4 pitches waiting") from the weekly run.
+- **What it does to the aggregate, measured.** One email a week, always sent, even on a quiet week, so silence never
+  looks like a dead runner.
+- **Cross-checked by, including where it is weak.** Mythos proposed email as the full decision channel; this narrows
+  it to a notice. Not yet outside-reviewed.
+- **Recommendation.** Approve: tiles plus a self-addressed notice, with the notice ruled not to be "external
+  contact."
+
+**DANIEL:** _pending_
+
 ### B4-PEOPLE — the standing people policy
 
 - **What this is to the build.** Transcripts contain your wife, your children, a business partner and a client. Today
