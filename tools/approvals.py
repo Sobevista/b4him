@@ -104,6 +104,14 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
     if not proof.startswith("https://"):
         raise ApprovalError("a tile needs the rendered proof's link: he approves what he SAW, not a description")
     blobs = pinned(commit, row)
+    if str(row.get("track", "")).startswith("tier"):
+        # E00480: a lesson that does not sound like Daniel never reaches him. Measured on the committed bytes.
+        import voice_check
+        for rel in piece_files(row):
+            v = voice_check.measure(voice_check.visible_text(git("show", f"{commit}:{rel}")))
+            if not v["pass"]:
+                raise ApprovalError(f"{rel} fails the voice check: first person {v['rate']}/1k (floor "
+                                    f"{voice_check.FLOOR}), unglossed {[u.split(':')[0] for u in v['unglossed']]}")
     title = title_for(pid, commit, row)
     path = board_path()
     text = path.read_text(encoding="utf-8") if path.exists() else (
