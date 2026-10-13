@@ -8,15 +8,13 @@
 
 Every nav room is real: **About** (eye-gate passed), **Games** (9 arcade rungs playable in-page via iframe), **Lessons** (a 13-module two-tier curriculum + a "find your door" quiz), **Writing** (the 8 web laws + arcade pointers), **Videos**/**Blog** (honest "coming" shells). Shared design system in `/style.css` + `/lesson.css`. Phase-0 parameters are effectively settled (M1–M5, D9/D10, and D11/D12 for the lessons).
 
-**The real blocker is no longer deploy (done 2026-07-22) — it is PUBLISHING (Daniel's gate, not Claude's):**
-1. **Blue-seat review** — rung 1 is written + previewed in `purple-team/publications/` but cannot cross the publication gate: ruling E00189 forbids the red seat self-clearing, so it needs Chelsie's blue-seat review.
-2. **PT-6 — the cyber tier name** — owed by Daniel. Per `PRODUCTION_BOARD.md` (2026-08-31): runway 0.0 weeks, 12 pieces at SOURCE, 0 published.
+**Publishing is now automatic after Daniel's one tap (ruled 2026-10-13, ledger E00472; `PRODUCTION_PLAN.md` §2-3 amended).** The rack: his approval pins exact bytes (`approved_blobs` + the index furniture and entry hash) on main's queue, the bytes wait in git under an `approved/<id>` tag, and `tools/release.py` publishes them on their Tue/Fri slot, pushes, and checks the live bytes. `tools/approvals.py` turns his tap in the harness app (`boards/APPROVALS_OWED.md`) into a racked row. Both were attacked by an independent breaker (11 real defects found, all closed; `tools/test_release_breaker.py`). Every `--apply` run logs to `release_log.jsonl` (local, ignored).
 
-**2026-10-13: the first piece is through Daniel's gates, on a branch.** Glossary I (GC-GLOSS-1, `lessons/glossary-beginner/`):
-- Local branch `draft/gc-gloss-1` at `cde8b20` (origin has `832daba`). Daniel RULED it ("Approval on the Glossary as is") and PREVIEWED it ("Previewed and approved"), harness ledger E00470 and E00471. That branch's board gives it **Tue 2026-10-20**. Publishing that day is merging the branch into main, then Daniel's push. Main's `PRODUCTION_BOARD.md` cannot see the branch's queue until then: it still shows GC-GLOSS-1 at SOURCE.
-- **Do not edit `lessons/glossary-beginner/index.html` before it publishes.** The approval is pinned to its bytes (`approved_blobs` in the queue row). An edit pulls it from its slot and needs a new RULED and PREVIEWED. Daniel's idea to fold each word's four rows is queued as GC-GLOSS-1-R1, deferred by him until after publication.
-- The board generator now gives a piece the first slot whose review-by date it met, and pulls a piece whose approved bytes changed (`tools/test_production_board.py`). These fixes are on main too.
-- Phone previews: never one full-page screenshot. Chromium wraps past 16,384 device pixels, and the 10-12 proof repeated the page (harness LESSONS L-012). Capture tiles and check them against the page.
+**Glossary I (GC-GLOSS-1) is racked for Tue 2026-10-20** on main (RULED E00470, PREVIEWED E00471, tag `approved/GC-GLOSS-1` -> `cde8b20`). A full rehearsal of that release in a throwaway clone produced the page and the lessons index byte-identical to what Daniel previewed on `draft/gc-gloss-1`. **Do not edit `lessons/glossary-beginner/index.html`, `tools/tracks/n8n.html` or GC-GLOSS-1's `index_entry` before then** — an edit pulls it from its slot. Release preflight refuses while main carries unpushed non-release commits, so main must be pushed before the 20th (Daniel's go: b4him is public). His fold-the-rows idea is GC-GLOSS-1-R1, after publication.
+
+**Still blocked outside the machine:** rung 1 (CY-RED-1) needs Chelsie's blue-seat review (E00189: red never self-clears). PT-6 is NOT owed — ruled 2026-09-07 (E00213/E00227): "Purple Foundations", tier three, "the break-and-detect track"; its two naming edits (rung01 hero label, `lessons/index.html` tier-three heading) are still undone. CY-BLUE-1/2 and CY-JARGON-1 wait on the external cross; CY-BLUE-2 also rests on claim X7, which the seat cross refuted (purple-team `NEXT_SESSION.md`).
+
+Phone previews: never one full-page screenshot. Chromium wraps past 16,384 device pixels (harness LESSONS L-012). Capture tiles and check them against the page.
 
 **Un-added from the Drive discovery (Daniel's call):** the older n8n curriculum, glossary, flashcards.
 
@@ -36,8 +34,8 @@ v0 static only. v1 (embedded YouTube) and v2 (owned comments/Patreon) are writte
 
 ## Next action
 
-The site is live (deploy done 2026-07-22). The open work is PUBLISHING, not building.
-- Glossary I publishes Tue 2026-10-20: merge `draft/gc-gloss-1`, then Daniel pushes.
-- Drain the SOURCE queue so the runway climbs: Glossary II (GC-GLOSS-2) is next in order, from the same source and template, with D20 locked. Draft it on its own branch through the same stages.
-- Unblock rung 1: blue-seat review, and the PT-6 cyber tier name.
-- Optionally, decide whether the older n8n curriculum, glossary and flashcards join the shelf.
+The site is live (deploy done 2026-07-22). The open work is PUBLISHING, not building — and runway (0.5 weeks, floor 3) is the number.
+- Glossary I publishes itself Tue 2026-10-20 once main is pushed and the scheduled task is registered.
+- Glossary II/III (E00473: a three-tier glossary from our own material) are being drafted on `draft/gc-gloss-2`.
+- Harness Modules 9–22 are written and not on b4him; converting them is the fastest runway. The scars inventory (26 candidates) is the next source after that.
+- `tools/preview.py` (generalise the phone-tile proof) is owed so every draft reaches Daniel's tile with a proof.

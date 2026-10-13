@@ -61,6 +61,15 @@ stage is skipped, and each has exactly one owner.**
 and approving the page are different judgements; collapsing them is how a good lesson ships
 looking wrong.
 
+> **AMENDED 2026-10-13 (ledger E00472), in Daniel's words:** *"every release day we should have
+> content that should be updated. You and I need to continue working and make the extraction,
+> updating, and approval of automatic"* — asked which meaning, he chose **"One tap, auto after."**
+> So stages 3 and 4 are still his and still both judged, but on **one tap**: he is shown the
+> words and the rendered proof together (a tile in the harness app, `boards/APPROVALS_OWED.md`,
+> carrying the proof link and the commit), and Approve is RULED + PREVIEWED on exactly the bytes
+> at that commit. Everything before the tap (extract, draft, independent review, render proof)
+> and after it (pin, schedule, publish, verify live) runs without him. He is the only gate.
+
 ## 3. The calendar — dates, deadlines, and what happens when one is missed
 
 **Cadence (D15, LOCKED):** **two pages per week, Tuesday and Friday**, hard cap of two in any
@@ -78,8 +87,12 @@ and the whole point is that it does not.
   silent skip is indistinguishable from a schedule nobody is running. *(No silent caps.)*
 - Two consecutive skips is a **signal about runway**, not about the calendar.
 
-**Nothing publishes on a day Daniel has not previewed it.** There is no auto-publish in this
-system and there will not be one.
+**Nothing publishes that Daniel has not previewed.** ~~There is no auto-publish in this system
+and there will not be one.~~ *Superseded 2026-10-13 by E00472:* publishing on the slot is
+automatic (`tools/release.py`, Tue/Fri), and it can only ever publish the exact bytes his tap
+pinned (`approved_blobs`, plus the lessons-index furniture and entry text). Any edit after the
+tap pulls the piece back to him. Every run writes a line to `release_log.jsonl`; a release day
+with no line is a job that did not run, never a quiet success.
 
 ## 4. Preview — what "seeing it" means
 
@@ -130,6 +143,8 @@ pretending to be a system.*
 | **Generator** | `tools/production_board.py` — computes slots, deadlines, runway, overdue and maintenance-due |
 | **Surface** | `PRODUCTION_BOARD.md` — generated, **never hand-edited; re-run the generator** |
 | **Cadence** | **weekly**, and on demand before any publishing sitting |
+| **Approval** | `tools/approvals.py` — `offer` puts a tile in the app; `apply` turns his tap into a racked row (pinned bytes, `approved/<id>` tag) |
+| **Release** | `tools/release.py` — on the slot, writes the pinned bytes to main, marks PUBLISHED, regenerates the index and board, pushes, checks the live bytes. Attacked by an independent breaker before use (`tools/test_release_breaker.py`) |
 
 **What the board is allowed to do:** report state, compute dates, name what is blocked and on
 whom, and print skipped slots with reasons.
