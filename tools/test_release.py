@@ -221,6 +221,52 @@ def test_a_failed_run_raises_a_tile_the_harness_gate_can_read_and_a_good_run_cle
     assert not (root / "release_alarm.md").exists()
 
 
+def _second(root, tmp_path, furniture_text):
+    """A second listed piece approved with NEWER track furniture (the 'more is queued' note moved on)."""
+    furn = tmp_path / "furn2.html"
+    furn.write_text(furniture_text, encoding="utf-8", newline="\n")
+    page = tmp_path / "p2.html"
+    page.write_bytes(b"<h1>Two</h1>\n")
+    fb, pbb = g(root, "hash-object", "-w", str(furn)), g(root, "hash-object", "-w", str(page))
+    entry = {**ENTRY, "numeral": "II", "href": "/lessons/two/", "title": "Two"}
+    return {"id": "TWO", "order": 2, "title": "Two", "stage": "PREVIEWED", "previewed": "2026-10-13",
+            "approved_blobs": {"lessons/two/index.html": pbb, "tools/tracks/n8n.html": fb},
+            "index_entry": entry, "approved_index_entry": pb.entry_sha(entry)}
+
+
+def test_a_later_piece_replaces_shared_furniture_it_was_approved_with(site, tmp_path):
+    root, blob, write_queue = site
+    new_furn = (root / "tools" / "tracks" / "n8n.html").read_text(encoding="utf-8").replace(
+        "More of this track is queued", "Still more of this track is queued")
+    two = _second(root, tmp_path, new_furn)
+    write_queue(piece(blob), two)
+    assert release.plan(TUE)["piece"] == "GC-GLOSS-1"
+    _, drifted = pb.eligible_pieces(pb.load_queue())
+    assert drifted == {}                      # TWO's newer furniture is not drift while GLOSS-1 is still racked
+    release.apply(TUE, release.plan(TUE))
+    fri = dt.date(2026, 10, 23)
+    d = release.plan(fri)
+    assert d["outcome"] == "PUBLISH" and d["piece"] == "TWO"
+    release.apply(fri, d)
+    index = (root / "lessons" / "index.html").read_text(encoding="utf-8")
+    assert "Still more of this track is queued" in index and index.count('class="mod"') == 2
+
+
+def test_furniture_edited_outside_an_approval_is_never_overwritten(site, tmp_path):
+    root, blob, write_queue = site
+    two = _second(root, tmp_path, "<p>new furniture</p>\n{{entries}}\n")
+    write_queue(piece(blob, stage="PUBLISHED", published="2026-10-09"), two)
+    (root / "lessons" / "glossary-beginner").mkdir(parents=True)
+    g(root, "cat-file", "blob", blob)  # the published page must be in the tree for a published row
+    (root / PAGE).write_bytes(subprocess.run([GIT, "-C", str(root), "cat-file", "blob", blob],
+                                             capture_output=True).stdout)
+    furn = root / "tools" / "tracks" / "n8n.html"
+    furn.write_text(furn.read_text(encoding="utf-8") + "<p>hand edit</p>\n", encoding="utf-8", newline="\n")
+    g(root, "add", "-A")
+    g(root, "commit", "-q", "-m", "hand edit to furniture")
+    assert release.plan(TUE)["outcome"] != "PUBLISH"      # TWO is drifted: the tree holds unapproved furniture
+
+
 def test_apply_refuses_any_day_but_today(site, capsys):
     root, blob, write_queue = site
     write_queue(piece(blob))

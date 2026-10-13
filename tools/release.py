@@ -205,14 +205,23 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
 
     row, pid = decision["row"], decision["piece"]
     root = repo()
+    approved = pb.approved_bytes([r for r in pb.load_queue() if not r.get("_broken")])
     created_files: list[Path] = []
     created_dirs: list[Path] = []
     touched: list[Path] = []
     try:
         for rel, blob in row["approved_blobs"].items():
             dest = root / rel
-            if dest.exists() and pb.blob_sha(dest) != blob and row.get("kind") != pb.REVISION:
-                raise ReleaseError(f"{rel} already exists with other bytes, and the piece is not a revision")
+            have = pb.blob_sha(dest) if dest.exists() else None
+            if have is not None and have != blob:
+                # Replacing bytes is allowed only where the piece may replace (a revision, or shared track
+                # furniture) AND the tree holds bytes some approval pinned: a file edited outside an approval is
+                # never overwritten, it is refused.
+                if not pb.replaceable(row, rel):
+                    raise ReleaseError(f"{rel} already exists with other bytes, and the piece is not a revision")
+                if have not in approved.get(rel, set()):
+                    raise ReleaseError(f"{rel} holds bytes no published piece approved ({have[:12]}); refusing "
+                                       f"to overwrite an edit made outside an approval")
             if not dest.exists():
                 created_files.append(dest)
                 d = dest.parent

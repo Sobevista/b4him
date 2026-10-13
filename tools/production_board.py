@@ -112,6 +112,26 @@ def entry_sha(entry: dict) -> str:
     return hashlib.sha256(json.dumps(entry, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
+SHARED_PREFIX = "tools/tracks/"     # lessons-index furniture: one file per track, pinned by every piece listed in it
+
+
+def replaceable(row: dict, rel: str) -> bool:
+    """May this racked piece replace a path that already holds another piece's published bytes? A revision may
+    replace its page; any piece may replace shared track furniture (each listed piece pins the furniture it was
+    approved with). Everything else must arrive at an empty path."""
+    return row.get("kind") == REVISION or rel.startswith(SHARED_PREFIX)
+
+
+def approved_bytes(rows: list[dict]) -> dict[str, set[str]]:
+    """{path: blobs some approval pinned for it} over every row at PREVIEWED or later, published or racked."""
+    out: dict[str, set[str]] = {}
+    for r in rows:
+        if not r.get("_broken") and stage_index(r) >= ELIGIBLE_STAGE:
+            for rel, blob in (r.get("approved_blobs") or {}).items():
+                out.setdefault(rel, set()).add(blob)
+    return out
+
+
 def published_owners(rows: list[dict]) -> dict[str, tuple[str, str]]:
     """{path: (id, blob)} of the LATEST published piece that pinned each path. A revision supersedes the piece it
     revised, and shared files (track furniture) belong to whoever published them last."""
@@ -123,7 +143,7 @@ def published_owners(rows: list[dict]) -> dict[str, tuple[str, str]]:
     return out
 
 
-def approval_drift(row: dict, owners: dict | None = None) -> list[str]:
+def approval_drift(row: dict, owners: dict | None = None, approved: dict | None = None) -> list[str]:
     """Files whose bytes are no longer the ones Daniel approved. RULED and PREVIEWED cover the bytes he saw,
     recorded as `approved_blobs` {path: git blob id}; a later edit is a new piece of work, never inherited.
 
@@ -142,7 +162,7 @@ def approval_drift(row: dict, owners: dict | None = None) -> list[str]:
         if not published and blob_in_store(want):
             if have is None:
                 continue
-            if row.get("kind") == REVISION and owners and have == owners.get(rel, (None, None))[1]:
+            if replaceable(row, rel) and have in (approved or {}).get(rel, set()):
                 continue
         out.append(f"{rel} (approved {want[:12]}, now {have[:12] if have else 'missing'})")
     return out
@@ -160,9 +180,9 @@ def eligible_pieces(rows: list[dict]) -> tuple[list[dict], dict]:
     """(pieces that may hold a slot, {id: drift}). A piece whose approved bytes changed holds no slot until
     Daniel rules and previews it again."""
     pipeline = [r for r in rows if not r.get("_broken") and stage_index(r) < STAGES.index("PUBLISHED")]
-    owners = published_owners(rows)
+    owners, approved = published_owners(rows), approved_bytes(rows)
     drifted = {r.get("id"): d for r in pipeline if stage_index(r) >= STAGES.index("RULED")
-               for d in [approval_drift(r, owners)] if d}
+               for d in [approval_drift(r, owners, approved)] if d}
     eligible = [r for r in pipeline if stage_index(r) >= ELIGIBLE_STAGE and r.get("id") not in drifted]
     return eligible, drifted
 
