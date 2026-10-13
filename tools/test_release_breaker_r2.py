@@ -620,11 +620,6 @@ def test_tap_pins_the_tiled_commit_so_a_ruling_naming_an_untiled_commit_moves_no
     assert (root / G2).read_text(encoding="utf-8") == "<h1>Glossary II</h1>\n"
 
 
-@pytest.mark.xfail(strict=True, reason="NIT, outside the registered families: approvals.apply tags approved/<id> "
-                   "BEFORE mark_board can refuse, so a refused ruling moves the tag off the racked commit. The row "
-                   "still pins T1 and publishes T1 while T1 is reachable from a branch; after that branch is "
-                   "deleted, gc may drop T1's blobs and the release FAILs loudly (bytes gone). Durability hole, not "
-                   "a wrong publish. Remove this marker when fixed (tag after mark_board, or restore it on refusal).")
 def test_NIT_a_refused_ruling_leaves_the_approved_tag_on_the_racked_commit(drafts):
     root, _ = drafts
     t1, t2, led = _rack_then_move_on(root)

@@ -228,9 +228,10 @@ def apply(today: dt.date | None = None, led=None) -> list[str]:
             touched = [board_path()]
             if verdict == "APPROVE":
                 rack(pid, commit, ev, today)
-                git("tag", "-f", f"approved/{pid}", commit)
                 touched.append(pb.QUEUE)
             mark_board(title, verdict, ev["id"], today)
+            if verdict == "APPROVE":      # the tag moves only after every check that can refuse
+                git("tag", "-f", f"approved/{pid}", commit)
             pb.BOARD.write_text(pb.build(today), encoding="utf-8", newline="\n")
             touched.append(pb.BOARD)
             git("add", "--", *sorted({p.relative_to(repo()).as_posix() for p in touched}))
