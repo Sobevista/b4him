@@ -106,6 +106,26 @@ def pin_problems(row: dict) -> list[str]:
     return out
 
 
+def live_drift(rows: list[dict], skip=()) -> list[str]:
+    """Content the lessons index would render that no approval pinned: a PUBLISHED row's index_entry that no longer
+    hashes to its approved_index_entry, or track furniture in the tree that differs from the blob its latest
+    published owner pinned. The index is regenerated from all of it on every release, so all of it must be pinned.
+    `skip` names furniture the releasing piece replaces itself; apply() refuses a hand edit there on its own."""
+    out = []
+    for r in rows:
+        if r.get("_broken") or pb.stage_index(r) < pb.STAGES.index("PUBLISHED") or not r.get("index_entry"):
+            continue
+        if r.get("approved_index_entry") != pb.entry_sha(r["index_entry"]):
+            out.append(f"{r.get('id')}: published index_entry is not the text Daniel approved")
+    for rel, (owner, want) in sorted(pb.published_owners(rows).items()):
+        if rel.startswith(pb.SHARED_PREFIX) and rel not in skip:
+            have = pb.blob_sha(repo() / rel)
+            if have != want:
+                out.append(f"{rel} is not the bytes {owner} pinned (pinned {want[:12]}, now "
+                           f"{have[:12] if have else 'missing'})")
+    return out
+
+
 def plan(day: dt.date) -> dict:
     """What the release for `day` would do. Pure reading; never touches the tree."""
     rows = [r for r in pb.load_queue() if not r.get("_broken")]
@@ -123,6 +143,12 @@ def plan(day: dt.date) -> dict:
             and any(not pb.blob_in_store(b) for b in (r.get("approved_blobs") or {}).values())]
     _, taken = pb.assign_slots(eligible, pb.next_slots(day - dt.timedelta(days=1), 12))
     piece = taken.get(day)
+    live = live_drift(rows, skip=(piece.get("approved_blobs") or {}) if piece else ())
+    if live:
+        why = "live content that no approval pinned would be re-rendered: " + "; ".join(live)
+        if piece is None and drifted:
+            why += f"; changed since approval, so back with Daniel: {', '.join(drifted)}"
+        return {"outcome": "FAIL", "why": why, **({"piece": piece["id"]} if piece else {})}
     if piece is None:
         if lost:
             return {"outcome": "FAIL", "why": f"approved bytes are gone from the object store for {', '.join(lost)}: "
@@ -204,6 +230,9 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
                            "start on top of someone else's")
 
     row, pid = decision["row"], decision["piece"]
+    live = live_drift([r for r in pb.load_queue() if not r.get("_broken")], skip=row.get("approved_blobs") or {})
+    if live:
+        raise ReleaseError("the lessons index would render content no approval pinned: " + "; ".join(live))
     root = repo()
     approved = pb.approved_bytes([r for r in pb.load_queue() if not r.get("_broken")])
     created_files: list[Path] = []
@@ -272,6 +301,27 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
     return git("rev-parse", "HEAD").strip()
 
 
+def commit_paths(h: str) -> set[str]:
+    """Every path commit `h` changes relative to ANY parent (a merge shows nothing against itself)."""
+    parents = git("rev-list", "--parents", "-n", "1", h).split()[1:]
+    if not parents:
+        return set(git("diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", h).split("\0")) - {""}
+    out: set[str] = set()
+    for p in parents:
+        out |= set(git("diff", "--no-renames", "--name-only", "-z", p, h).split("\0"))
+    return out - {""}
+
+
+def is_release_of(h: str, paths: set[str], row: dict) -> bool:
+    """Is commit `h` the release of `row` (published today)? By paths and bytes: it touches only what the row
+    pinned plus the queue/board/lessons-index the release writes, and every pinned path it touches holds the
+    pinned blob."""
+    pinned = row.get("approved_blobs") or {}
+    if not paths <= set(pinned) | BOOKKEEPING | {"lessons/index.html"}:
+        return False
+    return all(git("rev-parse", f"{h}:{rel}", check=False).strip() == pinned[rel] for rel in paths & set(pinned))
+
+
 def preflight(day: dt.date) -> list[str]:
     """Before a --push run: [] if main carries nothing unpushed, else the hashes of release commits stranded from
     TODAY (to re-push). Anything else unpushed refuses: `git push` would send it live with the release."""
@@ -281,12 +331,15 @@ def preflight(day: dt.date) -> list[str]:
     ahead = [l.split("\t", 1) for l in git("log", "--format=%H\t%s", "origin/main..main").splitlines() if l]
     if not ahead:
         return []
-    marker = f" {day:%a} {day} slot: "
-    stranded = [h for h, s in ahead if s.startswith("PUBLISHED ") and marker in s]
-    # approvals.py's own commits (an offer, a tap applied) change only bookkeeping, never a page: judged by the
-    # PATHS each commit touches, never by its message, so nothing can ride along by naming itself well.
-    bookkeeping = [h for h, s in ahead if h not in stranded
-                   and set(git("diff-tree", "--no-commit-id", "--name-only", "-r", h).split()) <= BOOKKEEPING]
+    # Every commit is judged by the PATHS it touches against each parent (a merge lists none against itself),
+    # never by its message, so nothing can ride along by naming itself well. approvals.py's own commits (an offer,
+    # a tap applied) change only bookkeeping; a stranded release commit changes only what a row published today
+    # pinned, plus the files the release itself writes.
+    todays = [r for r in pb.load_queue() if not r.get("_broken")
+              and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day]
+    paths = {h: commit_paths(h) for h, _ in ahead}
+    stranded = [h for h, _ in ahead if any(is_release_of(h, paths[h], r) for r in todays)]
+    bookkeeping = [h for h, _ in ahead if h not in stranded and paths[h] <= BOOKKEEPING]
     others = [s for h, s in ahead if h not in stranded and h not in bookkeeping]
     if others:
         raise ReleaseError(f"main has {len(others)} unpushed commit(s) that are not today's release "
