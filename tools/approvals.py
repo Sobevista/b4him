@@ -78,6 +78,18 @@ def blobs_at(commit: str, files: list[str]) -> dict:
     return {f: git("rev-parse", f"{commit}:{f}").strip() for f in files}
 
 
+def pinned(commit: str, row: dict) -> dict:
+    """Everything the tap approves: the piece's files and, if it is listed in the lessons index, that track's
+    furniture as it stands at the same commit (release.pin_problems refuses a piece without it)."""
+    files = piece_files(row)
+    entry = row.get("index_entry")
+    if entry:
+        if not entry.get("track"):
+            raise ApprovalError(f"{row.get('id')}: index_entry names no track")
+        files = files + [f"tools/tracks/{entry['track']}.html"]
+    return blobs_at(commit, files)
+
+
 # ---------------------------------------------------------------- offer
 def title_for(pid: str, commit: str, row: dict) -> str:
     return f"APPROVE {pid} at {commit[:7]} — {row.get('title', pid)}"
@@ -91,7 +103,7 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
         raise ApprovalError(f"{pid} is at {row.get('stage')} at {commit[:7]}: nothing drafted to approve")
     if not proof.startswith("https://"):
         raise ApprovalError("a tile needs the rendered proof's link: he approves what he SAW, not a description")
-    blobs = blobs_at(commit, piece_files(row))
+    blobs = pinned(commit, row)
     title = title_for(pid, commit, row)
     path = board_path()
     text = path.read_text(encoding="utf-8") if path.exists() else (
@@ -169,10 +181,12 @@ def mark_board(title: str, verdict: str, event: str, today: dt.date) -> None:
 def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
     """Copy the approved row onto main's queue at PREVIEWED with its pinned blobs. One line changes (or one is added)."""
     row = row_at(commit, pid)
-    blobs = blobs_at(commit, piece_files(row))
+    blobs = pinned(commit, row)
     stamp = f"{today} - Daniel, one tap in the app on the rendered proof (ledger {event['id']})"
     row.update(stage="PREVIEWED", ruled=stamp, previewed=stamp, approved_blobs=blobs,
                approved_commit=commit, approved_tag=f"approved/{pid}", since=today.isoformat())
+    if row.get("index_entry"):
+        row["approved_index_entry"] = pb.entry_sha(row["index_entry"])
     text = pb.QUEUE.read_text(encoding="utf-8")
     out, hits = [], 0
     for line in text.split("\n"):

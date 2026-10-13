@@ -104,19 +104,46 @@ def blob_in_store(blob: str) -> bool:
         return False
 
 
-def approval_drift(row: dict) -> list[str]:
+REVISION = "revision of a published page"
+
+
+def entry_sha(entry: dict) -> str:
+    """The pin on a piece's lessons-index entry: its text is site content Daniel approves like the page."""
+    return hashlib.sha256(json.dumps(entry, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def published_owners(rows: list[dict]) -> dict[str, tuple[str, str]]:
+    """{path: (id, blob)} of the LATEST published piece that pinned each path. A revision supersedes the piece it
+    revised, and shared files (track furniture) belong to whoever published them last."""
+    out: dict[str, tuple[str, str]] = {}
+    pubs = [r for r in rows if not r.get("_broken") and stage_index(r) >= STAGES.index("PUBLISHED")]
+    for r in sorted(pubs, key=lambda r: (str(r.get("published", "")), r.get("order", 999))):
+        for rel, blob in (r.get("approved_blobs") or {}).items():
+            out[rel] = (r.get("id"), blob)
+    return out
+
+
+def approval_drift(row: dict, owners: dict | None = None) -> list[str]:
     """Files whose bytes are no longer the ones Daniel approved. RULED and PREVIEWED cover the bytes he saw,
     recorded as `approved_blobs` {path: git blob id}; a later edit is a new piece of work, never inherited.
 
     A file not yet in the tree is not drift while its approved blob sits in the object store: that is a piece
-    racked for release (tools/release.py writes those exact bytes on its slot). Once PUBLISHED it must be in the
-    tree, and a missing file is drift again."""
+    racked for release (tools/release.py writes those exact bytes on its slot). A revision's file may hold the
+    published bytes it replaces. Once PUBLISHED a file must be in the tree with its bytes — checked only for the
+    paths this piece still owns (`owners`), since a later revision legitimately replaces them."""
     out = []
-    unpublished = stage_index(row) < STAGES.index("PUBLISHED")
+    published = stage_index(row) >= STAGES.index("PUBLISHED")
     for rel, want in (row.get("approved_blobs") or {}).items():
-        have = blob_sha(REPO / rel)
-        if have == want or (have is None and unpublished and blob_in_store(want)):
+        if published and owners is not None and owners.get(rel, (None,))[0] != row.get("id"):
             continue
+        have = blob_sha(REPO / rel)
+        if have == want:
+            continue
+        if not published and blob_in_store(want):
+            if have is None:
+                continue
+            if row.get("kind") == REVISION and owners and have == owners.get(rel, (None, None))[1]:
+                continue
         out.append(f"{rel} (approved {want[:12]}, now {have[:12] if have else 'missing'})")
     return out
 
@@ -133,8 +160,9 @@ def eligible_pieces(rows: list[dict]) -> tuple[list[dict], dict]:
     """(pieces that may hold a slot, {id: drift}). A piece whose approved bytes changed holds no slot until
     Daniel rules and previews it again."""
     pipeline = [r for r in rows if not r.get("_broken") and stage_index(r) < STAGES.index("PUBLISHED")]
+    owners = published_owners(rows)
     drifted = {r.get("id"): d for r in pipeline if stage_index(r) >= STAGES.index("RULED")
-               for d in [approval_drift(r)] if d}
+               for d in [approval_drift(r, owners)] if d}
     eligible = [r for r in pipeline if stage_index(r) >= ELIGIBLE_STAGE and r.get("id") not in drifted]
     return eligible, drifted
 
@@ -163,6 +191,8 @@ def build(today: dt.date) -> str:
     published = [r for r in live if stage_index(r) >= STAGES.index("PUBLISHED")]
     pipeline = [r for r in live if stage_index(r) < STAGES.index("PUBLISHED")]
     eligible, drifted = eligible_pieces(live)
+    owners = published_owners(live)
+    live_drift = {r.get("id"): d for r in published for d in [approval_drift(r, owners)] if d}
 
     runway_weeks = len(eligible) / PER_WEEK_CAP if PER_WEEK_CAP else 0
     if runway_weeks < RUNWAY_FLOOR_WEEKS:
@@ -214,16 +244,19 @@ def build(today: dt.date) -> str:
             A(f"- `{b['id']}` — {b['title']}")
         A("")
 
-    if drifted:
+    if drifted or live_drift:
         A("## ⚠ CHANGED SINCE DANIEL'S APPROVAL")
         A("")
         A("*RULED and PREVIEWED cover the bytes he saw (`approved_blobs`). These files changed after that, so "
           "the piece holds no slot until he rules and previews it again (`PRODUCTION_PLAN` §2: never inherited "
-          "from a previous yes).*")
+          "from a previous yes). A **live** piece listed here means the site no longer serves what he approved.*")
         A("")
         for r in pipeline:
             if r.get("id") in drifted:
                 A(f"- {r.get('title','?')}: " + "; ".join(drifted[r.get("id")]))
+        for r in published:
+            if r.get("id") in live_drift:
+                A(f"- **live** {r.get('title','?')}: " + "; ".join(live_drift[r.get("id")]))
         A("")
 
     # ---- what is blocked on Daniel -----------------------------------------

@@ -64,8 +64,25 @@ def site(tmp_path, monkeypatch):
 
 
 def piece(blob, **kw):
-    return {"id": "GC-GLOSS-1", "order": 1, "title": "Glossary I", "stage": "PREVIEWED",
-            "previewed": "2026-10-13", "approved_blobs": {PAGE: blob}, "index_entry": ENTRY, **kw}
+    furn = "tools/tracks/n8n.html"
+    blobs = {PAGE: blob, furn: pb.blob_sha(pb.REPO / furn)}
+    base = {"id": "GC-GLOSS-1", "order": 1, "title": "Glossary I", "stage": "PREVIEWED",
+            "previewed": "2026-10-13", "approved_blobs": blobs, "index_entry": ENTRY,
+            "approved_index_entry": pb.entry_sha(ENTRY)}
+    return {**base, **kw}
+
+
+def test_an_unpinned_index_entry_refuses(site):
+    root, blob, write_queue = site
+    write_queue(piece(blob, approved_index_entry=None))
+    d = release.plan(TUE)
+    assert d["outcome"] == "FAIL" and "index_entry" in d["why"]
+
+
+def test_an_entry_edited_after_approval_refuses(site):
+    root, blob, write_queue = site
+    write_queue(piece(blob, index_entry={**ENTRY, "blurb": "words nobody approved"}))
+    assert release.plan(TUE)["outcome"] == "FAIL"
 
 
 def test_a_racked_piece_is_eligible_before_its_file_exists(site):

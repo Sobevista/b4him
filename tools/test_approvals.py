@@ -112,7 +112,10 @@ def test_a_tap_racks_exactly_the_tiled_commit_and_the_release_publishes_it(site)
     assert report[0].startswith("APPLIED  APPROVE  G2")
     row = next(r for r in pb.load_queue() if r["id"] == "G2")
     assert row["stage"] == "PREVIEWED" and row["approved_commit"] == tiled
-    assert row["approved_blobs"] == {PAGE: g(site, "rev-parse", f"{tiled}:{PAGE}")}
+    furn = "tools/tracks/n8n.html"
+    assert row["approved_blobs"] == {PAGE: g(site, "rev-parse", f"{tiled}:{PAGE}"),
+                                     furn: g(site, "rev-parse", f"{tiled}:{furn}")}
+    assert row["approved_index_entry"] == pb.entry_sha(row["index_entry"])
     assert g(site, "rev-parse", "approved/G2") == tiled
     assert "[RULED 2026-10-12 APPROVE" in (site / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
     assert not led.rulings_owed()                      # applied + superseded

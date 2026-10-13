@@ -7,19 +7,23 @@ content ... make the extraction, updating, and approval of automatic", ruled as 
 the only gate; everything after his approval runs by itself.
 
 HOW A PIECE WAITS (the rack). His approval pins the exact bytes he previewed as `approved_blobs`
-{path: git blob id} on the piece's queue row, on main. The bytes wait in git's object store (kept reachable by a
-`approved/<id>` tag), not in the tree, so nothing is live early and no branch has to be merged on the day.
+{path: git blob id} on the piece's queue row, on main — the page AND, for a piece listed in the lessons index, the
+track's furniture file, with the index entry's text pinned by hash (`approved_index_entry`). The bytes wait in
+git's object store (kept reachable by an `approved/<id>` tag), so nothing is live early and no branch is merged.
 
-WHAT A RELEASE DOES, in order, refusing at the first thing that is not exactly right:
-  1. today is a Tue/Fri slot, the board gives it a piece, and the 2-per-7-days cap has room
-  2. main is checked out and clean (and, with --push, not behind origin)
+WHAT A RELEASE DOES, refusing at the first thing that is not exactly right:
+  0. (--push) main is not behind origin, and carries nothing unpushed except a release commit stranded from
+     today, which is re-pushed: a push sends every local commit, so anything else would go live unapproved
+  1. today is a Tue/Fri slot, nothing has published today, the 2-per-7-days cap has room, and the board gives
+     the slot a piece whose pins are whole
+  2. main is checked out and clean
   3. each approved blob is written to its path and re-hashed to the approved id
-  4. the row becomes PUBLISHED (only that line of the queue changes), the lessons index track blocks and the
-     board are regenerated, and every site-root link in the touched pages resolves in the new tree
-  5. one commit, explicit paths; --push pushes main, --verify-live waits for the live bytes to hash to the
-     approved blob
-Any refusal after step 2 restores the tree. Every run, publish or skip or failure, appends to release_log.jsonl:
-a release day with no log line is a job that did not run, never a quiet success.
+  4. the row becomes PUBLISHED (only that queue line changes), the lessons-index track blocks and the board are
+     regenerated, and every site-root link in the touched pages resolves in the new tree
+  5. one commit, explicit paths; --push pushes it; --verify-live waits for the live bytes to hash to the blobs
+Any refusal restores the tree. Every --apply run appends one line to release_log.jsonl, whatever happens: a
+release day with no log line is a job that did not run, never a quiet success. Outcomes say what is KNOWN:
+COMMITTED (not pushed), PUSHED-UNVERIFIED, PUBLISHED (live bytes matched), SKIP, FAIL.
 
     py tools/release.py                      # dry run for today: what would publish, and why
     py tools/release.py --date 2026-10-20    # dry run for another day
@@ -49,7 +53,9 @@ ENTRY = ('    <a class="mod" href="{href}">\n'
          '      <span class="n">{numeral}</span>\n'
          '      <span><h2>{title}</h2><p>{blurb}</p></span>\n'
          '    </a>')
+ENTRY_KEYS = ("track", "numeral", "href", "title", "blurb")
 LINK_RE = re.compile(r'(?:href|src)="(/[^"#?]*)')
+RELEASE_SUBJECT = "PUBLISHED {pid} on its {day:%a} {day} slot: {title}"
 
 
 class ReleaseError(RuntimeError):
@@ -67,6 +73,10 @@ def git(*args: str, binary: bool = False, check: bool = True):
     return p.stdout if binary else p.stdout.decode("utf-8", "replace")
 
 
+def furniture_rel(track: str) -> str:
+    return f"tools/tracks/{track}.html"
+
+
 # ---------------------------------------------------------------- what is due
 def published_on(row: dict) -> dt.date | None:
     try:
@@ -75,23 +85,53 @@ def published_on(row: dict) -> dt.date | None:
         return None
 
 
+def pin_problems(row: dict) -> list[str]:
+    """What is not pinned that would go live with this piece. The index entry is site content: its text and its
+    track's furniture are approved with the page or the piece does not publish."""
+    if not row.get("approved_blobs"):
+        return ["no approved_blobs: there are no pinned bytes to publish"]
+    entry = row.get("index_entry")
+    if not entry:
+        return []
+    out = []
+    missing = [k for k in ENTRY_KEYS if not entry.get(k)]
+    if missing:
+        out.append(f"index_entry lacks {', '.join(missing)}")
+    if row.get("approved_index_entry") != pb.entry_sha(entry):
+        out.append("index_entry text is not the text Daniel approved (approved_index_entry missing or changed)")
+    if entry.get("track") and furniture_rel(entry["track"]) not in row["approved_blobs"]:
+        out.append(f"the track furniture {furniture_rel(entry.get('track'))} is not pinned in approved_blobs")
+    return out
+
+
 def plan(day: dt.date) -> dict:
     """What the release for `day` would do. Pure reading; never touches the tree."""
     rows = [r for r in pb.load_queue() if not r.get("_broken")]
     if day.weekday() not in pb.CADENCE_DAYS:
         return {"outcome": "SKIP", "why": f"{day:%a} is not a release day (Tue/Fri)"}
+    today_pub = [r["id"] for r in rows if published_on(r) == day]
+    if today_pub:
+        return {"outcome": "SKIP", "why": f"already published today: {', '.join(today_pub)} (one slot, one piece)"}
     recent = [r for r in rows if (p := published_on(r)) and day - dt.timedelta(days=6) <= p <= day]
     if len(recent) >= pb.PER_WEEK_CAP:
         return {"outcome": "SKIP", "why": f"cap: {len(recent)} published in the 7 days to {day} "
                                           f"({', '.join(r['id'] for r in recent)})"}
-    eligible, _ = pb.eligible_pieces(rows)
+    eligible, drifted = pb.eligible_pieces(rows)
+    lost = [r["id"] for r in rows if pb.STAGES.index("RULED") <= pb.stage_index(r) < pb.STAGES.index("PUBLISHED")
+            and any(not pb.blob_in_store(b) for b in (r.get("approved_blobs") or {}).values())]
     _, taken = pb.assign_slots(eligible, pb.next_slots(day - dt.timedelta(days=1), 12))
     piece = taken.get(day)
     if piece is None:
-        return {"outcome": "SKIP", "why": "no eligible piece holds this slot (nothing PREVIEWED by T-7, or drifted)"}
-    if not piece.get("approved_blobs"):
-        return {"outcome": "FAIL", "piece": piece["id"],
-                "why": "the piece holds the slot but has no approved_blobs: there are no pinned bytes to publish"}
+        if lost:
+            return {"outcome": "FAIL", "why": f"approved bytes are gone from the object store for {', '.join(lost)}: "
+                                              f"an approved piece lost its slot (restore its approved/<id> tag)"}
+        why = "no eligible piece holds this slot (nothing PREVIEWED by T-7)"
+        if drifted:
+            why += f"; changed since approval, so back with Daniel: {', '.join(drifted)}"
+        return {"outcome": "SKIP", "why": why}
+    problems = pin_problems(piece)
+    if problems:
+        return {"outcome": "FAIL", "piece": piece["id"], "why": "; ".join(problems)}
     return {"outcome": "PUBLISH", "piece": piece["id"], "row": piece}
 
 
@@ -101,7 +141,7 @@ def render_tracks(index_html: str, rows: list[dict]) -> str:
     nothing published renders empty, so an empty heading never goes live."""
     def fill(m: re.Match) -> str:
         track = m.group("track")
-        furniture = repo() / "tools" / "tracks" / f"{track}.html"
+        furniture = repo() / furniture_rel(track)
         entries = sorted((r for r in rows if pb.stage_index(r) >= pb.STAGES.index("PUBLISHED")
                           and (r.get("index_entry") or {}).get("track") == track),
                          key=lambda r: (r["index_entry"].get("position", r.get("order", 999)), r.get("id", "")))
@@ -109,8 +149,11 @@ def render_tracks(index_html: str, rows: list[dict]) -> str:
             return m.group(1) + m.group(4)
         if not furniture.exists():
             raise ReleaseError(f"track '{track}' has published entries but no furniture at {furniture}")
-        block = furniture.read_text(encoding="utf-8").replace(
-            "{{entries}}", "\n".join(ENTRY.format(**r["index_entry"]) for r in entries))
+        try:
+            items = "\n".join(ENTRY.format(**r["index_entry"]) for r in entries)
+        except KeyError as e:
+            raise ReleaseError(f"an index_entry in track '{track}' lacks {e}") from None
+        block = furniture.read_text(encoding="utf-8").replace("{{entries}}", items)
         return m.group(1) + block.lstrip("\n") + m.group(4)
     return TRACK_RE.sub(fill, index_html)
 
@@ -118,14 +161,14 @@ def render_tracks(index_html: str, rows: list[dict]) -> str:
 def broken_links(paths: list[Path]) -> list[str]:
     bad = []
     for p in paths:
-        if p.suffix != ".html" or not p.exists():
+        if p.suffix != ".html" or not p.exists() or "tools" in p.relative_to(repo()).parts:
             continue
         for link in LINK_RE.findall(p.read_text(encoding="utf-8")):
             if link.startswith("//"):
                 continue
             target = repo() / link.lstrip("/")
             ok = (target / "index.html").exists() if link.endswith("/") else (
-                target.exists() and target.is_file() or (target / "index.html").exists())
+                target.is_file() or (target / "index.html").exists())
             if not ok:
                 bad.append(f"{p.relative_to(repo()).as_posix()} -> {link}")
     return bad
@@ -147,27 +190,33 @@ def set_published(queue_text: str, pid: str, day: dt.date) -> str:
     return "\n".join(out)
 
 
-def apply(day: dt.date, decision: dict, push: bool) -> str:
+def apply(day: dt.date, decision: dict, push: bool = False) -> str:
+    """Write, check and commit one release. Returns the commit. `push` is accepted for old callers; pushing and
+    the origin checks live in preflight()/main()."""
+    if decision.get("outcome") != "PUBLISH":
+        raise ReleaseError(f"nothing to publish: {decision.get('outcome')} - {decision.get('why', '')}")
     if git("rev-parse", "--abbrev-ref", "HEAD").strip() != "main":
         raise ReleaseError("not on main: a release writes to main and nowhere else")
     if git("status", "--porcelain").strip():
         raise ReleaseError("the tree is not clean: a release commits only its own changes, so it refuses to "
                            "start on top of someone else's")
-    if push:
-        git("fetch", "-q", "origin", "main")
-        if git("rev-list", "--count", "main..origin/main").strip() != "0":
-            raise ReleaseError("main is behind origin: something was pushed from elsewhere; a human looks first")
 
     row, pid = decision["row"], decision["piece"]
     root = repo()
-    created, touched = [], []
+    created_files: list[Path] = []
+    created_dirs: list[Path] = []
+    touched: list[Path] = []
     try:
         for rel, blob in row["approved_blobs"].items():
             dest = root / rel
-            if dest.exists() and pb.blob_sha(dest) != blob and row.get("kind") != "revision of a published page":
+            if dest.exists() and pb.blob_sha(dest) != blob and row.get("kind") != pb.REVISION:
                 raise ReleaseError(f"{rel} already exists with other bytes, and the piece is not a revision")
             if not dest.exists():
-                created.append(dest)
+                created_files.append(dest)
+                d = dest.parent
+                while not d.exists():
+                    created_dirs.append(d)
+                    d = d.parent
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(git("cat-file", "blob", blob, binary=True))
             if pb.blob_sha(dest) != blob:
@@ -179,7 +228,8 @@ def apply(day: dt.date, decision: dict, push: bool) -> str:
         touched.append(pb.QUEUE)
         index = root / "lessons" / "index.html"
         if index.exists():
-            new = render_tracks(index.read_text(encoding="utf-8"), [r for r in pb.load_queue() if not r.get("_broken")])
+            new = render_tracks(index.read_text(encoding="utf-8"),
+                                [r for r in pb.load_queue() if not r.get("_broken")])
             index.write_text(new, encoding="utf-8", newline="\n")
             touched.append(index)
         bad = broken_links(touched)
@@ -191,36 +241,62 @@ def apply(day: dt.date, decision: dict, push: bool) -> str:
         rels = sorted({p.relative_to(root).as_posix() for p in touched})
         git("add", "--", *rels)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as fh:
-            fh.write(f"PUBLISHED {pid} on its {day:%a} {day} slot: {row.get('title', pid)}\n\n"
-                     f"Written by tools/release.py from the bytes Daniel approved (approved_blobs), "
-                     f"re-hashed before commit.\n")
+            fh.write(RELEASE_SUBJECT.format(pid=pid, day=day, title=row.get("title", pid)) + "\n\n"
+                     "Written by tools/release.py from the bytes Daniel approved (approved_blobs), "
+                     "re-hashed before commit.\n")
             msg = fh.name
         git("commit", "-q", "-F", msg)
         Path(msg).unlink(missing_ok=True)
     except Exception:
         git("reset", "-q", "--", ".", check=False)
         git("checkout", "--", ".", check=False)
-        for p in created:
+        for p in created_files:
             p.unlink(missing_ok=True)
+        for d in sorted(created_dirs, key=lambda p: len(p.parts), reverse=True):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
         raise
     return git("rev-parse", "HEAD").strip()
 
 
+def preflight(day: dt.date) -> list[str]:
+    """Before a --push run: [] if main carries nothing unpushed, else the hashes of release commits stranded from
+    TODAY (to re-push). Anything else unpushed refuses: `git push` would send it live with the release."""
+    git("fetch", "-q", "origin", "main")
+    if git("rev-list", "--count", "main..origin/main").strip() != "0":
+        raise ReleaseError("main is behind origin: something was pushed from elsewhere; a human looks first")
+    ahead = [l.split("\t", 1) for l in git("log", "--format=%H\t%s", "origin/main..main").splitlines() if l]
+    if not ahead:
+        return []
+    marker = f" {day:%a} {day} slot: "
+    stranded = [h for h, s in ahead if s.startswith("PUBLISHED ") and marker in s]
+    if len(stranded) != len(ahead):
+        others = [s for h, s in ahead if h not in stranded]
+        raise ReleaseError(f"main has {len(others)} unpushed commit(s) that are not today's release "
+                           f"({'; '.join(others[:3])}); a push would publish them unapproved")
+    return stranded
+
+
 def verify_live(row: dict, minutes: int) -> str:
     deadline = time.time() + minutes * 60
-    pending = dict(row["approved_blobs"])
-    while pending and time.time() < deadline:
+    pending = {rel: blob for rel, blob in row["approved_blobs"].items() if not rel.startswith("tools/")}
+    while True:                                           # always look at least once
         for rel, blob in list(pending.items()):
             url = f"{SITE}/{rel[:-len('index.html')] if rel.endswith('/index.html') else rel}"
             try:
                 req = urllib.request.Request(url, headers={"Cache-Control": "no-cache", "User-Agent": "b4him-release"})
-                data = urllib.request.urlopen(req, timeout=20).read().replace(b"\r\n", b"\n")
+                data = urllib.request.urlopen(req, timeout=20).read()
+                if b"\0" not in data:                      # text: compare as git stores it (LF), like blob_sha
+                    data = data.replace(b"\r\n", b"\n")
                 if hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() == blob:
                     del pending[rel]
             except OSError:
                 pass
-        if pending:
-            time.sleep(30)
+        if not pending or time.time() >= deadline:
+            break
+        time.sleep(30)
     if pending:
         raise ReleaseError(f"pushed, but after {minutes} min the live bytes do not match yet: {', '.join(pending)}")
     return "live bytes match the approved blobs"
@@ -231,6 +307,31 @@ def log(entry: dict) -> None:
     entry.pop("row", None)
     with (repo() / "release_log.jsonl").open("a", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def run(a, day: dt.date, entry: dict) -> int:
+    if a.push:
+        stranded = preflight(day)
+        if stranded:
+            git("push", "-q", "origin", "main")
+            entry.update(outcome="PUSHED-UNVERIFIED", pushed=True, commit=stranded[0],
+                         why="re-pushed today's release commit that an earlier run committed but could not push")
+            return 0
+    decision = plan(day)
+    entry.update(decision)
+    if decision["outcome"] == "FAIL":
+        return 1
+    if decision["outcome"] != "PUBLISH":
+        return 0
+    entry["commit"] = apply(day, decision)
+    entry.update(outcome="COMMITTED", pushed=False)
+    if a.push:
+        git("push", "-q", "origin", "main")
+        entry.update(outcome="PUSHED-UNVERIFIED", pushed=True)
+        if a.verify_live:
+            entry["live"] = verify_live(decision["row"], a.live_minutes)
+            entry["outcome"] = "PUBLISHED"
+    return 0
 
 
 def main(argv=None) -> int:
@@ -249,26 +350,18 @@ def main(argv=None) -> int:
     if a.apply and day != today:
         print(f"REFUSED: --apply publishes today ({today}) only; {day} is a dry run.")
         return 1
-    decision = plan(day)
-    entry = {"date": day.isoformat(), "mode": "apply" if a.apply else "dry-run", **decision}
-    code = 0
-    if decision["outcome"] == "PUBLISH" and a.apply:
+    entry = {"date": day.isoformat(), "mode": "apply" if a.apply else "dry-run"}
+    if not a.apply:
+        entry.update(plan(day))
+        code = 1 if entry["outcome"] == "FAIL" else 0
+    else:
         try:
-            entry["commit"] = apply(day, decision, a.push)
-            entry["pushed"] = False
-            if a.push:
-                git("push", "-q", "origin", "main")
-                entry["pushed"] = True
-                if a.verify_live:
-                    entry["live"] = verify_live(decision["row"], a.live_minutes)
-        except ReleaseError as e:
-            # A failure after the commit leaves that commit on local main: say so, so nobody believes the page is live.
-            where = f" (commit {entry['commit'][:7]} is on local main, pushed={entry['pushed']})" if entry.get("commit") else ""
-            entry.update(outcome="FAIL", why=str(e) + where)
+            code = run(a, day, entry)
+        except Exception as e:                 # noqa: BLE001 - every failure is logged, never a bare traceback
+            where = (f" (commit {entry['commit'][:7]} is on local main, pushed={entry.get('pushed', False)})"
+                     if entry.get("commit") else "")
+            entry.update(outcome="FAIL", why=f"{type(e).__name__}: {e}{where}")
             code = 1
-    elif decision["outcome"] == "FAIL":
-        code = 1
-    if a.apply:
         log(entry)
     print(f"{entry['outcome']}  {day} {day:%a}  {entry.get('piece', '')}  {entry.get('why', '')}"
           + (f"  commit {entry['commit'][:7]}" if entry.get("commit") else "")
