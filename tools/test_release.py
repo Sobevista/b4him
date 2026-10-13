@@ -176,6 +176,35 @@ def test_a_piece_without_pinned_bytes_fails_loudly(site):
     assert release.plan(TUE)["outcome"] == "FAIL"
 
 
+def _origin(root, tmp_path):
+    bare = tmp_path / "origin.git"
+    g(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    g(root, "remote", "add", "origin", str(bare))
+    g(root, "push", "-q", "origin", "main")
+    return bare
+
+
+def test_unpushed_bookkeeping_from_approvals_may_ride_out_with_a_release(site, tmp_path):
+    root, blob, write_queue = site
+    write_queue(piece(blob))
+    _origin(root, tmp_path)
+    (root / "boards").mkdir()
+    (root / "boards" / "APPROVALS_OWED.md").write_text("# board\n", encoding="utf-8")
+    g(root, "add", "boards/APPROVALS_OWED.md")
+    g(root, "commit", "-q", "-m", "Offer X at abc1234 for Daniel's one-tap approval")
+    assert release.preflight(TUE) == []
+
+
+def test_a_page_commit_cannot_ride_out_by_naming_itself_like_bookkeeping(site, tmp_path):
+    root, blob, write_queue = site
+    write_queue(piece(blob))
+    _origin(root, tmp_path)
+    (root / "lessons" / "a" / "index.html").write_text("<p>changed, never approved</p>\n", encoding="utf-8")
+    g(root, "commit", "-q", "-am", "APPROVED X at abc1234: Daniel's tap")
+    with pytest.raises(release.ReleaseError, match="unapproved"):
+        release.preflight(TUE)
+
+
 def test_apply_refuses_any_day_but_today(site, capsys):
     root, blob, write_queue = site
     write_queue(piece(blob))

@@ -56,6 +56,8 @@ ENTRY = ('    <a class="mod" href="{href}">\n'
 ENTRY_KEYS = ("track", "numeral", "href", "title", "blurb")
 LINK_RE = re.compile(r'(?:href|src)="(/[^"#?]*)')
 RELEASE_SUBJECT = "PUBLISHED {pid} on its {day:%a} {day} slot: {title}"
+#: The only files an unpushed non-release commit may touch and still ride out with a release (approvals.py).
+BOOKKEEPING = {"production_queue.jsonl", "PRODUCTION_BOARD.md", "boards/APPROVALS_OWED.md"}
 
 
 class ReleaseError(RuntimeError):
@@ -272,8 +274,12 @@ def preflight(day: dt.date) -> list[str]:
         return []
     marker = f" {day:%a} {day} slot: "
     stranded = [h for h, s in ahead if s.startswith("PUBLISHED ") and marker in s]
-    if len(stranded) != len(ahead):
-        others = [s for h, s in ahead if h not in stranded]
+    # approvals.py's own commits (an offer, a tap applied) change only bookkeeping, never a page: judged by the
+    # PATHS each commit touches, never by its message, so nothing can ride along by naming itself well.
+    bookkeeping = [h for h, s in ahead if h not in stranded
+                   and set(git("diff-tree", "--no-commit-id", "--name-only", "-r", h).split()) <= BOOKKEEPING]
+    others = [s for h, s in ahead if h not in stranded and h not in bookkeeping]
+    if others:
         raise ReleaseError(f"main has {len(others)} unpushed commit(s) that are not today's release "
                            f"({'; '.join(others[:3])}); a push would publish them unapproved")
     return stranded
@@ -312,6 +318,9 @@ def log(entry: dict) -> None:
 def run(a, day: dt.date, entry: dict) -> int:
     if a.push:
         stranded = preflight(day)
+        if stranded and plan(day).get("outcome") != "SKIP":
+            raise ReleaseError("a release commit from today is unpushed but the queue does not show today's piece "
+                               "as published; a human looks first")
         if stranded:
             git("push", "-q", "origin", "main")
             entry.update(outcome="PUSHED-UNVERIFIED", pushed=True, commit=stranded[0],
