@@ -45,3 +45,14 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** _pending_
+
+### APPROVE T4-L3 at bc31405 — The Tripod - three kinds of checking
+
+- **What this is to the build.** The Tripod - three kinds of checking (tier4 track), drafted 2026-10-13 on `draft/tier4`. The invariant it teaches: *Three kinds of checking fail differently. A finding that carries its evidence stops the need for a fourth.*. **The rendered proof: https://claude.ai/artifact/NWEfZyacamzsvV9tFqNKVs**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `lessons/the-tripod/index.html` = blob `43001d2b6e0d`; `tools/tracks/tier4.html` = blob `a7b479c3b251`. The lessons index gains: **The Tripod: Why Three Kinds of Checking, and Why the Regress Stops There** — The author, an outside reviewer, and a machine each miss different things. Findings that carry their evidence are why you can stop at three.. It takes the first open slot on or after 2026-10-20.
+- **What it does to the aggregate, measured.** Runway rises by 0.5 weeks (one piece ÷ 2 a week).
+- **Cross-checked by, including where it is weak.** 2026-10-13 - stage 2 by a seat that neither wrote nor rendered the pages (own scanner, every planted category caught; client names 0, children's ages 0, the son's name only on second-oracle; word-level fidelity diff against each harness source; template + invariant 6/6): PASS on all six. Its three recommended edits and two source-level accuracy notes (L1 'I called it the seam' -> 'the seam'; L6 six parameters restored; L4 Breakout named in the story, 'digit for digit' -> within half a point; L4 blurb 'Every test passed' -> 'Every check came back green') were applied after review by the orchestrating seat and were not independently re-read. | 2026-10-13 - the pages were then RE-VOICED into Daniel's first person (E00480) and re-read by an independent Fable seat against 0e11830 and the diaries: no fact changed, invariant blocks byte-identical, every attribution held; PASS 3, PASS-WITH-FLAGS 3; its flags fixed by the orchestrating seat (L3 near-miss given back to the machine, L4 pasted 'seek failure' cut and 'start to finish' softened, L1 invented lesson-order motive cut), not re-read. voice_check PASS 6/6.
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
