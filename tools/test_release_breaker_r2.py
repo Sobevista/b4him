@@ -225,21 +225,29 @@ def test_publishes_only_pinned_bytes_so_another_tracks_furniture_edited_after_ap
     assert "UNAPPROVED TEXT" not in (root / "lessons" / "index.html").read_text(encoding="utf-8")
 
 
-def test_NIT_a_published_entry_deleted_from_the_queue_vanishes_from_the_live_index(site):
+def test_publishes_only_pinned_bytes_so_a_published_entry_deleted_from_the_queue_is_refused_not_dropped(site):
+    """A removal is a change too: P0 is live in the index; its index_entry is then deleted from the queue
+    (approved_index_entry left behind). The next release must refuse loudly, or the entry must still render.
+    (Was a mis-built strict xfail: the earlier version never rendered P0 first, so its assertion could not hold.)"""
     root, blob, write_queue, blob_of, put = site
     page0 = "lessons/zero/index.html"
     b0 = blob_of(b"<h1>Zero</h1>\n")
     put(page0, b0)
     p0 = published("P0", page0, b0, {**ENTRY, "href": "/lessons/zero/", "title": "Zero"})
-    gone = {k: v for k, v in p0.items() if k != "index_entry"}       # approved_index_entry stays
+    write_queue(p0)
+    index = root / "lessons" / "index.html"
+    index.write_text(release.render_tracks(INDEX, pb.load_queue()), encoding="utf-8", newline="\n")   # P0 is live
+    commit_all(root, "index as P0's release left it")
+    assert index.read_text(encoding="utf-8").count('class="mod"') == 1
+    gone = {k: v for k, v in p0.items() if k != "index_entry"}
     write_queue(gone, racked("NEW", PAGE, blob, 5))
     d = release.plan(TUE)
-    if d["outcome"] == "PUBLISH":
-        try:
-            release.apply(TUE, d)
-        except release.ReleaseError:
-            return
-    assert (root / "lessons" / "index.html").read_text(encoding="utf-8").count('class="mod"') == 1
+    if d["outcome"] != "PUBLISH":
+        assert d["outcome"] == "FAIL" and "removed" in d["why"], d       # refused, and loudly
+        return
+    with pytest.raises(release.ReleaseError):
+        release.apply(TUE, d)
+    assert index.read_text(encoding="utf-8").count('class="mod"') == 1
 
 
 def test_publishes_only_pinned_bytes_so_a_pin_that_rehashes_differently_refuses_and_commits_nothing(site):
@@ -321,6 +329,57 @@ def test_push_sends_only_the_release_never_an_index_edit_riding_as_the_stranded_
     commit_all(root, "footer tweak, never approved")
     release.main(["--apply", "--push"])
     assert g(bare, "show", "main:lessons/index.html") == released
+
+
+def test_push_sends_only_the_release_never_a_release_shaped_forgery_with_an_edited_index(site, tmp_path, monkeypatch):
+    """ATTACK on fix round 2: a stranded release is proven by queue + pinned blob + a regenerated index. Forge all
+    three by hand (row flipped to PUBLISHED today, the pinned page at its pinned bytes, the queue line) but with
+    one extra sentence in lessons/index.html: the index is not what render_tracks makes from that queue, so the
+    commit is not a release and must refuse."""
+    root, blob, write_queue, _, _ = site
+    write_queue(piece(blob))
+    bare = with_origin(root, tmp_path)
+    (root / PAGE).parent.mkdir(parents=True)
+    (root / PAGE).write_bytes(subprocess.run([GIT, "-C", str(root), "cat-file", "blob", blob], capture_output=True).stdout)
+    pb.QUEUE.write_text(release.set_published(pb.QUEUE.read_text(encoding="utf-8"), "GC-GLOSS-1", TUE),
+                        encoding="utf-8", newline="\n")
+    index = root / "lessons" / "index.html"
+    rendered = release.render_tracks(INDEX, pb.load_queue())
+    index.write_text(rendered.replace("<footer></footer>", "<footer>UNAPPROVED</footer>"), encoding="utf-8", newline="\n")
+    commit_all(root, release.RELEASE_SUBJECT.format(pid="GC-GLOSS-1", day=TUE, title="Glossary I"))
+    monkeypatch.setattr(release.dt, "date", FakeDate)
+    assert release.main(["--apply", "--push"]) == 1
+    assert "unapproved" in log_lines(root)[-1]["why"]
+    assert "UNAPPROVED" not in g(bare, "show", "main:lessons/index.html")
+    assert PAGE not in g(bare, "ls-tree", "-r", "--name-only", "main")
+
+
+def test_push_sends_only_the_release_and_repushes_a_release_stranded_by_a_failed_push(site, tmp_path, monkeypatch):
+    """The stricter proof must still accept a GENUINE stranded release, here one that also replaced shared furniture:
+    the push fails after the commit, and the same-day re-run pushes exactly that commit."""
+    root, blob, write_queue, blob_of, put = site
+    page0 = "lessons/zero/index.html"
+    b0 = blob_of(b"<h1>Zero</h1>\n")
+    put(page0, b0)
+    p0 = published("P0", page0, b0, {**ENTRY, "href": "/lessons/zero/", "title": "Zero"})
+    f2 = blob_of((root / FURN).read_text(encoding="utf-8").replace("More of", "Still more of").encode("utf-8"))
+    write_queue(p0, racked("TWO", PAGE, blob, 2, entry=ENTRY, extra_blobs={FURN: f2}))
+    bare = with_origin(root, tmp_path)
+    monkeypatch.setattr(release.dt, "date", FakeDate)
+    real = release.git
+
+    def push_fails(*a, **k):
+        if a[:1] == ("push",):
+            raise release.ReleaseError("network down")
+        return real(*a, **k)
+    monkeypatch.setattr(release, "git", push_fails)
+    assert release.main(["--apply", "--push"]) == 1
+    monkeypatch.setattr(release, "git", real)
+    assert release.main(["--apply", "--push"]) == 0
+    assert log_lines(root)[-1]["outcome"] == "PUSHED-UNVERIFIED" and log_lines(root)[-1]["pushed"] is True
+    assert g(bare, "rev-parse", "main") == g(root, "rev-parse", "HEAD")
+    assert g(bare, "rev-parse", f"main:{PAGE}") == blob and g(bare, "rev-parse", f"main:{FURN}") == f2
+    assert "Still more of" in g(bare, "show", "main:lessons/index.html")
 
 
 def test_push_sends_only_the_release_and_refuses_when_main_is_behind_origin(site, tmp_path, monkeypatch):
