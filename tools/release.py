@@ -332,21 +332,28 @@ def is_release_of(h: str, paths: set[str], row: dict) -> bool:
         return False
     if not all(git("rev-parse", f"{h}:{rel}", check=False).strip() == pinned[rel] for rel in hit):
         return False
-    if "lessons/index.html" in paths:
-        # the index is generated: it must be exactly what render_tracks makes from this commit's own queue
-        try:
-            lines = git("show", f"{h}:production_queue.jsonl").splitlines()
-            rows = [json.loads(s) for s in (l.strip() for l in lines) if s and not s.startswith("#")]
-            committed = git("show", f"{h}:lessons/index.html")
+    # exactly one parent: the release is one step on top of main, never a merge
+    parents = git("rev-list", "--parents", "-n", "1", h).split()[1:]
+    if len(parents) != 1:
+        return False
+    parent = parents[0]
+    try:
+        if "lessons/index.html" not in paths:
+            return git("rev-parse", f"{h}:lessons/index.html", check=False) == \
+                git("rev-parse", f"{parent}:lessons/index.html", check=False)
+        # the index is generated: render the PARENT's index (so nav, head and footer are the parent's, not the
+        # commit's own) with this commit's queue and furniture; it must equal the committed index exactly
+        lines = git("show", f"{h}:production_queue.jsonl").splitlines()
+        rows = [json.loads(s) for s in (l.strip() for l in lines) if s and not s.startswith("#")]
 
-            def furn(track: str):
-                p = subprocess.run(["git", "-C", str(repo()), "show", f"{h}:{furniture_rel(track)}"],
-                                   capture_output=True)
-                return p.stdout.decode("utf-8") if p.returncode == 0 else None
-            return render_tracks(committed, rows, furn) == committed
-        except (ReleaseError, ValueError):
-            return False
-    return True
+        def furn(track: str):
+            p = subprocess.run(["git", "-C", str(repo()), "show", f"{h}:{furniture_rel(track)}"],
+                               capture_output=True)
+            return p.stdout.decode("utf-8") if p.returncode == 0 else None
+        return render_tracks(git("show", f"{parent}:lessons/index.html"), rows, furn) == \
+            git("show", f"{h}:lessons/index.html")
+    except (ReleaseError, ValueError):
+        return False
 
 
 def preflight(day: dt.date) -> list[str]:
