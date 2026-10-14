@@ -225,11 +225,6 @@ def test_publishes_only_pinned_bytes_so_another_tracks_furniture_edited_after_ap
     assert "UNAPPROVED TEXT" not in (root / "lessons" / "index.html").read_text(encoding="utf-8")
 
 
-@pytest.mark.xfail(strict=True, reason="NIT, outside the registered families: live_drift skips a PUBLISHED row whose "
-                   "index_entry was deleted from the queue (approved_index_entry left behind), so an approved entry "
-                   "silently disappears from the live index with the next release. Content vanishing, not unapproved "
-                   "content appearing. Remove this marker when fixed (an approved_index_entry with no index_entry is "
-                   "drift).")
 def test_NIT_a_published_entry_deleted_from_the_queue_vanishes_from_the_live_index(site):
     root, blob, write_queue, blob_of, put = site
     page0 = "lessons/zero/index.html"

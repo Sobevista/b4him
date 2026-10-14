@@ -113,7 +113,12 @@ def live_drift(rows: list[dict], skip=()) -> list[str]:
     `skip` names furniture the releasing piece replaces itself; apply() refuses a hand edit there on its own."""
     out = []
     for r in rows:
-        if r.get("_broken") or pb.stage_index(r) < pb.STAGES.index("PUBLISHED") or not r.get("index_entry"):
+        if r.get("_broken") or pb.stage_index(r) < pb.STAGES.index("PUBLISHED"):
+            continue
+        if not r.get("index_entry"):
+            if r.get("approved_index_entry"):
+                out.append(f"{r.get('id')}: published index_entry was removed from the queue (an approved entry "
+                           f"would vanish from the live index)")
             continue
         if r.get("approved_index_entry") != pb.entry_sha(r["index_entry"]):
             out.append(f"{r.get('id')}: published index_entry is not the text Daniel approved")
@@ -164,7 +169,7 @@ def plan(day: dt.date) -> dict:
 
 
 # ---------------------------------------------------------------- the index
-def render_tracks(index_html: str, rows: list[dict]) -> str:
+def render_tracks(index_html: str, rows: list[dict], furniture_text=None) -> str:
     """Fill every `b4him:track` block from PUBLISHED rows carrying an index_entry for that track. A track with
     nothing published renders empty, so an empty heading never goes live."""
     def fill(m: re.Match) -> str:
@@ -175,13 +180,15 @@ def render_tracks(index_html: str, rows: list[dict]) -> str:
                          key=lambda r: (r["index_entry"].get("position", r.get("order", 999)), r.get("id", "")))
         if not entries:
             return m.group(1) + m.group(4)
-        if not furniture.exists():
+        text = furniture_text(track) if furniture_text else (
+            furniture.read_text(encoding="utf-8") if furniture.exists() else None)
+        if text is None:
             raise ReleaseError(f"track '{track}' has published entries but no furniture at {furniture}")
         try:
             items = "\n".join(ENTRY.format(**r["index_entry"]) for r in entries)
         except KeyError as e:
             raise ReleaseError(f"an index_entry in track '{track}' lacks {e}") from None
-        block = furniture.read_text(encoding="utf-8").replace("{{entries}}", items)
+        block = text.replace("{{entries}}", items)
         return m.group(1) + block.lstrip("\n") + m.group(4)
     return TRACK_RE.sub(fill, index_html)
 
@@ -319,7 +326,27 @@ def is_release_of(h: str, paths: set[str], row: dict) -> bool:
     pinned = row.get("approved_blobs") or {}
     if not paths <= set(pinned) | BOOKKEEPING | {"lessons/index.html"}:
         return False
-    return all(git("rev-parse", f"{h}:{rel}", check=False).strip() == pinned[rel] for rel in paths & set(pinned))
+    # a release rewrites the queue and holds at least one pinned path at its pinned blob
+    hit = paths & set(pinned)
+    if "production_queue.jsonl" not in paths or not hit:
+        return False
+    if not all(git("rev-parse", f"{h}:{rel}", check=False).strip() == pinned[rel] for rel in hit):
+        return False
+    if "lessons/index.html" in paths:
+        # the index is generated: it must be exactly what render_tracks makes from this commit's own queue
+        try:
+            lines = git("show", f"{h}:production_queue.jsonl").splitlines()
+            rows = [json.loads(s) for s in (l.strip() for l in lines) if s and not s.startswith("#")]
+            committed = git("show", f"{h}:lessons/index.html")
+
+            def furn(track: str):
+                p = subprocess.run(["git", "-C", str(repo()), "show", f"{h}:{furniture_rel(track)}"],
+                                   capture_output=True)
+                return p.stdout.decode("utf-8") if p.returncode == 0 else None
+            return render_tracks(committed, rows, furn) == committed
+        except (ReleaseError, ValueError):
+            return False
+    return True
 
 
 def preflight(day: dt.date) -> list[str]:
