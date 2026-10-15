@@ -372,7 +372,14 @@ def preflight(day: dt.date) -> list[str]:
     todays = [r for r in pb.load_queue() if not r.get("_broken")
               and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day]
     paths = {h: commit_paths(h) for h, _ in ahead}
-    stranded = [h for h, _ in ahead if any(is_release_of(h, paths[h], r) for r in todays)]
+    if len(todays) != 1:
+        # one slot, one piece: with zero or several rows published today, nothing can be proven to be "the" release
+        if any(is_release_of(h, paths[h], r) for h, _ in ahead for r in todays):
+            raise ReleaseError(f"{len(todays)} rows are published today and an unpushed commit looks like a stranded "
+                               f"release; a human looks first")
+        stranded = []
+    else:
+        stranded = [h for h, _ in ahead if is_release_of(h, paths[h], todays[0])]
     bookkeeping = [h for h, _ in ahead if h not in stranded and paths[h] <= BOOKKEEPING]
     others = [s for h, s in ahead if h not in stranded and h not in bookkeeping]
     if others:
