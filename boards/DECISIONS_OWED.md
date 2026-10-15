@@ -106,3 +106,32 @@ line (claude-mythos-5-1, max effort; response in session 1b87b74c's scratchpad `
   contact.
 
 **DANIEL:** _pending_
+
+### B4-MODELS — which models may read transcript excerpts
+
+- **What this is to the build.** The first real lesson (plan v3 phase 2, build `lesson-trial`) sends short,
+  privacy-checked excerpts of your sessions to a model to find and pitch lessons. The build refuses any model route you
+  have not permitted.
+- **Why this decision exists.** Transcripts hold your family, a partner and a client. The skill miner already sends
+  transcript text to a non-Claude judge by default, but no ruling covers that for b4him.
+- **What changes if you approve.** Claude models only (through the estate's existing routes), excerpts only after the
+  people check passes. If you choose differently, name the other families allowed.
+- **What it does to the aggregate, measured.** Not measured.
+- **Cross-checked by.** GPT's v3 review and your outside review both said this must be ruled before the feature runs.
+- **Recommendation.** Approve Claude only for now; widen later by a new tile if quality needs it.
+
+**DANIEL:** _pending_
+
+### B4-CLIENT — may the client appear even unnamed?
+
+- **What this is to the build.** The people registry (B4-PEOPLE, E00571) refuses the client's name. Your ruling said
+  "client never, not even unnamed if you say so". You have not said so yet, so the checker allows the bare word
+  "client" and a story about the work.
+- **Why this decision exists.** The registry's builder flagged it as an assumption rather than inventing your answer.
+- **What changes if you approve.** The client may not appear at all, not even as "a client"; any lesson that needs
+  that story is refused.
+- **What it does to the aggregate, measured.** Not measured; it removes any lesson whose scar involves the client.
+- **Cross-checked by.** The registry's data file (`data/people_registry.json`, flag `unnamed_too`, default off).
+- **Recommendation.** Your call; no recommendation, because it is about the client relationship, which only you know.
+
+**DANIEL:** _pending_
