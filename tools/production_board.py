@@ -33,8 +33,9 @@ BOARD = REPO / "PRODUCTION_BOARD.md"
 
 # --- the plan's constants. Changing one here without changing PRODUCTION_PLAN.md
 #     is exactly the dual-home defect, so each names its clause. -------------
-CADENCE_DAYS = (1, 4)          # Mon=0 .. Tue=1, Fri=4          (plan section 3, D15)
-PER_WEEK_CAP = 2               # hard cap in any rolling 7 days (plan section 3, D15)
+# Daniel's ruling E00568 (2026-10-15): once weekly, on Tuesdays. Raising it again is a future ruling after review.
+CADENCE_DAYS = (1,)            # Mon=0 .. Tue=1 only (was Tue+Fri; E00568, plan section 3, D15)
+PER_WEEK_CAP = 1               # hard cap in any rolling 7 days (was 2; E00568, plan section 3, D15)
 REVIEW_LEAD_DAYS = 7           # a piece must be PREVIEWED by T-7 (plan section 3)
 RUNWAY_TARGET_WEEKS = 6        # (plan section 1)
 RUNWAY_FLOOR_WEEKS = 3         # (plan section 1)
@@ -251,7 +252,7 @@ def build(today: dt.date) -> str:
       f"{len(eligible)} piece(s) at stage ≥ PREVIEWED ÷ {PER_WEEK_CAP}/week)*")
     A("")
     A(f"{len(pipeline)} in the pipeline · {len(published)} published · "
-      f"cadence Tue + Fri, hard cap {PER_WEEK_CAP} per 7 days")
+      f"cadence Tuesday only, hard cap {PER_WEEK_CAP} per 7 days")
     A("")
 
     if broken:

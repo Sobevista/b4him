@@ -121,13 +121,32 @@ def test_a_tap_racks_exactly_the_tiled_commit_and_the_release_publishes_it(site)
     assert not led.rulings_owed()                      # applied + superseded
     assert g(site, "status", "--porcelain") == ""
 
-    day = dt.date(2026, 10, 20)                         # first Tue/Fri slot at least 7 days after Mon 10-12
+    day = dt.date(2026, 10, 20)                         # first Tuesday slot at least 7 days after Mon 10-12 (E00568)
     assert release.plan(dt.date(2026, 10, 16))["outcome"] == "SKIP"
     decision = release.plan(day)
     assert decision["outcome"] == "PUBLISH"
     release.apply(day, decision, push=False)
     assert (site / PAGE).read_text(encoding="utf-8") == "<h1>Glossary II</h1>\n"
     assert '<a class="mod" href="/lessons/g2/">' in (site / "lessons" / "index.html").read_text(encoding="utf-8")
+
+
+def test_a_tap_racks_on_the_first_tuesday_at_least_7_days_out(site):
+    # E00568: Tuesdays only. Tapped Mon 10-12: the 10-13 Tuesday is under 7 days out and skips; 10-20 is the first.
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    text = (site / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
+    assert "first Tuesday slot at least 7 days out" in text
+    assert "Tue/Fri" not in text and "a week)" in text and "2 a week" not in text
+    led = FakeLedger()
+    led.rule(title, "APPROVE")
+    assert approvals.apply(today=MON, led=led)[0].startswith("APPLIED  APPROVE  G2")
+    board = pb.build(MON)
+    assert "| **2026-10-20** Tue | Glossary II |" in board
+    assert not any(line.startswith("| **") and " Fri " in line for line in board.splitlines())
+    assert release.plan(dt.date(2026, 10, 16))["outcome"] == "SKIP"        # the Friday is not a release day
+    assert release.plan(dt.date(2026, 10, 20))["outcome"] == "PUBLISH"
+    late = pb.build(dt.date(2026, 10, 14))      # a board read on Wed 10-14: the piece was previewed 10-12, still meets 10-20
+    assert "| **2026-10-20** Tue | Glossary II |" in late
+    assert pb.next_slots(dt.date(2026, 10, 14), 2) == [dt.date(2026, 10, 20), dt.date(2026, 10, 27)]
 
 
 def test_a_reject_marks_the_tile_and_racks_nothing(site):

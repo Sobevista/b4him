@@ -126,13 +126,16 @@ def test_a_page_edited_after_approval_never_publishes(site):
     assert release.plan(TUE)["outcome"] == "SKIP"
 
 
-def test_the_cap_holds_two_in_seven_days(site):
+def test_the_cap_holds_one_in_seven_days(site):
+    # E00568: once weekly. One piece published in the rolling 7 days fills the cap; a second racked piece waits.
     root, blob, write_queue = site
-    pubs = [{"id": f"P{i}", "order": 9, "title": "p", "stage": "PUBLISHED", "published": d}
-            for i, d in enumerate(["2026-10-14", "2026-10-16"])]
+    pubs = [{"id": "P0", "order": 9, "title": "p", "stage": "PUBLISHED", "published": "2026-10-14"}]
     write_queue(piece(blob), *pubs)
     d = release.plan(TUE)
     assert d["outcome"] == "SKIP" and "cap" in d["why"]
+    # ...and the cap lifts once the published piece is 7 days old (published 10-13 -> Tue 10-20 is day 7)
+    write_queue(piece(blob), {**pubs[0], "published": "2026-10-13"})
+    assert release.plan(TUE)["outcome"] == "PUBLISH"
 
 
 def test_not_a_release_day(site):
@@ -141,10 +144,14 @@ def test_not_a_release_day(site):
     assert release.plan(dt.date(2026, 10, 21))["outcome"] == "SKIP"
 
 
-def test_a_missed_tuesday_goes_out_friday(site):
+def test_a_friday_with_a_racked_piece_is_not_a_release_day(site):
+    # E00568: Tuesdays only. A racked piece with whole pins still waits for Tuesday on any other day.
     root, blob, write_queue = site
     write_queue(piece(blob))
-    assert release.plan(dt.date(2026, 10, 23))["outcome"] == "PUBLISH"
+    for day in (dt.date(2026, 10, 23), dt.date(2026, 10, 16), dt.date(2026, 10, 22)):
+        d = release.plan(day)
+        assert d["outcome"] == "SKIP" and "not a release day" in d["why"], (day, d)
+    assert release.plan(TUE)["outcome"] == "PUBLISH"
 
 
 def test_a_broken_link_refuses_and_restores_the_tree(site, tmp_path):
@@ -244,10 +251,10 @@ def test_a_later_piece_replaces_shared_furniture_it_was_approved_with(site, tmp_
     _, drifted = pb.eligible_pieces(pb.load_queue())
     assert drifted == {}                      # TWO's newer furniture is not drift while GLOSS-1 is still racked
     release.apply(TUE, release.plan(TUE))
-    fri = dt.date(2026, 10, 23)
-    d = release.plan(fri)
+    nxt = dt.date(2026, 10, 27)                 # the next Tuesday (E00568: no Friday slot)
+    d = release.plan(nxt)
     assert d["outcome"] == "PUBLISH" and d["piece"] == "TWO"
-    release.apply(fri, d)
+    release.apply(nxt, d)
     index = (root / "lessons" / "index.html").read_text(encoding="utf-8")
     assert "Still more of this track is queued" in index and index.count('class="mod"') == 2
 

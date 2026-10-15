@@ -118,7 +118,7 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
         "# Approvals owed — b4him\n\n"
         "*Written by `tools/approvals.py offer`; read by the harness app, which records your tap in the ledger. "
         "One tap is RULED + PREVIEWED together (E00472): **Approve publishes exactly the bytes at the commit in the "
-        "title** on the first Tue/Fri slot at least 7 days out. `tools/approvals.py apply` puts it on the rack; "
+        "title** on the first Tuesday slot at least 7 days out. `tools/approvals.py apply` puts it on the rack; "
         "`tools/release.py` publishes it. Any edit after that pulls it and comes back here as a new tile.*\n")
     if f"### {title}\n" in text:
         raise ApprovalError(f"already offered: {title}")

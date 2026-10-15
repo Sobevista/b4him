@@ -1,11 +1,11 @@
 # PRODUCTION BOARD
 
-*Generated 2026-10-13 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
+*Generated 2026-10-15 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 0.5 weeks** — **BELOW FLOOR** - stop opening new rungs, drain the queue  
-*(target 6w · floor 3w · 1 piece(s) at stage ≥ PREVIEWED ÷ 2/week)*
+**RUNWAY: 1.0 weeks** — **BELOW FLOOR** - stop opening new rungs, drain the queue  
+*(target 6w · floor 3w · 1 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-15 in the pipeline · 0 published · cadence Tue + Fri, hard cap 2 per 7 days
+15 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
 
 ## Waiting on Daniel
 
@@ -17,18 +17,18 @@
 
 | slot | piece | review by | note |
 |---|---|---|---|
-| **2026-10-16** Fri | — *(skip)* — | — | SLOT SKIPS - the next ready piece was previewed after this slot's review-by date (recorded, not backfilled) |
 | **2026-10-20** Tue | Glossary I - Beginner terms | 2026-10-13 |  |
-| **2026-10-23** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-10-27** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
-| **2026-10-30** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-11-03** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
-| **2026-11-06** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-11-10** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
-| **2026-11-13** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-11-17** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
-| **2026-11-20** Fri | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-11-24** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-12-01** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-12-08** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-12-15** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-12-22** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-12-29** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2027-01-05** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 
 ## The pipeline, by stage
 

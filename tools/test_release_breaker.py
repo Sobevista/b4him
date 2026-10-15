@@ -165,11 +165,13 @@ def test_RED_same_day_rerun_publishes_a_second_piece(site, tmp_path):
 
 def test_HELD_cap_is_a_rolling_seven_day_window(site):
     root, blob, write_queue, _ = site
-    pubs = [{"id": "P0", "order": 9, "title": "p", "stage": "PUBLISHED", "published": "2026-10-13"},
-            {"id": "P1", "order": 9, "title": "p", "stage": "PUBLISHED", "published": "2026-10-16"}]
-    write_queue(piece(blob), *pubs)
+    # E00568: cap 1 per 7 days, release days Tuesday only.
+    p0 = {"id": "P0", "order": 9, "title": "p", "stage": "PUBLISHED", "published": "2026-10-13"}
+    write_queue(piece(blob), p0)
     assert release.plan(TUE)["outcome"] == "PUBLISH"          # 10-13 is 7 days back: outside the window
-    assert release.plan(dt.date(2026, 10, 16))["outcome"] == "SKIP"
+    write_queue(piece(blob), {**p0, "published": "2026-10-14"})
+    d = release.plan(TUE)
+    assert d["outcome"] == "SKIP" and "cap" in d["why"]       # 10-14 is 6 days back: inside the window
 
 
 # ============================================================ Q3: silent failure

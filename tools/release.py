@@ -14,7 +14,7 @@ git's object store (kept reachable by an `approved/<id>` tag), so nothing is liv
 WHAT A RELEASE DOES, refusing at the first thing that is not exactly right:
   0. (--push) main is not behind origin, and carries nothing unpushed except a release commit stranded from
      today, which is re-pushed: a push sends every local commit, so anything else would go live unapproved
-  1. today is a Tue/Fri slot, nothing has published today, the 2-per-7-days cap has room, and the board gives
+  1. today is a Tuesday slot (E00568), nothing has published today, the 1-per-7-days cap has room, and the board gives
      the slot a piece whose pins are whole
   2. main is checked out and clean
   3. each approved blob is written to its path and re-hashed to the approved id
@@ -135,7 +135,7 @@ def plan(day: dt.date) -> dict:
     """What the release for `day` would do. Pure reading; never touches the tree."""
     rows = [r for r in pb.load_queue() if not r.get("_broken")]
     if day.weekday() not in pb.CADENCE_DAYS:
-        return {"outcome": "SKIP", "why": f"{day:%a} is not a release day (Tue/Fri)"}
+        return {"outcome": "SKIP", "why": f"{day:%a} is not a release day (Tuesdays only)"}
     today_pub = [r["id"] for r in rows if published_on(r) == day]
     if today_pub:
         return {"outcome": "SKIP", "why": f"already published today: {', '.join(today_pub)} (one slot, one piece)"}

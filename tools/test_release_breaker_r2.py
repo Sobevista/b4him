@@ -33,7 +33,7 @@ pytestmark = pytest.mark.skipif(not GIT, reason="git not on PATH")
 
 MON = dt.date(2026, 10, 12)
 TUE = dt.date(2026, 10, 20)
-FRI = dt.date(2026, 10, 23)
+NEXT_TUE = dt.date(2026, 10, 27)     # E00568: no Friday slot; the next release day is the next Tuesday
 PAGE = "lessons/glossary-beginner/index.html"
 FURN = "tools/tracks/n8n.html"
 FURN4 = "tools/tracks/tier4.html"
@@ -485,7 +485,10 @@ def test_one_slot_one_piece_within_cap_counts_the_whole_rolling_week_not_only_sl
     write_queue(piece(blob), *pubs)
     d = release.plan(TUE)
     assert d["outcome"] == "SKIP" and "cap" in d["why"]
-    assert release.plan(FRI)["outcome"] == "PUBLISH"             # 10-14 has rolled out of the window by 10-23
+    assert release.plan(NEXT_TUE)["outcome"] == "PUBLISH"        # both have rolled out of the window by 10-27
+    only_off_slot = [{"id": "P1", "order": 9, "title": "p", "stage": "MAINTAINED", "published": "2026-10-18"}]
+    write_queue(piece(blob), *only_off_slot)                     # a Sunday publication still fills the cap
+    assert release.plan(TUE)["outcome"] == "SKIP" and "cap" in release.plan(TUE)["why"]
 
 
 def test_one_slot_one_piece_within_cap_so_a_second_apply_the_same_day_raises_and_commits_nothing(site):
@@ -823,11 +826,11 @@ def test_shared_furniture_only_replaces_approved_bytes(site):
                    entry={**ENTRY, "numeral": "III", "href": "/lessons/three/", "title": "Three"}, extra_blobs={FURN: f3})
     rows = [r for r in pb.load_queue()]
     write_queue(*rows, three)
-    d = release.plan(FRI)
+    d = release.plan(NEXT_TUE)
     assert d["outcome"] != "PUBLISH" and "THREE" in d["why"], d
     head = g(root, "rev-parse", "HEAD")
     with pytest.raises(release.ReleaseError, match="outside an approval"):
-        release.apply(FRI, {"outcome": "PUBLISH", "piece": "THREE", "row": three})
+        release.apply(NEXT_TUE, {"outcome": "PUBLISH", "piece": "THREE", "row": three})
     assert furn.read_bytes() == hand
     assert g(root, "rev-parse", "HEAD") == head and g(root, "status", "--porcelain") == ""
 
