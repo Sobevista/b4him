@@ -18,6 +18,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import production_board as pb  # noqa: E402
 import release  # noqa: E402
+import v3_testkit  # noqa: E402
 
 GIT = shutil.which("git")
 pytestmark = pytest.mark.skipif(not GIT, reason="git not on PATH")
@@ -303,5 +304,6 @@ def test_RED_a_revision_can_never_publish(site):
     newb = blob_of(b'<h1>Glossary I folded</h1>\n')
     rev = {"id": "GC-GLOSS-1-R1", "order": 100, "title": "rev", "stage": "PREVIEWED", "previewed": "2026-10-13",
            "kind": "revision of a published page", "approved_blobs": {PAGE: newb}}
+    v3_testkit.bind(rev)        # a revision is not the legacy piece: it needs a real v3 binding to publish
     write_queue(piece(blob, stage="PUBLISHED", published="2026-10-09"), rev)
     assert release.plan(TUE)["outcome"] == "PUBLISH"

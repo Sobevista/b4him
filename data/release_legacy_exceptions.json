@@ -1,0 +1,13 @@
+{
+  "_about": "The ONE legacy exception to the v3 release binding (build production-boundary-v1). Single by construction: tools/binding.py refuses a file that names more than one piece, or any id its code does not also name (LEGACY_ALLOWED_IDS). It covers this exact id and nothing else, and pins the approved bytes by digest.",
+  "exceptions": [
+    {
+      "id": "GC-GLOSS-1",
+      "title": "Glossary I - Beginner Terms",
+      "approved_by": "Daniel",
+      "approved": "2026-10-13, in a working session (\"Approval on the Glossary as is\"), before the v3 binding existed",
+      "restated": "2026-10-15, Daniel restated that it should publish (plan v3, 'Not taken' note)",
+      "approved_digest": "520620058a43bb59960183be628621fadaa74ee454fa1b63489921782ae3bb02"
+    }
+  ]
+}

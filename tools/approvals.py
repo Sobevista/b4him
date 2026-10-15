@@ -31,6 +31,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import binding  # noqa: E402
 import production_board as pb  # noqa: E402
 
 HARNESS = Path(r"C:\Users\dansl\Claude\Projects\Data Import\Connection")
@@ -195,6 +196,7 @@ def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
                approved_commit=commit, approved_tag=f"approved/{pid}", since=today.isoformat())
     if row.get("index_entry"):
         row["approved_index_entry"] = pb.entry_sha(row["index_entry"])
+    row["binding"] = binding.make(row)        # v3 (production-boundary-v1): release re-derives the approval from this
     text = pb.QUEUE.read_text(encoding="utf-8")
     out, hits = [], 0
     for line in text.split("\n"):

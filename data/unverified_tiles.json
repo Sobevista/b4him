@@ -1,0 +1,21 @@
+{
+  "_about": "The 14 tiles waiting on boards/APPROVALS_OWED.md on 2026-10-15 were offered before the v3 binding existed. They are UNVERIFIED: if one is ever racked without a v3 binding, tools/binding.py refuses it at release time. Re-qualification is a fresh offer and tap under v3 (approvals.rack writes the binding). They are listed here, not deleted from the board.",
+  "recorded": "2026-10-15",
+  "status": "UNVERIFIED",
+  "tiles": [
+    {"id": "GC-GLOSS-2", "commit": "bb19ba5"},
+    {"id": "GC-GLOSS-3", "commit": "bb19ba5"},
+    {"id": "T4-L1", "commit": "bc31405"},
+    {"id": "T4-L2", "commit": "bc31405"},
+    {"id": "T4-L3", "commit": "bc31405"},
+    {"id": "T4-L4", "commit": "bc31405"},
+    {"id": "T4-L5", "commit": "bc31405"},
+    {"id": "T4-L6", "commit": "bc31405"},
+    {"id": "T5-L1", "commit": "2dffd67"},
+    {"id": "T5-L2", "commit": "2dffd67"},
+    {"id": "T5-L3", "commit": "2dffd67"},
+    {"id": "T5-L4", "commit": "2dffd67"},
+    {"id": "T5-L5", "commit": "2dffd67"},
+    {"id": "T5-L6", "commit": "2dffd67"}
+  ]
+}

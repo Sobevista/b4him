@@ -32,6 +32,7 @@ COMMITTED (not pushed), PUSHED-UNVERIFIED, PUBLISHED (live bytes matched), SKIP,
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
 import json
@@ -44,6 +45,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import binding  # noqa: E402
 import production_board as pb  # noqa: E402
 
 SITE = "https://b4him.com"
@@ -165,6 +167,10 @@ def plan(day: dt.date) -> dict:
     problems = pin_problems(piece)
     if problems:
         return {"outcome": "FAIL", "piece": piece["id"], "why": "; ".join(problems)}
+    # Eligibility is judged AT RELEASE TIME from the row as it is now, not remembered from when it was racked.
+    problems = binding.problems(piece)
+    if problems:
+        return {"outcome": "FAIL", "piece": piece["id"], "why": "; ".join(problems)}
     return {"outcome": "PUBLISH", "piece": piece["id"], "row": piece}
 
 
@@ -225,11 +231,46 @@ def set_published(queue_text: str, pid: str, day: dt.date) -> str:
     return "\n".join(out)
 
 
+#: Set only by scheduled_entry(), which only main() --apply opens. apply() and push_release() refuse without it, so
+#: "publish" is a capability the scheduled entry exercises, not something any importer of this module can call.
+#: This is a guard in code, not an identity: see production-boundary-v1's report on what an OS account would add.
+_ENTRY: dict | None = None
+
+
+@contextlib.contextmanager
+def scheduled_entry(today: dt.date):
+    global _ENTRY
+    prev, _ENTRY = _ENTRY, {"today": today}
+    try:
+        yield
+    finally:
+        _ENTRY = prev
+
+
+def _require_entry(day: dt.date | None = None) -> None:
+    if _ENTRY is None:
+        raise ReleaseError("outside the scheduled entry: publishing is exercised by `release.py --apply` only")
+    if day is not None and _ENTRY["today"] is not None and day != _ENTRY["today"]:
+        raise ReleaseError(f"{day} is not the day the scheduled entry was opened for ({_ENTRY['today']})")
+
+
 def apply(day: dt.date, decision: dict, push: bool = False) -> str:
     """Write, check and commit one release. Returns the commit. `push` is accepted for old callers; pushing and
-    the origin checks live in preflight()/main()."""
+    the origin checks live in preflight()/push_release()/main().
+
+    `decision` is a claim, not an authority: apply() recomputes the plan for `day` itself (the day, the cap, the
+    slot, the pins and the v3 binding) and proceeds only if that plan is a PUBLISH of the very same piece and row."""
+    _require_entry(day)
     if decision.get("outcome") != "PUBLISH":
         raise ReleaseError(f"nothing to publish: {decision.get('outcome')} - {decision.get('why', '')}")
+    fresh = plan(day)
+    if fresh.get("outcome") != "PUBLISH":
+        raise ReleaseError(f"the decision was not re-derived: release time says {fresh.get('outcome')} - "
+                           f"{fresh.get('why', '')}")
+    if decision.get("piece") != fresh["piece"] or decision.get("row") != fresh["row"]:
+        raise ReleaseError("the decision does not match what the queue gives this slot now (forged or stale); "
+                           "a release is re-derived at release time, never trusted from its caller")
+    decision = fresh
     if git("rev-parse", "--abbrev-ref", "HEAD").strip() != "main":
         raise ReleaseError("not on main: a release writes to main and nowhere else")
     if git("status", "--porcelain").strip():
@@ -388,6 +429,21 @@ def preflight(day: dt.date) -> list[str]:
     return stranded
 
 
+def push_release(day: dt.date, commit: str) -> None:
+    """The only place this module pushes. It sends `commit` and nothing the guard has not judged:
+    the scheduled entry is open; `commit` is HEAD of main; preflight() (which fetches, and refuses a main that is
+    behind or carries any unpushed commit that is not bookkeeping or today's release) names exactly this commit as
+    today's release; and the push names the commit's id, so a branch that moved in between cannot ride out."""
+    _require_entry(day)
+    if git("rev-parse", "HEAD").strip() != commit or git("rev-parse", "--abbrev-ref", "HEAD").strip() != "main":
+        raise ReleaseError("refusing to push: HEAD is not the release commit on main")
+    stranded = preflight(day)
+    if stranded != [commit]:
+        raise ReleaseError(f"refusing to push: {commit[:7]} is not provably today's release commit "
+                           f"(preflight named {[s[:7] for s in stranded] or 'none'})")
+    git("push", "-q", "origin", f"{commit}:refs/heads/main")
+
+
 def verify_live(row: dict, minutes: int) -> str:
     deadline = time.time() + minutes * 60
     pending = {rel: blob for rel, blob in row["approved_blobs"].items() if not rel.startswith("tools/")}
@@ -446,7 +502,9 @@ def run(a, day: dt.date, entry: dict) -> int:
             raise ReleaseError("a release commit from today is unpushed but the queue does not show today's piece "
                                "as published; a human looks first")
         if stranded:
-            git("push", "-q", "origin", "main")
+            if len(stranded) != 1:
+                raise ReleaseError("more than one stranded release commit; a human looks first")
+            push_release(day, stranded[0])
             entry.update(outcome="PUSHED-UNVERIFIED", pushed=True, commit=stranded[0],
                          why="re-pushed today's release commit that an earlier run committed but could not push")
             return 0
@@ -459,7 +517,7 @@ def run(a, day: dt.date, entry: dict) -> int:
     entry["commit"] = apply(day, decision)
     entry.update(outcome="COMMITTED", pushed=False)
     if a.push:
-        git("push", "-q", "origin", "main")
+        push_release(day, entry["commit"])
         entry.update(outcome="PUSHED-UNVERIFIED", pushed=True)
         if a.verify_live:
             entry["live"] = verify_live(decision["row"], a.live_minutes)
@@ -489,8 +547,12 @@ def main(argv=None) -> int:
         code = 1 if entry["outcome"] == "FAIL" else 0
     else:
         try:
-            code = run(a, day, entry)
-        except Exception as e:                 # noqa: BLE001 - every failure is logged, never a bare traceback
+            # A failure ends the run. There is no repair path: nothing here retries, rebases, force-pushes or pushes
+            # anything the failed run did not itself commit; a stranded release is re-pushed by the NEXT run, through
+            # the same push_release() guard.
+            with scheduled_entry(today):
+                code = run(a, day, entry)
+        except Exception as e:                # noqa: BLE001 - every failure is logged, never a bare traceback
             where = (f" (commit {entry['commit'][:7]} is on local main, pushed={entry.get('pushed', False)})"
                      if entry.get("commit") else "")
             entry.update(outcome="FAIL", why=f"{type(e).__name__}: {e}{where}")

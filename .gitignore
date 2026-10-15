@@ -7,3 +7,7 @@ release_log.jsonl
 release_alarm.md
 # The scheduled task's console output (tools/daily.cmd).
 release_task_output.log
+# The real names behind the people registry (tools/people_registry.py reads it when present). b4him is public: never commit it.
+data/people_names.local.json
+# The live capability inventory names this machine's tasks and paths: local evidence, never committed to a public repo.
+tools/capability_inventory/output/

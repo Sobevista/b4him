@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "salt": "60d0aa33ab78ee5b6b553d2cabb7103c",
+  "ruling": "B4-PEOPLE, ledger E00571, Daniel 2026-10-15: APPROVE",
+  "_about": "The people policy as a file the program reads (tools/people_registry.py). b4him is a PUBLIC repo: this file holds roles, rules and placeholders only. No real person's name appears here, in plain or in hashed-and-guessable form. The real names live in data/people_names.local.json, which is git-ignored; the checker reads it when it is present and says UNKNOWN (never OK) about known names when it is not.",
+  "roles": {
+    "client": {
+      "rule": "never",
+      "meaning": "The client is never named in any piece.",
+      "unnamed_too": false,
+      "unnamed_too_note": "[ASSUMED] E00571 reads 'client never, not even unnamed if you say so'. Daniel has not said so, so the bare role word is NOT refused. Set true to refuse the word 'client' as well."
+    },
+    "business_partner": {
+      "rule": "role_only",
+      "meaning": "Referred to by role ('my business partner'), never by name."
+    },
+    "wife": {
+      "rule": "role_only",
+      "meaning": "Referred to by role ('my wife'), never by name."
+    },
+    "child": {
+      "rule": "first_name_with_piece_yes",
+      "meaning": "First name only, and only when Daniel has said yes for THIS piece. Never a surname, never an age.",
+      "never_ages": true
+    },
+    "own_directing": {
+      "rule": "fair_game",
+      "meaning": "Daniel's own directing, including where he fumbled, may be told. Not a person to check; recorded so the policy is whole."
+    }
+  },
+  "people": [
+    {"label": "CLIENT-1", "role": "client", "name_hashes": [], "note": "placeholder; real name from the local file"},
+    {"label": "PARTNER-1", "role": "business_partner", "name_hashes": [], "note": "placeholder; real name from the local file"},
+    {"label": "WIFE-1", "role": "wife", "name_hashes": [], "note": "placeholder; real name from the local file"},
+    {"label": "CHILD-1", "role": "child", "name_hashes": [], "note": "placeholder; real first name from the local file"},
+    {"label": "CHILD-2", "role": "child", "name_hashes": [], "note": "placeholder; real first name from the local file"}
+  ],
+  "role_terms": {
+    "child": ["son", "daughter", "kid", "kids", "child", "children", "boy", "girl"]
+  },
+  "safe_terms": ["Daniel", "Slocum"]
+}

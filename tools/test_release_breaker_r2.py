@@ -27,6 +27,7 @@ sys.path.insert(0, str(HERE))
 import approvals  # noqa: E402
 import production_board as pb  # noqa: E402
 import release  # noqa: E402
+import v3_testkit  # noqa: E402
 
 GIT = shutil.which("git")
 pytestmark = pytest.mark.skipif(not GIT, reason="git not on PATH")
@@ -153,7 +154,12 @@ def racked(pid, page_rel, page_blob, order, entry=None, extra_blobs=None, **kw):
            "approved_blobs": blobs}
     if entry:
         row.update(index_entry=entry, approved_index_entry=pb.entry_sha(entry))
-    return {**row, **kw}
+    row = {**row, **kw}
+    try:                                  # production-boundary-v1: a racked piece carries a v3 binding
+        v3_testkit.bind(row)
+    except RuntimeError:                  # a fixture that pins a blob git does not hold cannot be bound
+        pass
+    return row
 
 
 # ============================================================ publishes-only-pinned-bytes
@@ -798,7 +804,7 @@ def test_tap_pins_the_tiled_commit_and_the_voice_check_measures_the_tiled_bytes(
 
 
 # ============================================================ shared-furniture-only-replaces-approved-bytes
-def test_shared_furniture_only_replaces_approved_bytes(site):
+def test_shared_furniture_only_replaces_approved_bytes(site, monkeypatch):
     """A later listed piece replaces furniture a published piece pinned; after a hand edit to that furniture the
     next piece holds no slot, and even a direct apply refuses and leaves the hand-edited bytes alone."""
     root, blob, write_queue, blob_of, put = site
@@ -829,13 +835,17 @@ def test_shared_furniture_only_replaces_approved_bytes(site):
     d = release.plan(NEXT_TUE)
     assert d["outcome"] != "PUBLISH" and "THREE" in d["why"], d
     head = g(root, "rev-parse", "HEAD")
+    forged = {"outcome": "PUBLISH", "piece": "THREE", "row": three}
+    with pytest.raises(release.ReleaseError, match="not re-derived"):     # production-boundary-v1: apply re-plans
+        release.apply(NEXT_TUE, forged)
+    monkeypatch.setattr(release, "plan", lambda day: forged)              # ...and if plan were fooled, apply still refuses
     with pytest.raises(release.ReleaseError, match="outside an approval"):
-        release.apply(NEXT_TUE, {"outcome": "PUBLISH", "piece": "THREE", "row": three})
+        release.apply(NEXT_TUE, forged)
     assert furn.read_bytes() == hand
     assert g(root, "rev-parse", "HEAD") == head and g(root, "status", "--porcelain") == ""
 
 
-def test_shared_furniture_only_replaces_approved_bytes_so_a_pin_on_an_unapproved_row_does_not_count(site):
+def test_shared_furniture_only_replaces_approved_bytes_so_a_pin_on_an_unapproved_row_does_not_count(site, monkeypatch):
     """Bytes 'pinned' by a row that never reached PREVIEWED are not an approval: a tree holding them is a hand
     edit, and the racked piece neither holds a slot nor overwrites it."""
     root, blob, write_queue, blob_of, put = site
@@ -852,12 +862,16 @@ def test_shared_furniture_only_replaces_approved_bytes_so_a_pin_on_an_unapproved
     write_queue(p0, two, planted)
     hand = furn.read_bytes()
     assert release.plan(TUE)["outcome"] != "PUBLISH"
+    forged = {"outcome": "PUBLISH", "piece": "TWO", "row": two}
+    with pytest.raises(release.ReleaseError, match="not re-derived"):
+        release.apply(TUE, forged)
+    monkeypatch.setattr(release, "plan", lambda day: forged)
     with pytest.raises(release.ReleaseError, match="outside an approval"):
-        release.apply(TUE, {"outcome": "PUBLISH", "piece": "TWO", "row": two})
+        release.apply(TUE, forged)
     assert furn.read_bytes() == hand and g(root, "status", "--porcelain") == ""
 
 
-def test_shared_furniture_only_replaces_approved_bytes_and_an_unlisted_pages_path_is_never_shared(site):
+def test_shared_furniture_only_replaces_approved_bytes_and_an_unlisted_pages_path_is_never_shared(site, monkeypatch):
     """replaceable() is a prefix rule: only tools/tracks/ is shared. A racked piece pinning a path another
     published piece owns, outside that prefix and not a revision, is refused, not merged over."""
     root, blob, write_queue, blob_of, put = site
@@ -866,6 +880,10 @@ def test_shared_furniture_only_replaces_approved_bytes_and_an_unlisted_pages_pat
     p0 = published("P0", PAGE, b0, {**ENTRY, "title": "Zero"})
     write_queue(p0, racked("TWO", PAGE, blob, 2))          # same path, other bytes, not a revision
     assert release.plan(TUE)["outcome"] != "PUBLISH"
+    forged = {"outcome": "PUBLISH", "piece": "TWO", "row": racked("TWO", PAGE, blob, 2)}
+    with pytest.raises(release.ReleaseError, match="not re-derived"):
+        release.apply(TUE, forged)
+    monkeypatch.setattr(release, "plan", lambda day: forged)
     with pytest.raises(release.ReleaseError, match="not a revision"):
-        release.apply(TUE, {"outcome": "PUBLISH", "piece": "TWO", "row": racked("TWO", PAGE, blob, 2)})
+        release.apply(TUE, forged)
     assert pb.blob_sha(root / PAGE) == b0 and g(root, "status", "--porcelain") == ""

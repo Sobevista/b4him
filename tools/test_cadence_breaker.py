@@ -29,6 +29,7 @@ sys.path.insert(0, str(HERE))
 import approvals  # noqa: E402
 import production_board as pb  # noqa: E402
 import release  # noqa: E402
+import v3_testkit  # noqa: E402
 
 GIT = shutil.which("git")
 pytestmark = pytest.mark.skipif(not GIT, reason="git not on PATH")
@@ -95,9 +96,9 @@ def second(root, tmp_path):
     page.write_bytes(b"<h1>Two</h1>\n")
     pbb = g(root, "hash-object", "-w", str(page))
     entry = {**ENTRY, "numeral": "II", "href": "/lessons/two/", "title": "Two"}
-    return {"id": "TWO", "order": 2, "title": "Two", "stage": "PREVIEWED", "previewed": "2026-10-01",
-            "approved_blobs": {"lessons/two/index.html": pbb, FURN: pb.blob_sha(root / FURN)},
-            "index_entry": entry, "approved_index_entry": pb.entry_sha(entry)}
+    return v3_testkit.bind({"id": "TWO", "order": 2, "title": "Two", "stage": "PREVIEWED", "previewed": "2026-10-01",
+                            "approved_blobs": {"lessons/two/index.html": pbb, FURN: pb.blob_sha(root / FURN)},
+                            "index_entry": entry, "approved_index_entry": pb.entry_sha(entry)})
 
 
 def published(pid, when, stage="PUBLISHED"):
