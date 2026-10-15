@@ -19,7 +19,7 @@ line (claude-mythos-5-1, max effort; response in session 1b87b74c's scratchpad `
   The footer wording is a proposal.
 - **Recommendation.** Approve both: the disclosure plus footer, and two sentences in your words with each yes.
 
-**DANIEL:** _pending_
+**DANIEL:** APPROVE — ruled from the app 2026-10-15 15:54 (ledger E00567). Built in plan v3 phase 6 (footer) and phase 2 (two sentences with each pitch yes).
 
 ### B4-CADENCE — cadence against honesty
 
@@ -35,7 +35,7 @@ line (claude-mythos-5-1, max effort; response in session 1b87b74c's scratchpad `
   against a real dry spell yet.
 - **Recommendation.** Approve: an empty slot over a weak page, and small forms allowed in slot two.
 
-**DANIEL:** _pending_
+**DANIEL:** REJECT — ruled from the app 2026-10-15 15:54 (ledger E00568). His note: "Make the change to once weekly. It is better to have more work time between and if production hit our target then we can then increase after review. So once weekly is the tempo on Tuesdays." Applied by build `b4him-weekly-cadence` (Tuesday only, 1 per 7 days), in progress at the build gate.
 
 ### B4-UNATTENDED — may an unattended job push to the public site?
 
@@ -53,7 +53,7 @@ line (claude-mythos-5-1, max effort; response in session 1b87b74c's scratchpad `
   (`b4him-release-cockpit`, independent Fable breaker). Not yet reviewed by an outside model family.
 - **Recommendation.** Approve (a), b4him only, pinned bytes only, as a written exception to §4.
 
-**DANIEL:** _pending_
+**DANIEL:** APPROVE — ruled from the app 2026-10-15 15:54 (ledger E00569): (a), b4him only, pinned bytes only.
 
 ### B4-INBOX — where pitches reach you
 
@@ -70,7 +70,7 @@ line (claude-mythos-5-1, max effort; response in session 1b87b74c's scratchpad `
 - **Recommendation.** Approve: tiles plus a self-addressed notice, with the notice ruled not to be "external
   contact."
 
-**DANIEL:** _pending_
+**DANIEL:** APPROVE — ruled from the app 2026-10-15 15:54 (ledger E00570): pitch tiles plus a self-addressed notice, not external contact. Whether it also covers the morning decision message is B4-MORNING below.
 
 ### B4-PEOPLE — the standing people policy
 
@@ -86,5 +86,23 @@ line (claude-mythos-5-1, max effort; response in session 1b87b74c's scratchpad `
   defaults are proposals, not measurements.
 - **Recommendation.** Approve the registry above, and yes, scars of your own directing are fair game ("fumbling
   included").
+
+**DANIEL:** APPROVE — ruled from the app 2026-10-15 15:54 (ledger E00571). Built as the people registry the plan v3 program enforces before any model call and before publication.
+
+### B4-MORNING — may the morning decision message be emailed to you?
+
+- **What this is to the build.** Plan v3 phase 4 compiles one morning message from the app: every decision blocked on
+  you, with proof links, what moved yesterday, and what failed or did not run. You answer in the app, never by reply.
+- **Why this decision exists.** B4-INBOX (E00570) approved a self-addressed notice about pitches. GPT's review of v3
+  (deposit 69c43598adcd) pointed out that stretching it to the full morning message widens what is sent; that is yours
+  to rule, not ours to assume.
+- **What changes if you approve.** One self-addressed email each morning, sent by a script to your address only,
+  carrying decision titles, links and status (no transcript text), and pitch notices folded into it so it stays one
+  email. If you reject: the morning sheet lives in the app only, and the pitch notice stays the only email.
+- **What it does to the aggregate, measured.** Not measured. One email a day, always sent, even to say a job failed.
+- **Cross-checked by, including where it is weak.** GPT (v3 review) recommends keeping it in the app until you rule.
+  Proof links only open from your desk until private phone access exists.
+- **Recommendation.** Approve: one self-addressed morning email, links and titles only, ruled not to be external
+  contact.
 
 **DANIEL:** _pending_
