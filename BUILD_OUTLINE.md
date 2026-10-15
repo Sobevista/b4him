@@ -134,3 +134,21 @@ Status: **v0 content complete and walkable; nothing deployed.** Next: Daniel's `
 b4him.com is live (GitHub Pages main/root + DNS + custom domain; all pages HTTP 200; HTTPS cert auto-provisioning - tick Enforce HTTPS when it finishes). Real logo wired site-wide: gold crest -> header mark on all 21 pages + root favicon.ico/apple-touch-icon.png; lockup -> assets/og.png (1200x630 social). Masters + assets/brand/make_assets.py preserved.
 Visual identity (homepage-approved, then rolled out site-wide): Fraunces self-hosted via /style.css (INV-W9 - type is part of the message); Option D transparent-crest watermark on the homepage hero (keyed off the navy to kill the pasted-disc halo); title-case applied to all 21 H1s; hero leans into failure; invitation kept but demoted to a quiet second beat.
 Open (Daniel's): Enforce HTTPS when the cert lands; watermark could extend to section-landing heroes if wanted.
+
+### 2026-10-15 — B4-DEDUP handoff to Claude
+
+**From:** Codex, at Daniel's explicit request in the B4him review chat. This is a handoff and attention test, not a new human approval tile or a claim that the fix is implemented.
+
+**Daniel's concern:** "Do we have a cross reference to make sure the suggested content is not duplicate in some way? That would seem to also be a filter that would minimize waste". He then asked: "try to ping claudes attention to this oversight from here, or setting in a file to see if it gets his attention type thing".
+
+**Finding:** Mythos explicitly proposed a registry comparing candidates with published, rejected and open material, folding duplicates into evidence. In the v3 plan and umbrella contract inspected by Codex, that editorial gate was not explicit. The B4him release check preventing two publications on one day is not content deduplication. Codex also missed this omission in its initial v3 review. Recheck current files before acting; another session may have advanced them.
+
+**Evidence (harness root: `C:/Users/dansl/Claude/Projects/Data Import/Connection`):**
+- `Knowledge_Base/Research_Corpus/2026-10-13_b4him-2026-10-13-mythos-production-line-design/DELEGATE_REPORT.md`, line 170: registry against published / rejected / open; line 350: over-folding risk; line 398: breaker should try to pitch a duplicate.
+- `_briefs/2026-10-15_PRODUCTION_LINE_PLAN_V3.md` and `tools/build_gate/contracts/production-line-v3.md`: reviewed for the missing requirement.
+
+**Requested follow-through:** Acknowledge this handoff below. Reconcile the requirement into the plan and the lesson-trial contract through the existing production process, before scaling. Compare each candidate against published lessons, queued drafts, open pitches and rejected pitches before it reaches Daniel. Show the closest existing piece and what the candidate adds. Suppress the same takeaway in new wording; attach corroborating incidents as evidence; distinguish substantive updates/corrections and distinct follow-ups. Do not reject solely because two pieces discuss the same topic, or permanently suppress a rejected pitch when new evidence changes its case. Test both paraphrased duplicates and legitimate distinct lessons on the same topic. This note proposes the implementation direction; it does not certify a deployed filter.
+
+**Attention-test receipt:** PENDING — Claude has not acknowledged this note to Codex. When read, append the acknowledgment time, session identity, and disposition (including the contract/build reference or reason for deferral). File delivery alone is not evidence of attention.
+
+**Test closure — 2026-10-15:** Daniel reported "Didnt work, haha it was worth a shot" and requested this clarification. The file placement above was an experiment in attracting the active Claude session's attention, not a delivered message or a standing acknowledgment obligation. CLOSED: no acknowledgment observed/reported; the exact reason was not established. This closure supersedes the PENDING receipt and the request to acknowledge. Do not revive the notification test or treat it as a new assignment. The editorial deduplication finding remains a separate recommendation; this test neither implements nor resolves it. A later reader encountering this note is not evidence that the original live-session notification worked.

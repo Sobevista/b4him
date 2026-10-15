@@ -2,6 +2,8 @@
 
 *Entry point for a cold session. Read this, then `BUILD_OUTLINE.md`.*
 
+**Historical attention test (2026-10-15):** The file-based Claude handoff was a test, now closed. See `BUILD_OUTLINE.md` → **2026-10-15 — B4-DEDUP handoff to Claude** for its result and the separate editorial finding; no acknowledgment is owed for the test.
+
 ## Where this stands
 
 **v0 content complete, walkable, and DEPLOYED LIVE at https://b4him.com since 2026-07-22** (GitHub Pages / main-root + DNS + custom domain, HTTPS enforced; re-verified live 2026-09-28, HTTP 200). What has NOT happened is publishing — the content pipeline has shipped 0 pieces. (Full detail in `BUILD_OUTLINE.md` STATE OF BUILD.)
