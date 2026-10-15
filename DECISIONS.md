@@ -217,6 +217,12 @@ cache after being named missing from the entire estate, now tracked at
 
 ## D15 — Release cadence: two pages a week. LOCKED 2026-08-16
 
+> **Superseded 2026-10-15 by Daniel's ruling E00568** (B4-CADENCE, ruled from the app): "Make the
+> change to once weekly. It is better to have more work time between and if production hit our
+> target then we can then increase after review. So once weekly is the tempo on Tuesdays." Now:
+> **one page a week, Tuesday, hard cap 1 in any 7 days** (`tools/production_board.py`, build
+> `b4him-weekly-cadence`). The text below is kept as the record of the earlier ruling.
+
 **Tuesday and Friday, one page each. Hard cap: never more than 2 pages in any 7-day window,
 even when a batch is ready.** Order: glossary → advanced tier → workbook exercises → cyber.
 Roughly seven weeks for the Guess & Click set.

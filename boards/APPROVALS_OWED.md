@@ -1,6 +1,6 @@
 # Approvals owed — b4him
 
-*Written by `tools/approvals.py offer`; read by the harness app, which records your tap in the ledger. One tap is RULED + PREVIEWED together (E00472): **Approve publishes exactly the bytes at the commit in the title** on the first Tue/Fri slot at least 7 days out. `tools/approvals.py apply` puts it on the rack; `tools/release.py` publishes it. Any edit after that pulls it and comes back here as a new tile.*
+*Written by `tools/approvals.py offer`; read by the harness app, which records your tap in the ledger. One tap is RULED + PREVIEWED together (E00472): **Approve publishes exactly the bytes at the commit in the title** on the first Tuesday slot at least 7 days out (once weekly, E00568). `tools/approvals.py apply` puts it on the rack; `tools/release.py` publishes it. Any edit after that pulls it and comes back here as a new tile.*
 
 ### APPROVE GC-GLOSS-2 at bb19ba5 — Glossary II - Intermediate terms
 

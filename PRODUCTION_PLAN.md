@@ -72,8 +72,9 @@ looking wrong.
 
 ## 3. The calendar — dates, deadlines, and what happens when one is missed
 
-**Cadence (D15, LOCKED):** **two pages per week, Tuesday and Friday**, hard cap of two in any
-rolling 7-day window even when a batch is ready.
+**Cadence (E00568, superseding D15's two a week):** **one page per week, on Tuesday**, hard cap of
+one in any rolling 7-day window even when a batch is ready. Daniel, 2026-10-15: "once weekly is the
+tempo on Tuesdays"; raised again only after a review shows production hitting its target.
 
 **The review deadline is T-7.** A piece must be at stage **4 (PREVIEWED)** no later than **seven
 days before its slot**. That is not bureaucracy — it is what makes the schedule survivable. A
@@ -89,7 +90,7 @@ and the whole point is that it does not.
 
 **Nothing publishes that Daniel has not previewed.** ~~There is no auto-publish in this system
 and there will not be one.~~ *Superseded 2026-10-13 by E00472:* publishing on the slot is
-automatic (`tools/release.py`, Tue/Fri), and it can only ever publish the exact bytes his tap
+automatic (`tools/release.py`, Tuesdays since E00568), and it can only ever publish the exact bytes his tap
 pinned (`approved_blobs`, plus the lessons-index furniture and entry text). Any edit after the
 tap pulls the piece back to him. Every run writes a line to `release_log.jsonl`; a release day
 with no line is a job that did not run, never a quiet success.
@@ -123,7 +124,7 @@ owners, and the board raises them; what to actually change is a judgement each t
 |---|---|---|
 | **Every published page** | **quarterly** | links rot, facts age, and a later ruling can quietly supersede a published claim. The gate's own history table is what makes this checkable |
 | **The publication gate itself** | **on any refusal, else every 6 months** | a refusal is a finding about our own standard (`PUBLICATION_GATE` step 5) and is the best trigger there is |
-| **The cadence and runway** | **monthly** | is two a week still right, is the runway inside its band, are slots skipping |
+| **The cadence and runway** | **monthly** | is one a week still right (E00568: raise only after review), is the runway inside its band, are slots skipping |
 | **A rung's material** | **when the rung closes, and once more 30 days later** | the second look is the one that catches what only reads wrong after the excitement has worn off |
 | **Genericization sweep across the whole site** | **quarterly** | D11's rationale — *consistency lets us track deviation* — only works if the sweep is repeated. One real name appearing anywhere is then an anomaly, and anomalies need a baseline |
 | **This plan** | **every 6 months, or when a cadence changes** | a plan nobody re-reads becomes fiction on a schedule |
