@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 people_registry.py - the B4-PEOPLE policy (ledger E00571) as a check later stages import.  (build: production-boundary-v1)
 
@@ -42,6 +42,7 @@ import argparse
 import hashlib
 import html
 import json
+import unicodedata
 import re
 import sys
 from dataclasses import dataclass, field
@@ -55,7 +56,12 @@ FIRST_NAMES_FILE = DATA / "common_first_names.txt"
 WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 CAP = re.compile(r"^[A-Z][a-z]{1,}(?:[-'’][A-Z]?[a-z]+)*$")
 TAG = re.compile(r"<[^>]+>")
-ATTR_TEXT = re.compile(r"""\b(?:alt|title)\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
+#: reader-visible attribute text: alt/title/aria-label/placeholder/value, quoted or bare
+ATTR_TEXT = re.compile(r"""(?<![\w:-])(?:alt|title|aria-label|aria-description|placeholder|value)\s*=\s*"""
+                       r"""(?:"([^"]*)"|'([^']*)'|([^\s"'>=`]+))""", re.I)
+META = re.compile(r"(?is)^<meta\b")
+META_KEY = re.compile(r"""(?<![\w:-])(?:name|property)\s*=\s*["']?(description|og:[\w:.-]+|twitter:[\w:.-]+)""", re.I)
+META_CONTENT = re.compile(r"""(?<![\w:-])content\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>=`]+))""", re.I)
 SENTENCE_END = re.compile(r"[.!?]\s+|\n+")
 
 #: Words that are capitalised without being people. Extendable through the registry's safe_terms.
@@ -72,13 +78,19 @@ CUES = re.compile(
     r"\b(?:(?:named|called|name\s+was)\s+|(?:Mr|Mrs|Ms|Miss|Dr|Prof)\.?\s+|"
     r"(?:my|our|his|her|their)\s+(?:friend|colleague|coworker|co-worker|boss|neighbou?r|cousin|brother|sister|mother|"
     r"father|mom|dad|uncle|aunt|manager|teacher|mentor|buddy)\s*,?\s+(?:(?:named|called)\s+)?)([A-Z][a-z]+)")
-AGE = re.compile(r"\b(?:\d{1,2}|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
-                 r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty))[- ]?(?:years?|yrs?|y/?o)[- ]?(?:old)?\b|"
-                 r"\b(?:aged?|turned|turning)\s+(?:\d{1,2}|[a-z]+)\b|\b(?:age|aged)\s*[:=]?\s*\d{1,2}\b|"
-                 r"\b(?:is|was|being)\s+\d{1,2}\b(?!\s*(?:%|st|nd|th|rd))|,\s*\d{1,2}\s*,|"
-                 r"\(\s*\d{1,2}\s*\)|\b(?:now|turns?|turned)\s+(?:\d{1,2}|(?:one|two|three|four|five|six|seven|eight|nine|ten|"
-                 r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty))\b|"
-                 r"\b\d{1,2}(?:st|nd|rd|th)\s+birthday\b", re.I)
+NUMW = (r"(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|"
+        r"eighteen|nineteen|twenty)")
+NUM = rf"(?:\d{{1,2}}|{NUMW})"
+ORDW = (r"(?:second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|"
+        r"sixteenth|seventeenth|eighteenth|nineteenth|twentieth)")
+AGE = re.compile(
+    r"\b(?:\d{1,2}|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
+    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty))[- ]?(?:years?|yrs?|y/?o)[- ]?(?:old)?\b|"
+    r"\b(?:aged?|turned|turning)\s+(?:\d{1,2}|[a-z]+)\b|\b(?:age|aged)\s*[:=]?\s*\d{1,2}\b|"
+    rf"\b(?:is|was|being)\s+(?:(?:almost|nearly|about|just|only|already)\s+)?{NUM}\b(?!\s*(?:%|st|nd|th|rd))|"
+    rf",\s*{NUM}\s*,|,\s*\d{{1,2}}\s*[.;)]|"
+    rf"\(\s*{NUM}\s*\)|\b(?:now|turns?|turned|almost|nearly)\s+{NUM}\b|"
+    rf"\b(?:\d{{1,2}}(?:st|nd|rd|th)|{ORDW})\s+birthday\b", re.I)
 
 
 def normalise(name: str) -> str:
@@ -188,8 +200,25 @@ def visible_text(text: str) -> str:
     """Drop script/style and tags so markup names (class, href) are not read as people; keep the words, the alt/title
     attribute text (it is shown to readers), and decode entities (`&nbsp;` between two name words is still a space)."""
     text = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", text)
-    text = TAG.sub(lambda m: " " + " ".join(v[0] or v[1] for v in ATTR_TEXT.findall(m.group(0))) + " ", text)
+    text = TAG.sub(lambda m: " " + _tag_text(m.group(0)) + " ", text)
     return html.unescape(text)
+
+
+def strip_format_chars(text: str) -> str:
+    """Remove Unicode format characters (category Cf: soft hyphen, zero-width space/joiners, bidi marks, BOM,
+    word joiner). They are invisible, so a name containing one is still that name to a reader."""
+    return "".join(c for c in text if unicodedata.category(c) != "Cf")
+
+
+def _space_format_chars(text: str) -> str:
+    return "".join(" " if unicodedata.category(c) == "Cf" else c for c in text)
+
+
+def _tag_text(tag: str) -> str:
+    vals = [next(x for x in v if x) for v in ATTR_TEXT.findall(tag) if any(v)]
+    if META.match(tag) and META_KEY.search(tag):
+        vals += [next(x for x in v if x) for v in META_CONTENT.findall(tag) if any(v)]
+    return " ".join(vals)
 
 
 def _sentence_starts(text: str) -> set[int]:
@@ -209,7 +238,23 @@ def _is_heading(line: str) -> bool:
 def check_text(text: str, piece_yes=(), registry: Registry | None = None, markup: bool = True) -> Result:
     """Check `text` against the registry. `piece_yes` is the set of child labels Daniel has said yes to for this piece."""
     reg = registry or load_registry()
-    raw = visible_text(text) if markup else text
+    raw = visible_text(text) if markup else html.unescape(text)
+    if strip_format_chars(raw) == raw:
+        return _check_raw(raw, piece_yes, reg)
+    # An invisible format character may sit INSIDE a name (Ott\u00adoline) or BETWEEN two words (Peregrine\u200bFarquharson).
+    # Both readings are checked and their findings merged.
+    a = _check_raw(strip_format_chars(raw), piece_yes, reg)
+    b = _check_raw(_space_format_chars(raw), piece_yes, reg)
+    seen, merged = set(), []
+    for f in a.findings + b.findings:
+        if (f.kind, f.text) not in seen:
+            seen.add((f.kind, f.text))
+            merged.append(f)
+    a.findings = merged
+    return a
+
+
+def _check_raw(raw: str, piece_yes, reg: Registry) -> Result:
     piece_yes = set(piece_yes)
     res = Result(known_names_loaded=reg.known_names_loaded, known_count=len(reg.plain) + len(reg.hashed))
     toks = [(m.group(0), m.start(), m.end()) for m in WORD.finditer(raw)]

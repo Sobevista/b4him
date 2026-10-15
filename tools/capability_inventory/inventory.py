@@ -148,9 +148,11 @@ def is_recurring(schedule: str) -> bool:
 
 def is_vendor(name: str, command: str) -> bool:
     low = command.lower()
+    # Name prefixes of OS/vendor tasks only. A user task that launches an installed program (git, python, curl) by its
+    # full path is NOT vendor: its command line and the scripts it names are read like any other.
     return (name.lower().startswith(("\\microsoft\\", "\\googleuserpeh", "\\softlanding", "\\onedrive", "\\nv",
                                      "\\nvidia", "\\apple", "\\adobe", "\\google"))
-            or "\\program files" in low or low.startswith("%localappdata%") or "com handler" in low)
+            or "com handler" in low)
 
 
 class Reader:
@@ -310,7 +312,11 @@ def inventory_task(rec: dict, reader: Reader) -> dict:
             "capabilities": {k: [] for k in (*PATTERNS, "local_network")}}
     if is_vendor(name, command):
         item["unknown"].append("OS or vendor task: not inspected (what it can reach is not known to this inventory)")
-        return judge(item)
+        # ...but whatever its command line or named scripts show is still scanned, and FLAGGED wins.
+        r = inspect_command(command, rec.get("Start In", "") if rec.get("Start In", "N/A") != "N/A" else "", reader)
+        item.update(capabilities=r["capabilities"], files_scanned=r["files_scanned"],
+                    unknown=sorted(set(item["unknown"] + r["unknown"])))
+        return judge(item, {p: reader.read(p) or "" for p in r["files_scanned"]})
     r = inspect_command(command, rec.get("Start In", "") if rec.get("Start In", "N/A") != "N/A" else "", reader)
     item.update(capabilities=r["capabilities"], files_scanned=r["files_scanned"], unknown=r["unknown"],
                 inspected=bool(r["files_scanned"]))
