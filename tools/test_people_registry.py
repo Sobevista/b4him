@@ -131,3 +131,25 @@ def test_the_checker_runs_from_the_command_line(tmp_path, capsys):
     f.write_text("<p>Gwendolyn Marsh wrote this.</p>", encoding="utf-8")
     assert pr.main([str(f)]) == 1
     assert "unknown-name" in capsys.readouterr().out
+
+
+def test_html_entities_and_attribute_text_are_read_as_visible_text(reg):
+    """D4: `&nbsp;` between a child's first name and a surname is a space; alt/title text is shown to readers."""
+    r = pr.check_text("<p>Bartholomew&nbsp;Farquharson helped.</p>", piece_yes={"CHILD-1"}, registry=reg)
+    assert any("surname" in f.rule for f in r.findings), r.findings
+    r = pr.check_text("<p>Hi.</p><img src=x.png alt='Quenby at the keyboard'>", registry=reg)
+    assert any(f.label == "CHILD-2" for f in r.findings), r.findings
+    r = pr.check_text('<a href="/x" title="Orlando Pemberton">link</a>', registry=reg)
+    assert any(f.label == "CLIENT-1" for f in r.findings), r.findings
+    # markup-only names (class, href) are still not read as people
+    assert not pr.check_text('<a class="Orlando-Pemberton" href="/Orlando/">go</a>', registry=reg).findings
+
+
+def test_ages_next_to_a_child_in_the_common_forms_are_refused(reg):
+    """D5: parenthetical, 'now N', ordinal birthday, 'turns N', next to a child name or child word."""
+    for t in ("Bartholomew (9) helped.", "Bartholomew, now 9. He helped.", "Bartholomew's 9th birthday was that week.",
+              "My son turns 8 next month.", "My daughter (11) helped."):
+        r = pr.check_text(t, piece_yes={"CHILD-1"}, registry=reg)
+        assert any(f.kind == "age" for f in r.findings), (t, r.findings)
+    # a number with no child nearby is not an age finding
+    assert not any(f.kind == "age" for f in pr.check_text("Step (2) is next. The build turns 3 modules green.", registry=reg).findings)

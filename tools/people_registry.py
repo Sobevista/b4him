@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 people_registry.py - the B4-PEOPLE policy (ledger E00571) as a check later stages import.  (build: production-boundary-v1)
 
@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import re
 import sys
@@ -54,6 +55,7 @@ FIRST_NAMES_FILE = DATA / "common_first_names.txt"
 WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 CAP = re.compile(r"^[A-Z][a-z]{1,}(?:[-'’][A-Z]?[a-z]+)*$")
 TAG = re.compile(r"<[^>]+>")
+ATTR_TEXT = re.compile(r"""\b(?:alt|title)\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
 SENTENCE_END = re.compile(r"[.!?]\s+|\n+")
 
 #: Words that are capitalised without being people. Extendable through the registry's safe_terms.
@@ -73,7 +75,10 @@ CUES = re.compile(
 AGE = re.compile(r"\b(?:\d{1,2}|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
                  r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty))[- ]?(?:years?|yrs?|y/?o)[- ]?(?:old)?\b|"
                  r"\b(?:aged?|turned|turning)\s+(?:\d{1,2}|[a-z]+)\b|\b(?:age|aged)\s*[:=]?\s*\d{1,2}\b|"
-                 r"\b(?:is|was|being)\s+\d{1,2}\b(?!\s*(?:%|st|nd|th|rd))|,\s*\d{1,2}\s*,", re.I)
+                 r"\b(?:is|was|being)\s+\d{1,2}\b(?!\s*(?:%|st|nd|th|rd))|,\s*\d{1,2}\s*,|"
+                 r"\(\s*\d{1,2}\s*\)|\b(?:now|turns?|turned)\s+(?:\d{1,2}|(?:one|two|three|four|five|six|seven|eight|nine|ten|"
+                 r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty))\b|"
+                 r"\b\d{1,2}(?:st|nd|rd|th)\s+birthday\b", re.I)
 
 
 def normalise(name: str) -> str:
@@ -180,9 +185,11 @@ def load_registry(registry_path: Path | None = None, local_path: Path | None = N
 
 
 def visible_text(text: str) -> str:
-    """Drop script/style and tags so markup names (class, href) are not read as people; keep the words."""
+    """Drop script/style and tags so markup names (class, href) are not read as people; keep the words, the alt/title
+    attribute text (it is shown to readers), and decode entities (`&nbsp;` between two name words is still a space)."""
     text = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", text)
-    return TAG.sub(" ", text)
+    text = TAG.sub(lambda m: " " + " ".join(v[0] or v[1] for v in ATTR_TEXT.findall(m.group(0))) + " ", text)
+    return html.unescape(text)
 
 
 def _sentence_starts(text: str) -> set[int]:

@@ -173,3 +173,21 @@ def test_the_inventory_writes_nothing_but_its_own_output(tmp_path, monkeypatch, 
     assert inv.main(["--out", str(tmp_path / "out")]) == 0
     assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["INVENTORY.md", "inventory.json"]
     assert "flagged" in capsys.readouterr().out
+
+
+def test_second_release_copy_command_line_and_stdlib_siblings():
+    """D1/D2/D3: a copy of the release path is flagged, the task command line is scanned, and the stdlib/CLI
+    network siblings are flagged."""
+    D = r"C:\Users\dansl\Downloads\b4him\tools"
+    real = r"C:\Users\dansl\b4him\tools"
+    assert inv.allowed_for("push", {"file": real + r"\release.py"}) == "b4him release path"
+    assert inv.allowed_for("push", {"file": real.upper() + "\\DAILY.CMD"}) == "b4him release path"
+    assert inv.allowed_for("push", {"file": D + r"\release.py"}) is None
+    assert inv.allowed_for("push", {"file": r"C:\x" + real[2:] + r"\release.py"}) is None
+    r = inv.inspect_command('powershell.exe -Command "git push origin main"', "", inv.Reader({}))
+    assert r["capabilities"]["push"] and r["unknown"]
+    for text in ("import http.client", "import ftplib", "gh release upload v1 x.zip", "git send-email HEAD~1",
+                 "import socket", "scp a b:c", "rsync -a x y", "import paramiko", "Invoke-WebRequest http://x.invalid",
+                 "gh pr create"):
+        caps = inv.scan_text(text, "f")
+        assert any(caps[k] for k in inv.OUTWARD), text

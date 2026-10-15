@@ -249,19 +249,28 @@ def test_release_refuses_a_piece_without_current_bindings_and_the_legacy_excepti
 
     # ---- the legacy exception: named, single, covers exactly one piece
     legacy = tmp_path / "legacy.json"
-    legacy.write_text(json.dumps({"exceptions": [{"id": "GC-GLOSS-1"}]}), encoding="utf-8")
     glossary = {"id": "GC-GLOSS-1", "stage": "PREVIEWED", "approved_blobs": {PAGE: "a" * 40}}
-    assert binding.problems(glossary, legacy) == []                              # covered without a marker
+    pinned = {"exceptions": [{"id": "GC-GLOSS-1", "approved_digest": binding.bytes_digest(glossary)}]}
+    legacy.write_text(json.dumps(pinned), encoding="utf-8")
+    assert binding.problems(glossary, legacy) == []                              # covered without a marker, bytes pinned
+    # W1: the digest is REQUIRED. An entry without one (missing, empty, blank, not a string) covers nothing.
+    for bad in ({"id": "GC-GLOSS-1"}, {"id": "GC-GLOSS-1", "approved_digest": ""},
+                {"id": "GC-GLOSS-1", "approved_digest": "  "}, {"id": "GC-GLOSS-1", "approved_digest": None},
+                {"id": "GC-GLOSS-1", "approved_digest": ["x"]}):
+        legacy.write_text(json.dumps({"exceptions": [bad]}), encoding="utf-8")
+        assert any("approved_digest" in p for p in binding.legacy_problems(glossary, legacy)), bad
+        assert any("UNVERIFIED" in p for p in binding.problems(glossary, legacy)), bad
+    legacy.write_text(json.dumps(pinned), encoding="utf-8")
     for other in ("GC-GLOSS-2", "GC-GLOSS-3", "GC-GLOSS-1-R1", "gc-gloss-1", "GC-GLOSS-1 ", "T4-L1", "TWO", ""):
         assert any("UNVERIFIED" in p for p in binding.problems({**glossary, "id": other}, legacy)), other
     # the data cannot widen it: two entries, or an id the code does not also name, is an error, not a wider cover
-    legacy.write_text(json.dumps({"exceptions": [{"id": "GC-GLOSS-1"}, {"id": "GC-GLOSS-2"}]}), encoding="utf-8")
+    legacy.write_text(json.dumps({"exceptions": [{"id": "GC-GLOSS-1", "approved_digest": "x"}, {"id": "GC-GLOSS-2"}]}),
+                      encoding="utf-8")
     assert any("single" in p for p in binding.problems(glossary, legacy))
     legacy.write_text(json.dumps({"exceptions": [{"id": "GC-GLOSS-2"}]}), encoding="utf-8")
     assert any("does not allow" in p for p in binding.problems({**glossary, "id": "GC-GLOSS-2"}, legacy))
     # a byte pin in the data refuses a row under the same id with other bytes
-    legacy.write_text(json.dumps({"exceptions": [{"id": "GC-GLOSS-1",
-                                                  "approved_digest": binding.bytes_digest(glossary)}]}), encoding="utf-8")
+    legacy.write_text(json.dumps(pinned), encoding="utf-8")
     assert binding.problems(glossary, legacy) == []
     assert binding.problems({**glossary, "approved_blobs": {PAGE: "b" * 40}}, legacy)
 
@@ -302,3 +311,54 @@ def test_the_real_queue_still_publishes_glossary_i_on_tuesday_and_not_on_friday(
     d = release.plan(TUE)
     assert (d["outcome"], d.get("piece")) == ("PUBLISH", "GC-GLOSS-1"), d
     assert release.plan(FRI)["outcome"] == "SKIP"
+
+
+def test_a_legacy_entry_or_row_id_that_is_not_a_string_is_a_clean_refusal(site, tmp_path, monkeypatch):
+    """W2: a list (or any non-string) id must come back as a refusal, never an uncaught TypeError (unhashable)."""
+    root, write_queue, bound_piece, blob_of = site
+    legacy = tmp_path / "legacy.json"
+    for entry_id in (["GC-GLOSS-1"], {"a": 1}, 7, None):
+        legacy.write_text(json.dumps({"exceptions": [{"id": entry_id, "approved_digest": "x"}]}), encoding="utf-8")
+        got = binding.legacy_problems({"id": "GC-GLOSS-1", "approved_blobs": {}}, legacy)
+        assert got and "does not allow" in got[0], (entry_id, got)
+    legacy.write_text(json.dumps({"exceptions": ["GC-GLOSS-1"]}), encoding="utf-8")
+    assert binding.legacy_problems({"id": "GC-GLOSS-1"}, legacy)
+    legacy.write_text(json.dumps([1]), encoding="utf-8")
+    assert binding.legacy_problems({"id": "GC-GLOSS-1"}, legacy)
+    legacy.write_text(json.dumps({"exceptions": [{"id": "GC-GLOSS-1", "approved_digest": "x"}]}), encoding="utf-8")
+    assert binding.legacy_problems({"id": ["GC-GLOSS-1"]}, legacy)                 # a row whose id is a list
+    # end to end: a data file whose entry id is a list makes the dry run FAIL cleanly, no traceback
+    legacy.write_text(json.dumps({"exceptions": [{"id": ["GC-GLOSS-1"], "approved_digest": "x"}]}), encoding="utf-8")
+    monkeypatch.setattr(binding, "LEGACY_FILE", legacy)
+    unbound = {k: v for k, v in bound_piece("GC-GLOSS-1").items() if k not in ("binding", "approved_commit")}
+    write_queue(unbound)
+    d = release.plan(TUE)
+    assert d["outcome"] == "FAIL" and "UNVERIFIED" in d["why"], d
+
+
+def test_a_same_day_rerun_pushes_a_stranded_release_with_only_bookkeeping_committed_above_it(site, tmp_path):
+    """W3 (liveness): the release is committed, the push fails, then approvals bookkeeping lands on top. The re-run
+    must still push the release, naming the exact HEAD sha. A non-bookkeeping commit above it still must not ride."""
+    root, write_queue, bound_piece, blob_of = site
+    write_queue(bound_piece())
+    bare = origin(root, tmp_path)
+    with release.scheduled_entry(TUE):
+        release_commit = release.apply(TUE, release.plan(TUE))                  # committed, stranded (not pushed)
+        (root / "PRODUCTION_BOARD.md").write_text("# board\nbookkeeping after the release\n", encoding="utf-8", newline="\n")
+        g(root, "add", "--", "PRODUCTION_BOARD.md")
+        g(root, "commit", "-q", "-m", "approvals: a tap applied")
+        riders_head = g(root, "rev-parse", "HEAD")
+        assert riders_head != release_commit
+        # a smuggled page edit on top of that is refused and nothing reaches origin
+        (root / "lessons" / "a" / "index.html").write_text("<p>smuggled</p>\n", encoding="utf-8")
+        g(root, "commit", "-q", "-am", "PUBLISHED P1 on its Tue slot: (a lie)")
+        with pytest.raises(release.ReleaseError, match="unapproved|not provably"):
+            release.push_release(TUE, release_commit)
+        assert g(bare, "rev-parse", "main") != riders_head and "smuggled" not in g(bare, "show", "main:lessons/a/index.html")
+        g(root, "reset", "-q", "--hard", riders_head)
+        # a commit that is not a descendant of the release is refused outright
+        with pytest.raises(release.ReleaseError, match="not provably|descendant|unapproved"):
+            release.push_release(TUE, g(root, "rev-parse", "HEAD~2"))
+        release.push_release(TUE, release_commit)
+    assert g(bare, "rev-parse", "main") == riders_head
+    assert g(bare, "rev-parse", f"main:{PAGE}") == g(root, "rev-parse", f"HEAD:{PAGE}")

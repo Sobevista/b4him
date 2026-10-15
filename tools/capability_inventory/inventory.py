@@ -48,17 +48,25 @@ SELF_NOTICE_MARKER = "capability: self-addressed-notice"
 MAX_DEPTH = 4
 MAX_FILES = 60
 MAX_BYTES = 1_000_000
+COMMAND_LINE = "<task command line>"
+#: the real b4him release path, anchored: a copy elsewhere (a clone, a worktree named b4him) is NOT allowed.
+B4HIM_TOOLS = r"c:\users\dansl\b4him\tools"
 
 OUTWARD = ("push", "mail", "network")
 
 PATTERNS = {
-    "push": [r"\bgit\b[^\n]*\bpush\b", r"""["']push["']"""],
+    "push": [r"\bgit\b[^\n]*\bpush\b", r"""["']push["']""", r"\bgh\s+release\s+(?:upload|create|edit|delete)\b",
+             r"\bgh\s+(?:pr|issue|repo|gist|workflow|secret)\s+(?:create|edit|merge|comment|delete|fork|run|set)\b",
+             r"\bgit\b[^\n]*\bsend-email\b", r"\bscp\b", r"\brsync\b", r"\bsftp\b"],
     "mail": [r"smtplib", r"Send-MailMessage", r"\bsendmail\b", r"\bsmtp\b", r"mailto:", r"MIMEText", r"messages\.send",
-             r"gmail[^\n]{0,40}send", r"\bsendgrid\b", r"\bmailgun\b"],
+             r"gmail[^\n]{0,40}send", r"\bsendgrid\b", r"\bmailgun\b", r"\bsend-email\b", r"\bgit\s+send-email\b"],
     "network": [r"urllib\.request", r"\burlopen\b", r"\brequests\.(?:get|post|put|delete|request|Session)\b",
                 r"^\s*import\s+requests\b", r"\bhttpx\b", r"\baiohttp\b", r"Invoke-WebRequest", r"Invoke-RestMethod",
                 r"\bcurl(?:\.exe)?\b", r"\bwget\b", r"System\.Net\.WebClient", r"\bfetch\(", r"\bsocket\.socket\b",
-                r"\banthropic\b", r"\bopenai\b", r"generativelanguage", r"api\.github\.com", r"\bgh\s+api\b"],
+                r"\banthropic\b", r"\bopenai\b", r"generativelanguage", r"api\.github\.com", r"\bgh\s+api\b",
+                r"\bhttp\.client\b", r"\bhttplib\b", r"\bftplib\b", r"\bsmtpd?lib\b", r"\bimport\s+socket\b", r"\bsocket\.(?:create_connection|getaddrinfo)\b",
+                r"\bparamiko\b", r"\bpoplib\b", r"\bimaplib\b", r"\btelnetlib\b", r"\bxmlrpc\b", r"\bssh\b", r"\birm\b", r"\biwr\b",
+                r"Start-BitsTransfer", r"Net\.Sockets", r"\bTcpClient\b", r"\bHttpClient\b", r"\bnc(?:\.exe)?\s+-"],
     "files": [r"write_text", r"write_bytes", r"""open\([^)]*["'][wax]b?\+?["']""", r"Out-File", r"Set-Content",
               r"Add-Content", r"New-Item", r"Remove-Item", r"Copy-Item", r"Move-Item", r"shutil\.", r"os\.remove",
               r"\.unlink\(", r"Tee-Object", r">>", r"(?<![-=<>])\s>\s*[\w\"'%$.\\]"],
@@ -205,6 +213,9 @@ def inspect_command(command: str, start_in: str, reader: Reader) -> dict:
     unknown: list[str] = []
     queue: list[tuple[str, int]] = []
     seen: set[str] = set()
+    # the command line is text the inventory read: scan it too (FLAGGED wins over UNKNOWN)
+    for kind, hits in scan_text(command, COMMAND_LINE).items():
+        caps[kind].extend(hits)
     for m in ABS_SCRIPT.finditer(command):
         queue.append((m.group(0), 0))
     for m in PY_MODULE.finditer(command):
@@ -266,7 +277,7 @@ def inspect_command(command: str, start_in: str, reader: Reader) -> dict:
 def allowed_for(kind: str, hit: dict, texts: dict[str, str] | None = None) -> str | None:
     """Which of the allowed two covers this hit, or None."""
     f = hit["file"].replace("/", "\\").lower()
-    if kind in ("push", "network") and re.search(r"\\b4him\\tools\\(?:release\.py|daily\.cmd)$", f):
+    if kind in ("push", "network") and re.fullmatch(re.escape(B4HIM_TOOLS) + r"\\(?:release\.py|daily\.cmd)", os.path.normpath(f).lower()):
         return "b4him release path"
     if kind == "mail" and texts and SELF_NOTICE_MARKER in texts.get(hit["file"], ""):
         return "self-addressed notice (claimed by marker, recipient not verified)"

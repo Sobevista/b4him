@@ -79,31 +79,35 @@ def legacy_exceptions(path: Path | None = None) -> dict[str, dict]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise BindingError(f"legacy exception file unreadable ({path}): {e}") from None
-    entries = data.get("exceptions")
+    entries = data.get("exceptions") if isinstance(data, dict) else None
     if not isinstance(entries, list):
         raise BindingError("legacy exception file has no 'exceptions' list")
     if len(entries) > 1:
         raise BindingError(f"the legacy exception is single: {len(entries)} entries named")
     out = {}
     for e in entries:
-        pid = e.get("id")
-        if pid not in LEGACY_ALLOWED_IDS:
+        pid = e.get("id") if isinstance(e, dict) else None
+        if not isinstance(pid, str) or pid not in LEGACY_ALLOWED_IDS:
             raise BindingError(f"legacy exception names {pid!r}, which the code does not allow")
         out[pid] = e
     return out
 
 
 def legacy_problems(row: dict, path: Path | None = None) -> list[str]:
-    """[] if `row` is exactly the piece the legacy exception names (and, when the file pins its bytes, those bytes)."""
+    """[] if `row` is exactly the piece the legacy exception names AND holds exactly the bytes its approved_digest pins.
+    The digest is REQUIRED: an entry without one covers nothing."""
     try:
         exc = legacy_exceptions(path)
     except BindingError as e:
         return [str(e)]
-    entry = exc.get(row.get("id"))
+    rid = row.get("id")
+    entry = exc.get(rid) if isinstance(rid, str) else None
     if entry is None:
-        return [f"{row.get('id')} is not covered by the legacy exception"]
+        return [f"{rid} is not covered by the legacy exception"]
     want = entry.get("approved_digest")
-    if want and bytes_digest(row) != want:
+    if not isinstance(want, str) or not want.strip():
+        return [f"{rid}: the legacy exception carries no approved_digest, so it pins no bytes and covers nothing"]
+    if bytes_digest(row) != want:
         return [f"{row.get('id')}: the approved bytes are not the ones the legacy exception pins"]
     return []
 

@@ -431,17 +431,26 @@ def preflight(day: dt.date) -> list[str]:
 
 def push_release(day: dt.date, commit: str) -> None:
     """The only place this module pushes. It sends `commit` and nothing the guard has not judged:
-    the scheduled entry is open; `commit` is HEAD of main; preflight() (which fetches, and refuses a main that is
+    the scheduled entry is open; `commit` is HEAD of main, or HEAD sits on it with only bookkeeping commits above; preflight() (which fetches, and refuses a main that is
     behind or carries any unpushed commit that is not bookkeeping or today's release) names exactly this commit as
     today's release; and the push names the commit's id, so a branch that moved in between cannot ride out."""
     _require_entry(day)
-    if git("rev-parse", "HEAD").strip() != commit or git("rev-parse", "--abbrev-ref", "HEAD").strip() != "main":
-        raise ReleaseError("refusing to push: HEAD is not the release commit on main")
+    head = git("rev-parse", "HEAD").strip()
+    if git("rev-parse", "--abbrev-ref", "HEAD").strip() != "main":
+        raise ReleaseError("refusing to push: HEAD is not on main")
+    if head != commit:
+        # Only approvals bookkeeping may sit above the release (a tap applied after the release was stranded).
+        # preflight() below proves every unpushed commit is either the release or bookkeeping-only, by paths.
+        if subprocess.run(["git", "-C", str(repo()), "merge-base", "--is-ancestor", commit, head],
+                          capture_output=True).returncode != 0:
+            raise ReleaseError("refusing to push: HEAD is not the release commit or a descendant of it on main")
     stranded = preflight(day)
     if stranded != [commit]:
         raise ReleaseError(f"refusing to push: {commit[:7]} is not provably today's release commit "
                            f"(preflight named {[s[:7] for s in stranded] or 'none'})")
-    git("push", "-q", "origin", f"{commit}:refs/heads/main")
+    if git("rev-parse", "HEAD").strip() != head:
+        raise ReleaseError("refusing to push: HEAD moved while the guard was checking")
+    git("push", "-q", "origin", f"{head}:refs/heads/main")
 
 
 def verify_live(row: dict, minutes: int) -> str:
