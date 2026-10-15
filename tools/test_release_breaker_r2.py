@@ -382,6 +382,59 @@ def test_push_sends_only_the_release_and_repushes_a_release_stranded_by_a_failed
     assert "Still more of" in g(bare, "show", "main:lessons/index.html")
 
 
+def test_push_sends_only_the_release_never_an_index_edit_sitting_under_a_genuine_release(site, tmp_path, monkeypatch):
+    """ATTACK on fix round 3: the stranded proof renders the PARENT's index. Make the parent an unpushed hand edit
+    to the index and land a genuine release on top: the release commit proves itself against the edited parent,
+    so the edit must be refused on its own, and neither commit may reach origin."""
+    root, blob, write_queue, _, _ = site
+    write_queue(piece(blob))
+    bare = with_origin(root, tmp_path)
+    index = root / "lessons" / "index.html"
+    index.write_text(index.read_text(encoding="utf-8").replace("<footer></footer>", "<footer>UNAPPROVED</footer>"),
+                     encoding="utf-8", newline="\n")
+    commit_all(root, "footer tweak, never approved")
+    release.apply(TUE, release.plan(TUE))                     # a genuine release, committed on top of the edit
+    monkeypatch.setattr(release.dt, "date", FakeDate)
+    assert release.main(["--apply", "--push"]) == 1
+    assert "unapproved" in log_lines(root)[-1]["why"]
+    assert "UNAPPROVED" not in g(bare, "show", "main:lessons/index.html")
+    assert PAGE not in g(bare, "ls-tree", "-r", "--name-only", "main")
+
+
+def test_push_sends_only_the_release_never_a_second_release_shaped_commit_publishing_a_racked_piece_early(
+        site, tmp_path, monkeypatch):
+    """ATTACK on fix round 3: a genuine release is stranded (push failed). On top of it a hand-made commit flips a
+    SECOND racked row to PUBLISHED today, writes its pinned page and regenerates the index from the parent. Those
+    are approved bytes, but the commit is not today's release and it is a second piece in one slot; two rows
+    published on one day is a state the release tool itself can never produce, so it must not ride out."""
+    root, blob, write_queue, blob_of, _ = site
+    b2 = blob_of(b"<h1>Two</h1>\n")
+    page2 = "lessons/two/index.html"
+    two = racked("TWO", page2, b2, 2, entry={**ENTRY, "numeral": "II", "href": "/lessons/two/", "title": "Two"})
+    write_queue(piece(blob), two)
+    bare = with_origin(root, tmp_path)
+    monkeypatch.setattr(release.dt, "date", FakeDate)
+    real = release.git
+
+    def push_fails(*a, **k):
+        if a[:1] == ("push",):
+            raise release.ReleaseError("network down")
+        return real(*a, **k)
+    monkeypatch.setattr(release, "git", push_fails)
+    assert release.main(["--apply", "--push"]) == 1            # GC-GLOSS-1 is committed and stranded
+    monkeypatch.setattr(release, "git", real)
+    (root / page2).parent.mkdir()
+    (root / page2).write_bytes(subprocess.run([GIT, "-C", str(root), "cat-file", "blob", b2], capture_output=True).stdout)
+    pb.QUEUE.write_text(release.set_published(pb.QUEUE.read_text(encoding="utf-8"), "TWO", TUE),
+                        encoding="utf-8", newline="\n")
+    index = root / "lessons" / "index.html"
+    index.write_text(release.render_tracks(index.read_text(encoding="utf-8"), pb.load_queue()),
+                     encoding="utf-8", newline="\n")
+    commit_all(root, release.RELEASE_SUBJECT.format(pid="TWO", day=TUE, title="Two"))
+    release.main(["--apply", "--push"])
+    assert page2 not in g(bare, "ls-tree", "-r", "--name-only", "main")
+
+
 def test_push_sends_only_the_release_and_refuses_when_main_is_behind_origin(site, tmp_path, monkeypatch):
     root, blob, write_queue, _, _ = site
     write_queue(piece(blob))
