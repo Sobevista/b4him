@@ -368,10 +368,23 @@ def test_attack_the_real_queue_publishes_glossary_i_on_tuesday_and_nothing_else_
             if day.weekday() != 1:
                 assert release.plan(day)["outcome"] == "SKIP", day
     assert binding is not None, "no binding module: every other racked row would ride"
+    # Referee amendment (breaker/production-line-v2, 2026-10-20): Daniel's re-taps of T4/T5 on 2026-10-20 wrote real v3
+    # bindings, so "every other racked row is UNVERIFIED" went stale. The attack stands: nothing rides WITHOUT a
+    # genuine tap. A racked row other than the legacy piece is either UNVERIFIED, or carries a version-3 binding that
+    # holds (commit, tag, digest), names the ledger event of his tap, and is NOT covered by the legacy exception, so
+    # stripping its binding makes it UNVERIFIED again.
     for r in rows:
         if r["id"] != "GC-GLOSS-1" and r.get("approved_blobs"):
             p = binding.problems(r)
-            assert p and any("UNVERIFIED" in x for x in p), r["id"]
+            if p:
+                assert any("UNVERIFIED" in x for x in p), (r["id"], p)
+                continue
+            assert (r.get("binding") or {}).get("version") == binding.BINDING_VERSION, r["id"]
+            assert binding.legacy_problems(r), f"{r['id']} rides on the legacy exception"
+            assert re.search(r"ledger E\d{5}", str(r.get("ruled", ""))), f"{r['id']}: ruled names no ledger event"
+            stripped = {k: v for k, v in r.items() if k != "binding"}
+            q = binding.problems(stripped)
+            assert q and any("UNVERIFIED" in x for x in q), r["id"]
 
 
 # ============================================================ the-people-registry-is-a-file-the-program-reads
