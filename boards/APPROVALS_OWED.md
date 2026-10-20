@@ -212,7 +212,7 @@
 - **Cross-checked by, including where it is weak.** stage 2 PASS on 2026-10-20 by stage-2 reviewer agent s2r-a91d, b4him session 33569fa0 (proof: Page carries the earlier PASS by reviewer s2r-7f3c at 340e16b on an identical blob; this review covers the changed tools/tracks/n8n.html (11/11 planted tokens caught, 0 hits on real file); the known-names half is UNKNOWN because data/people_names.local.json is absent.)
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-10-20 APPROVE · ledger E00748 · applied by tools/approvals.py]
 
 ### APPROVE GC-GLOSS-3 at a2f3599 — Glossary III - Advanced terms
 

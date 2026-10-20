@@ -2,8 +2,8 @@
 
 *Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 12.0 weeks** — healthy  
-*(target 6w · floor 3w · 12 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 13.0 weeks** — healthy  
+*(target 6w · floor 3w · 13 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
 26 in the pipeline · 5 published · cadence Tuesday only, hard cap 1 per 7 days
 
@@ -25,18 +25,18 @@
 
 | slot | piece | review by | note |
 |---|---|---|---|
-| **2026-10-27** Tue | Silence Is Not a Grade - the gate that fails open | 2026-10-20 |  |
-| **2026-11-03** Tue | A Convention Without Enforcement Is a Preference | 2026-10-27 |  |
-| **2026-11-10** Tue | The Tripod - three kinds of checking | 2026-11-03 |  |
-| **2026-11-17** Tue | The Second Oracle - green proves you met your criteria | 2026-11-10 |  |
-| **2026-11-24** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-11-17 |  |
-| **2026-12-01** Tue | Math on the Table - locking parameters before the machine runs | 2026-11-24 |  |
-| **2026-12-08** Tue | Success for Doing Nothing | 2026-12-01 |  |
-| **2026-12-15** Tue | Ruled Is Not Applied | 2026-12-08 |  |
-| **2026-12-22** Tue | A Null Result Is Only as Strong as the Search Behind It | 2026-12-15 |  |
-| **2026-12-29** Tue | The Instrument Measures You First | 2026-12-22 |  |
-| **2027-01-05** Tue | Grade Each Leg Only on the Axis It Can Carry | 2026-12-29 |  |
-| **2027-01-12** Tue | The Law Writer's Own Laws | 2027-01-05 |  |
+| **2026-10-27** Tue | Glossary II - Intermediate terms | 2026-10-20 |  |
+| **2026-11-03** Tue | Silence Is Not a Grade - the gate that fails open | 2026-10-27 |  |
+| **2026-11-10** Tue | A Convention Without Enforcement Is a Preference | 2026-11-03 |  |
+| **2026-11-17** Tue | The Tripod - three kinds of checking | 2026-11-10 |  |
+| **2026-11-24** Tue | The Second Oracle - green proves you met your criteria | 2026-11-17 |  |
+| **2026-12-01** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-11-24 |  |
+| **2026-12-08** Tue | Math on the Table - locking parameters before the machine runs | 2026-12-01 |  |
+| **2026-12-15** Tue | Success for Doing Nothing | 2026-12-08 |  |
+| **2026-12-22** Tue | Ruled Is Not Applied | 2026-12-15 |  |
+| **2026-12-29** Tue | A Null Result Is Only as Strong as the Search Behind It | 2026-12-22 |  |
+| **2027-01-05** Tue | The Instrument Measures You First | 2026-12-29 |  |
+| **2027-01-12** Tue | Grade Each Leg Only on the Axis It Can Carry | 2027-01-05 |  |
 
 ## The patch line
 
@@ -63,15 +63,15 @@
   - The two numbers - why a detection that cries wolf catches nothing · source: `purple-team teaching/Module_02_Seeing_It.md + detections/cross_owner_note_read.yml v1 vs v2` · **BLOCKED: RUNG1_CROSS.md**
   - Blue team words, four ways each · source: `purple-team teaching/Module_02_Seeing_It.md section 'The jargon, four ways'` · **BLOCKED: RUNG1_CROSS.md**
 
-**DRAFTED** (Claude) — 2
-  - Glossary II - Intermediate terms · source: `harness Knowledge_Base/Teaching/Glossary_Tiers_II_III_terms.md (term list, per-term sources)`
+**DRAFTED** (Claude) — 1
   - Glossary III - Advanced terms · source: `harness Knowledge_Base/Teaching/Glossary_Tiers_II_III_terms.md (term list, per-term sources)`
 
 **REVIEWED** (the other seat) — 0
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 12
+**PREVIEWED** (DANIEL) — 13
+  - Glossary II - Intermediate terms · source: `harness Knowledge_Base/Teaching/Glossary_Tiers_II_III_terms.md (term list, per-term sources)`
   - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md`
   - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md`
   - The Tripod - three kinds of checking · source: `Knowledge_Base/Teaching/Module_11_The_Tripod.md`
