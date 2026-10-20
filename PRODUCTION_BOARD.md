@@ -7,7 +7,7 @@
 
 25 in the pipeline · 1 published · cadence Tuesday only, hard cap 1 per 7 days
 
-*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (1 open, 0 racked) runs outside that cadence — see its own section.*
+*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (2 open, 0 racked) runs outside that cadence — see its own section.*
 
 ## Redraft owed — Daniel sent these back
 
@@ -45,6 +45,7 @@
 *Fixes to published pages and site furniture (`kind: patch`). Outside the content cadence: no Tuesday rule, no 7-day cap, no content slot, no runway. A tapped patch publishes on the next release run (the daily 08:30 job), exact pinned bytes only, logged with lane `patch`.*
 
 - Glossary I revision - fold each word's four rows so the page is shorter (`GC-GLOSS-1-R1`) — waiting on Claude at DRAFTED
+- Site patch - Title Case every published heading (D21) (`SITE-PATCH-HEADINGS-1`) — **BLOCKED: PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line)** (release will refuse)
 
 ## The pipeline, by stage
 
