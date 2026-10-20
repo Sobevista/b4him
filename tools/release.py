@@ -540,6 +540,13 @@ def preflight(day: dt.date) -> list[str]:
         stranded = []
     else:
         stranded = [h for h, _ in ahead if is_release_of(h, paths[h], todays[0])]
+        # The row is read from the very queue under judgment, so its pins prove nothing unless its approval binding
+        # (v3, or the one fingerprinted legacy exception) still holds: an edited pin breaks the digest. Round 2 of
+        # fix/release-guard-pinned-index: a forged lessons/index.html pin rode the content path, which never checked.
+        if stranded and binding.problems(todays[0]):
+            raise ReleaseError(f"an unpushed commit looks like the release of {todays[0].get('id')} but that row's "
+                               f"approval binding does not hold ({'; '.join(binding.problems(todays[0]))}); "
+                               f"a human looks first")
     # The patch line: several patches may publish in a day, each its own commit. An unpushed commit is a stranded
     # patch release only if it is the release of exactly one patch row published today whose v3 binding still holds
     # (approved commit + tag + digest, lane included), so a forged "patch" row cannot carry a commit out.
@@ -639,7 +646,7 @@ def stranded_patch(day: dt.date, h: str) -> dict | None:
     p = commit_paths(h)
     return next((r for r in pb.load_queue() if not r.get("_broken") and pb.is_patch(r)
                  and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day
-                 and is_release_of(h, p, r)), None)
+                 and is_release_of(h, p, r) and not binding.problems(r)), None)
 
 
 def run_patches(a, day: dt.date, owed: dict | None = None) -> list[dict]:
