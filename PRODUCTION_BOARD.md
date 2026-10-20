@@ -2,10 +2,10 @@
 
 *Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 12.0 weeks** — healthy  
-*(target 6w · floor 3w · 12 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 13.0 weeks** — healthy  
+*(target 6w · floor 3w · 13 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-26 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
+27 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
 
 ## Waiting on Daniel
 
@@ -54,7 +54,7 @@
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 12
+**PREVIEWED** (DANIEL) — 13
   - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js`
   - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
@@ -67,6 +67,7 @@
   - A Null Result Is Only as Strong as the Search Behind It · source: `Knowledge_Base/Teaching/Module_18_A_Null_Result_Is_Only_As_Strong_As_The_Search.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
   - The Instrument Measures You First · source: `Knowledge_Base/Teaching/Module_17_The_Instrument_Measures_You_First.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
   - Grade Each Leg Only on the Axis It Can Carry · source: `Knowledge_Base/Teaching/Module_19_Grade_Each_Leg_On_The_Axis_It_Can_Carry.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
+  - The Law Writer's Own Laws · source: `Knowledge_Base/Teaching/Module_22_The_Law_Writers_Own_Laws.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
 
 **SCHEDULED** (the board) — 0
 
