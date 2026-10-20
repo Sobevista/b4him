@@ -5,13 +5,23 @@
 **RUNWAY: 12.0 weeks** — healthy  
 *(target 6w · floor 3w · 12 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-26 in the pipeline · 1 published · cadence Tuesday only, hard cap 1 per 7 days
+25 in the pipeline · 1 published · cadence Tuesday only, hard cap 1 per 7 days
+
+*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (1 open, 0 racked) runs outside that cadence — see its own section.*
+
+## Redraft owed — Daniel sent these back
+
+*A REJECT tap (`tools/approvals.py apply`) puts the piece back at DRAFTED with his note verbatim. The redraft is a new commit and comes back to him as a new tile.*
+
+| piece | line | branch | his ruling, verbatim |
+|---|---|---|---|
+| Glossary II - Intermediate & Advanced terms | content | `draft/gc-gloss-2` | Daniel REJECTED both halves (E00615 Glossary II, E00616 Glossary III; applied as E00660/E00662). His note (E00615): "The titles need Sentence Structure or whatever it is for instance the heading 'The twenty' should read 'The Twenty'"; E00616: "Same as Glossary 2". Daniel 2026-10-20: the redraft looks at ALL the headings as a whole, not just 'The twenty'. Then apply the Glossary I fold + open-all (GC-GLOSS-1-R1), a stage-2 re-read, and a fresh approvals.py offer. |
 
 ## Waiting on Daniel
 
 *Nothing. Every piece is blocked on someone else or already through his gates.*
 
-## The next 12 slots
+## The content line: the next 12 slots
 
 *A piece must be at **PREVIEWED** by **T-7 days** to hold a slot (`PRODUCTION_PLAN` §3). An empty slot skips and says so.*
 
@@ -30,9 +40,15 @@
 | **2027-01-05** Tue | Grade Each Leg Only on the Axis It Can Carry | 2026-12-29 |  |
 | **2027-01-12** Tue | The Law Writer's Own Laws | 2027-01-05 |  |
 
+## The patch line
+
+*Fixes to published pages and site furniture (`kind: patch`). Outside the content cadence: no Tuesday rule, no 7-day cap, no content slot, no runway. A tapped patch publishes on the next release run (the daily 08:30 job), exact pinned bytes only, logged with lane `patch`.*
+
+- Glossary I revision - fold each word's four rows so the page is shorter (`GC-GLOSS-1-R1`) — waiting on Claude at DRAFTED
+
 ## The pipeline, by stage
 
-**SOURCE** (build session) — 13
+**SOURCE** (build session) — 12
   - Advanced 1 - Orchestration · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 2 - Resilience · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 3 - Instrumentation · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
@@ -45,7 +61,6 @@
   - Flashcards - the verified subset · source: `purple-team teaching/flashcards/terms.jsonl` · **BLOCKED: verification step 2 (VERIFY_CONTRACT.md) - 197 cards, none verified yet**
   - The two numbers - why a detection that cries wolf catches nothing · source: `purple-team teaching/Module_02_Seeing_It.md + detections/cross_owner_note_read.yml v1 vs v2` · **BLOCKED: RUNG1_CROSS.md**
   - Blue team words, four ways each · source: `purple-team teaching/Module_02_Seeing_It.md section 'The jargon, four ways'` · **BLOCKED: RUNG1_CROSS.md**
-  - Glossary I revision - fold each word's four rows so the page is shorter · source: `Daniel, 2026-10-13, approving Glossary I` · **BLOCKED: DEFERRED by Daniel (on his calendar) - not before GC-GLOSS-1 is published. An edit to the page before then voids its approval (approved_blobs) and the board pulls it from its slot.**
 
 **DRAFTED** (Claude) — 1
   - Glossary II - Intermediate & Advanced terms · source: `Knowledge_Base/Teaching/_laptop_recovered/Automation_Vocabulary_Glossary.docx` · **BLOCKED: REDRAFT owed: Daniel REJECTED both halves (E00615 Glossary II, E00616 Glossary III; applied as E00660/E00662). His note (E00615): "The titles need Sentence Structure or whatever it is for instance the heading 'The twenty' should read 'The Twenty'"; E00616: "Same as Glossary 2". Daniel 2026-10-20: the redraft looks at ALL the headings as a whole, not just 'The twenty'. Then apply the Glossary I fold + open-all (GC-GLOSS-1-R1), a stage-2 re-read, and a fresh approvals.py offer.**
