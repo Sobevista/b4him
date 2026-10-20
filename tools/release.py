@@ -515,6 +515,13 @@ def is_release_of(h: str, paths: set[str], row: dict) -> bool:
         return False
 
 
+def release_row_problems(row: dict) -> list[str]:
+    """Why a row read from the queue under judgment cannot vouch for an unpushed commit: its approval binding (v3, or
+    the fingerprinted legacy exception) and its pins, including index_entry text == approved_index_entry, which the
+    binding digest covers only as a hash (breaker round 2, bc75d1c). Same checks plan() makes before a publish."""
+    return binding.problems(row) + pin_problems(row)
+
+
 def preflight(day: dt.date) -> list[str]:
     """Before a --push run: [] if main carries nothing unpushed, else the hashes of release commits stranded from
     TODAY (to re-push). Anything else unpushed refuses: `git push` would send it live with the release."""
@@ -543,9 +550,9 @@ def preflight(day: dt.date) -> list[str]:
         # The row is read from the very queue under judgment, so its pins prove nothing unless its approval binding
         # (v3, or the one fingerprinted legacy exception) still holds: an edited pin breaks the digest. Round 2 of
         # fix/release-guard-pinned-index: a forged lessons/index.html pin rode the content path, which never checked.
-        if stranded and binding.problems(todays[0]):
+        if stranded and release_row_problems(todays[0]):
             raise ReleaseError(f"an unpushed commit looks like the release of {todays[0].get('id')} but that row's "
-                               f"approval binding does not hold ({'; '.join(binding.problems(todays[0]))}); "
+                               f"approval does not hold ({'; '.join(release_row_problems(todays[0]))}); "
                                f"a human looks first")
     # The patch line: several patches may publish in a day, each its own commit. An unpushed commit is a stranded
     # patch release only if it is the release of exactly one patch row published today whose v3 binding still holds
@@ -554,7 +561,7 @@ def preflight(day: dt.date) -> list[str]:
         hits = [h for h, _ in ahead if is_release_of(h, paths[h], r)]
         if not hits:
             continue
-        if len(hits) > 1 or binding.problems(r):
+        if len(hits) > 1 or release_row_problems(r):
             raise ReleaseError(f"an unpushed commit looks like the release of patch {r.get('id')} but it is not "
                                f"provably one bound patch release; a human looks first")
         stranded += [h for h in hits if h not in stranded]
@@ -646,7 +653,7 @@ def stranded_patch(day: dt.date, h: str) -> dict | None:
     p = commit_paths(h)
     return next((r for r in pb.load_queue() if not r.get("_broken") and pb.is_patch(r)
                  and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day
-                 and is_release_of(h, p, r) and not binding.problems(r)), None)
+                 and is_release_of(h, p, r) and not release_row_problems(r)), None)
 
 
 def run_patches(a, day: dt.date, owed: dict | None = None) -> list[dict]:
