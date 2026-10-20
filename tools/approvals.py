@@ -107,10 +107,13 @@ def pinned(commit: str, row: dict) -> dict:
 # production-line-v2 (orchestrator, after the breaker): stage 2 is a STRUCTURED record, not a phrase. The row's
 # `reviewed` field must be
 #     {"date": "YYYY-MM-DD", "by": "<the seat that ran it>", "verdict": "PASS", "proof": "<where the report is>"}
-# and it is BOUND TO THE BYTES IT CHECKED (round 4): either it carries "blobs" {path: blob} equal to the piece's files
-# now, or (the default) it covers exactly the bytes committed alongside it, i.e. the piece's files must be unchanged
-# since the commit that wrote this record onto the row. A redraft after a REJECT therefore needs a new record.
+# plus "blobs": {path: git blob id}, REQUIRED (round 5): the exact bytes it checked. Every file of the piece must be
+# named there at exactly its current blob (the record may name more). Nothing is inferred from which commit wrote the
+# record: a commit can write a record and new bytes together. A redraft after a REJECT therefore needs a new record.
 # A record marked "unbound" (a legacy migration that could not name its bytes) and any prose never admit an offer.
+# The `by` field is an honour-system claim: every commit is authored under Daniel's git identity, so no rule here can
+# prove the reviewer differs from the drafter without an OS-enforced identity; it stops accidents and lazy
+# self-labels, not a determined forger.
 STAGE2_KEYS = ("date", "by", "verdict", "proof")
 #: The one patch scope that may skip stage 2, proved on the FULL bytes of every file (head, attributes, CSS, script):
 #: every byte equals main's except ASCII letter case. "layout-only" was dropped: visible-text equality let a name in
@@ -131,21 +134,6 @@ DRAFTER_WORDS = frozenset({"author", "self", "drafted", "drafter", "drafting", "
 def pre_tap(label: str) -> bool:
     label = str(label or "").strip()
     return label.upper().startswith(PRE_TAP_PREFIX) or label in TAP_WAIT_LABELS
-
-
-def record_commit(pid: str, commit: str, rec) -> str | None:
-    """The commit that wrote this exact stage-2 record onto the row: the oldest commit of the latest unbroken run
-    (walking back from `commit` over commits touching the queue) whose row carries an identical `reviewed`."""
-    found = None
-    for c in git("log", "--format=%H", commit, "--", "production_queue.jsonl").split():
-        try:
-            r = row_at(c, pid)
-        except ApprovalError:
-            break
-        if r.get("reviewed") != rec:
-            break
-        found = c
-    return found
 
 
 def drafting_authors(commit: str, files: list[str]) -> set[str]:
@@ -181,23 +169,20 @@ def stage2_problem(row: dict, pid: str | None = None, commit: str | None = None)
         return f"stage 2 was run by {by!r}, the seat recorded as drafting the piece (drafted_by)"
     if rec.get("unbound"):
         return "the stage-2 record is unbound (it cannot name the bytes it checked), so it admits no new offer"
+    blobs = rec.get("blobs")
+    if not isinstance(blobs, dict) or not blobs:
+        return ("the stage-2 record names no `blobs` {path: git blob id}: it must name the exact bytes it checked "
+                "(required; nothing is inferred from commits)")
     if pid and commit:
         files = piece_files(row)
         now = blobs_at(commit, files)
         if by.casefold() in drafting_authors(commit, files):
             return f"stage 2 `by` {by!r} is a git author of the piece's own bytes"
-        if rec.get("blobs") is not None:
-            if rec["blobs"] != now:
-                return "the stage-2 record's blobs are not the piece's bytes now: a redraft needs a new stage 2"
-        else:
-            at = record_commit(pid, commit, rec)
-            try:
-                then = blobs_at(at, files) if at else None
-            except ApprovalError:
-                then = None
-            if then != now:
-                return ("the piece's bytes changed since the commit that recorded this stage 2"
-                        + (f" ({at[:7]})" if at else "") + ": a redraft needs a new stage 2")
+        # every file of the piece must be one the record checked, at exactly these bytes (it may name more)
+        changed = [rel for rel in files if blobs.get(rel) != now[rel]]
+        if changed:
+            return (f"the piece's bytes changed since the commit that recorded this stage 2 (its blobs do not match "
+                    f"{', '.join(changed)}): a redraft needs a new stage 2")
     return None
 
 

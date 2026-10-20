@@ -69,7 +69,8 @@ def site(tmp_path, monkeypatch):
     g(root, "checkout", "-q", "-b", "draft/g2")
     (root / "lessons" / "g2").mkdir()
     (root / PAGE).write_text("<h1>Glossary II</h1>\n", encoding="utf-8", newline="\n")
-    drafted = dict(base, stage="DRAFTED", page=PAGE, branch="draft/g2", reviewed={"date": "2026-10-12", "by": "other seat", "verdict": "PASS", "proof": "fixture"},
+    drafted = dict(base, stage="DRAFTED", page=PAGE, branch="draft/g2", reviewed={"date": "2026-10-12", "by": "other seat", "verdict": "PASS", "proof": "fixture",
+                             "blobs": {PAGE: pb.blob_sha(root / PAGE)}},
                    index_entry={"track": "n8n", "numeral": "II", "href": "/lessons/g2/", "title": "Glossary II",
                                 "blurb": "More words."})
     (root / "production_queue.jsonl").write_text("# q\n" + json.dumps(drafted) + "\n", encoding="utf-8", newline="\n")

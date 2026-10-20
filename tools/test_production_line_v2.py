@@ -38,9 +38,29 @@ WED = dt.date(2026, 10, 21)
 PROOF = "https://claude.ai/artifact/example"
 NOTE = 'The titles need Sentence Structure or whatever it is for instance the heading "The twenty" should read "The Twenty"'
 SCHEDULED = argparse.Namespace(push=False, verify_live=False, live_minutes=0)
-#: round 3: stage 2 is a structured record (approvals.STAGE2_KEYS), never prose
+
+
+def blob_of(text: str) -> str:
+    """The git blob id of `text` as the fixtures commit it (LF, utf-8)."""
+    data = text.encode("utf-8")
+    return __import__("hashlib").sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+#: The pages the fixtures (here and in the breaker file) draft under a stage-2 record, at the bytes that record
+#: checked. Round 5: a record names its bytes (`blobs`, required); the record may name more paths than one piece has.
+REVIEWED_PAGES = {
+    **{f"lessons/t{n}/index.html": f"<h1>T{n}</h1>\n" for n in range(1, 5)},         # breaker `drafted`
+    "lessons/t5/index.html": "<h1>t5</h1>\n",                                        # `labelled`
+    "lessons/t7/index.html": "<h1>t7</h1>\n",                                        # `unreviewed`
+    "lessons/t9/index.html": "<h1>t9</h1>\n",                                        # breaker `gated`
+    "lessons/g2/index.html": "<h1>The twenty</h1>\n",                                # `g2`
+    "lessons/three/index.html": "<h1>Three</h1>\n",                                  # C3
+    "lessons/p/index.html": '<main class="wide"><h1>The twenty</h1><p>Words.</p></main>\n',   # FIX-R
+}
+#: round 3: stage 2 is a structured record (approvals.STAGE2_KEYS), never prose; round 5: bound to its bytes
 STAGE2 = {"date": "2026-10-12", "by": "independent name-check seat", "verdict": "PASS",
-          "proof": "harness helper-report archive, capture 0000"}
+          "proof": "harness helper-report archive, capture 0000",
+          "blobs": {rel: blob_of(text) for rel, text in REVIEWED_PAGES.items()}}
 
 
 def g(root, *args):

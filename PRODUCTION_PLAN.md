@@ -128,12 +128,15 @@ commit; a page refuses the piece, "redraft on current main". A piece drafted bef
 after it is refused at the tap the same way. An untapped patch touches no pin on main.
 
 **Stage 2 is a gate on the offer, and it is a record, not a phrase.** `approvals.py offer` requires
-`reviewed = {"date", "by", "verdict": "PASS", "proof"}`. It is bound to the bytes it checked: it carries
-`blobs` equal to the piece's files, or covers exactly the bytes committed with it, so a redraft needs a new
+`reviewed = {"date", "by", "verdict": "PASS", "proof", "blobs"}`. `blobs` is required and names the exact
+bytes it checked: every file of the piece must be there at its current blob, so a redraft needs a new
 record. `by` must name a specific seat: not the row's `drafted_by` (record it at draft time), not a git
 author of the piece's bytes, not a bare model name ("claude"), not a self-description ("the seat that
-drafted it"). Prose and "unbound" records never admit a new offer (`tools/migrate_stage2.py` converts only
-prose that records a clean PASS with no qualifier anywhere; everything else it skips and says why).
+drafted it"). **The `by` field is an honour-system claim:** every commit is authored under Daniel's git
+identity, so no rule can prove the reviewer differs from the drafter without an OS-enforced identity; it
+stops accidents and lazy self-labels, not a determined forger. Prose and "unbound" records never admit a
+new offer (`tools/migrate_stage2.py` converts only prose that records a clean PASS with no qualifier
+anywhere; everything else it skips and says why).
 A patch may skip stage 2 only as `patch_scope: "case-only"`, proved on the full bytes of every file
 (every byte equal to main's except ASCII letter case); any other change needs stage 2.
 

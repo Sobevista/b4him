@@ -682,7 +682,16 @@ def owed_ruling_ids() -> dict[str, list[str]]:
     read, that is UNKNOWN and the run fails: it never rounds to 'nothing owed'."""
     import approvals
     try:
-        events = OWED_SOURCE() if OWED_SOURCE else approvals.owed_rulings(approvals.ledger())
+        if OWED_SOURCE:
+            events = OWED_SOURCE()
+        else:
+            led = approvals.ledger()
+            # round 5: the harness Ledger reads a missing file as empty. A ledger that is not there is UNKNOWN,
+            # never "nothing owed": a moved or renamed ledger must not let a tapped REJECT slip past.
+            path = getattr(led, "path", None)
+            if path is None or not Path(path).is_file() or Path(path).stat().st_size == 0:
+                raise FileNotFoundError(f"the ledger file is missing or empty: {path}")
+            events = approvals.owed_rulings(led)
     except Exception as e:                    # noqa: BLE001
         raise ReleaseError(f"cannot read the ledger for owed rulings ({type(e).__name__}: {e}); UNKNOWN is not "
                            f"'nothing owed', so nothing publishes") from e
