@@ -106,8 +106,9 @@ def pinned(commit: str, row: dict) -> dict:
 # ---------------------------------------------------------------- stage 2 before the tap
 # production-line-v2 (orchestrator, after the breaker): stage 2 is a STRUCTURED record, not a phrase. The row's
 # `reviewed` field must be
-#     {"date": "YYYY-MM-DD", "by": "<the seat that ran it>", "verdict": "PASS", "proof": "<where the report is>"}
-# plus "blobs": {path: git blob id}, REQUIRED (round 5): the exact bytes it checked. Every file of the piece must be
+#     {"date": "YYYY-MM-DD", "by": "<the seat that ran it>", "verdict": "PASS", "proof": "<where the report is>",
+#      "blobs": {"<path>": "<git blob id>"}}
+# "blobs": {path: git blob id}, REQUIRED (round 5): the exact bytes it checked. Every file of the piece must be
 # named there at exactly its current blob (the record may name more). Nothing is inferred from which commit wrote the
 # record: a commit can write a record and new bytes together. A redraft after a REJECT therefore needs a new record.
 # A record marked "unbound" (a legacy migration that could not name its bytes) and any prose never admit an offer.
@@ -259,7 +260,9 @@ def stage2_gate(pid: str, commit: str, row: dict) -> str | None:
                 "equals main's except ASCII letter case)")
     raise ApprovalError(
         f"{pid} at {commit[:7]} has no stage-2 PASS on record, so it does not go in front of Daniel: {problem}. "
-        f"Record it on the row as reviewed = {{\"date\", \"by\", \"verdict\": \"PASS\", \"proof\"}}"
+        f"Record it on the row as reviewed = {{\"date\", \"by\", \"verdict\": \"PASS\", \"proof\", "
+        f"\"blobs\": {{path: git blob id}}}} (`blobs` is required: every file of the piece at its exact blob at "
+        f"{commit[:7]})"
         + ("; layout-only no longer exempts a patch, only a proved case-only change does" if pb.is_patch(row) else ""))
 
 

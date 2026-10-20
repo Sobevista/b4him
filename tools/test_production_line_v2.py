@@ -490,6 +490,22 @@ def test_offer_refuses_a_content_piece_with_no_stage2_record_and_names_what_is_m
         (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
 
 
+def test_the_stage2_refusal_hint_names_blobs_so_following_it_is_not_refused_again(unreviewed):
+    """The hint used to show reviewed = {"date", "by", "verdict": "PASS", "proof"}: a record built from it lacks the
+    required `blobs` and the next offer is refused again. The hint must name `blobs` and say it is required."""
+    root, make = unreviewed
+    ref = make("T13", {"lessons/t13/index.html": "<h1>t13</h1>\n"})
+    with pytest.raises(approvals.ApprovalError) as e:
+        approvals.offer("T13", ref, PROOF, today=MON)
+    hint = str(e.value).split("Record it on the row as", 1)[1]
+    assert '"blobs"' in hint and "required" in hint
+    # following the hint literally (no blobs) is refused for exactly that reason, so the hint must carry it
+    ref = make("T14", {"lessons/t14/index.html": "<h1>t14</h1>\n"},
+               reviewed={k: STAGE2[k] for k in ("date", "by", "verdict", "proof")})
+    with pytest.raises(approvals.ApprovalError, match="names no `blobs`"):
+        approvals.offer("T14", ref, PROOF, today=MON)
+
+
 def test_a_patch_needs_stage2_unless_a_case_only_claim_is_proved_on_the_full_bytes(unreviewed):
     root, make = unreviewed
     ref = make("FIX-W", {PAGE: "<main><h1>The Twenty</h1><p>New words.</p></main>\n"}, kind="patch",
