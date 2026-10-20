@@ -69,7 +69,8 @@ def site(tmp_path, monkeypatch):
     g(root, "checkout", "-q", "-b", "draft/g2")
     (root / "lessons" / "g2").mkdir()
     (root / PAGE).write_text("<h1>Glossary II</h1>\n", encoding="utf-8", newline="\n")
-    drafted = dict(base, stage="DRAFTED", page=PAGE, branch="draft/g2", reviewed="2026-10-12 - other seat",
+    drafted = dict(base, stage="DRAFTED", page=PAGE, branch="draft/g2", reviewed={"date": "2026-10-12", "by": "other seat", "verdict": "PASS", "proof": "fixture",
+                             "blobs": {PAGE: pb.blob_sha(root / PAGE)}},
                    index_entry={"track": "n8n", "numeral": "II", "href": "/lessons/g2/", "title": "Glossary II",
                                 "blurb": "More words."})
     (root / "production_queue.jsonl").write_text("# q\n" + json.dumps(drafted) + "\n", encoding="utf-8", newline="\n")
@@ -154,7 +155,13 @@ def test_a_reject_marks_the_tile_and_racks_nothing(site):
     led = FakeLedger()
     led.rule(title, "REJECT")
     assert approvals.apply(today=MON, led=led)[0].startswith("APPLIED  REJECT")
-    assert next(r for r in pb.load_queue() if r["id"] == "G2")["stage"] == "SOURCE"
+    # production-line-v2 (Daniel, 2026-10-20): a reject goes back to DRAFTED with a redraft owed (it used to stay at
+    # SOURCE, which is how his GC-GLOSS-2/3 notes were lost). It still racks nothing: no pins, no tag.
+    row = next(r for r in pb.load_queue() if r["id"] == "G2")
+    assert row["stage"] == "DRAFTED" and row["blocked_on"].startswith("REDRAFT owed:")
+    assert "approved_blobs" not in row and "binding" not in row
+    assert subprocess.run([GIT, "-C", str(site), "rev-parse", "-q", "--verify", "refs/tags/approved/G2"],
+                          capture_output=True).returncode != 0
     assert "[RULED 2026-10-12 REJECT" in (site / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
 
 

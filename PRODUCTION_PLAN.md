@@ -95,6 +95,59 @@ pinned (`approved_blobs`, plus the lessons-index furniture and entry text). Any 
 tap pulls the piece back to him. Every run writes a line to `release_log.jsonl`; a release day
 with no line is a job that did not run, never a quiet success.
 
+### Two lines: content and patches (ruled 2026-10-20)
+
+Daniel, on a site fix that had been queued like a lesson: *"it moves outside the queue. Then we will
+need to establish two different schedules. One is content and one is patches to the site."* And:
+*"This is a website fix it shouldnt take a week."*
+
+| | **Content line** | **Patch line** |
+|---|---|---|
+| What | a new page: lesson, exercise, write-up | `kind: "patch"` — a change to an already-published page or site furniture (layout, fixes, typos) |
+| When | Tuesdays, 1 per rolling 7 days, T-7 review (E00568, above) | the **next release run after his tap** (the daily 08:30 job), any day |
+| Slots, cap, runway | holds a slot, counts toward the cap, is runway | none: never takes or moves a content slot, never counts toward the cap |
+| Gate | his one tap (E00472) | the same tap, on a tile that says PATCH |
+| Bytes | only the pinned `approved_blobs` (binding, pins, re-hash) | the same checks, plus `replaces_blobs`: it may overwrite only the bytes main held at the tap |
+| Log | `release_log.jsonl`, lane `content` | its own line per patch, lane `patch` |
+
+§5's "corrections publish immediately and outside the cadence" is now this line.
+
+**What a patch may be.** Only a change to paths main already serves: no new page, no lessons-index
+listing (that is content). It may not touch a PAGE a racked-but-unpublished piece pins, nor any path
+another racked patch pins. It MAY change shared furniture (track furniture, the lessons index) that racked
+content pins: that re-pin is recorded on each affected racked row and on the tile and board, and those
+pieces publish with the patched furniture, so a website fix never waits behind the content queue. A
+row's `kind` is part of its v3 binding, so it cannot be changed after the tap; a published row is on the
+patch line only while a v3 binding holds (the legacy GC-GLOSS-1 is content, always).
+
+**A tapped patch re-pins what it changes.** At the tap it records `supersedes_pins` (each path a
+published piece pinned, and whose pin it was), and once live it owns those paths. A content piece that
+pins pre-patch bytes there (exactly the bytes the patch replaced, or approved no later than the patch
+went live) is handled on the bytes: shared track furniture keeps the patch's bytes, said in the release
+commit; a page refuses the piece, "redraft on current main". A piece drafted before a patch and tapped
+after it is refused at the tap the same way. An untapped patch touches no pin on main.
+
+**Stage 2 is a gate on the offer, and it is a record, not a phrase.** `approvals.py offer` requires
+`reviewed = {"date", "by", "verdict": "PASS", "proof", "blobs"}`. `blobs` is required and names the exact
+bytes it checked: every file of the piece must be there at its current blob, so a redraft needs a new
+record. `by` must name a specific seat: not the row's `drafted_by` (record it at draft time), not a git
+author of the piece's bytes, not a bare model name ("claude"), not a self-description ("the seat that
+drafted it"). **The `by` field is an honour-system claim:** every commit is authored under Daniel's git
+identity, so no rule can prove the reviewer differs from the drafter without an OS-enforced identity; it
+stops accidents and lazy self-labels, not a determined forger. Prose and "unbound" records never admit a
+new offer (`tools/migrate_stage2.py` converts only prose that records a clean PASS with no qualifier
+anywhere; everything else it skips and says why).
+A patch may skip stage 2 only as `patch_scope: "case-only"`, proved on the full bytes of every file
+(every byte equal to main's except ASCII letter case); any other change needs stage 2.
+
+**REJECT and labels.** A **REJECT** tap puts the piece back at DRAFTED on main with his note verbatim in
+`blocked_on` ("REDRAFT owed: <ledger id> <note>"), in the ledger, and on the board; a REJECT after an
+applied APPROVE on the same tile un-racks it the same way. **Release refuses any row whose `blocked_on`
+is not empty**, nor any piece with a ruling Daniel tapped that is not applied yet (a REJECT tapped before a
+run but not applied stops it; an unreadable ledger stops every publish). A tap clears only a label that
+starts `PRE-TAP:` or is exactly a known tap-wait string, kept in `cleared_blocked_on`; every other label
+survives, and the tile shows it. Release link checks are case-sensitive (exact paths in git).
+
 ## 4. Preview — what "seeing it" means
 
 A preview is the **rendered page on the local machine**, not a diff and not a description.

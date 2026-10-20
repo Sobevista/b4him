@@ -15,7 +15,9 @@ WHAT A RELEASE DOES, refusing at the first thing that is not exactly right:
   0. (--push) main is not behind origin, and carries nothing unpushed except a release commit stranded from
      today, which is re-pushed: a push sends every local commit, so anything else would go live unapproved
   1. today is a Tuesday slot (E00568), nothing has published today, the 1-per-7-days cap has room, and the board gives
-     the slot a piece whose pins are whole
+     the slot a piece whose pins are whole and whose blocked_on is empty (production-line-v2)
+     THE PATCH LINE (kind "patch", Daniel 2026-10-20) skips the Tuesday/cap/slot rule only: every racked patch goes
+     out on the next run, before the content line, one commit each, with every other check here; log lane "patch".
   2. main is checked out and clean
   3. each approved blob is written to its path and re-hashed to the approved id
   4. the row becomes PUBLISHED (only that queue line changes), the lessons-index track blocks and the board are
@@ -58,6 +60,7 @@ ENTRY = ('    <a class="mod" href="{href}">\n'
 ENTRY_KEYS = ("track", "numeral", "href", "title", "blurb")
 LINK_RE = re.compile(r'(?:href|src)="(/[^"#?]*)')
 RELEASE_SUBJECT = "PUBLISHED {pid} on its {day:%a} {day} slot: {title}"
+PATCH_SUBJECT = "PATCHED {pid} on {day:%a} {day} (patch line, outside the content cadence): {title}"
 #: The only files an unpushed non-release commit may touch and still ride out with a release (approvals.py).
 BOOKKEEPING = {"production_queue.jsonl", "PRODUCTION_BOARD.md", "boards/APPROVALS_OWED.md"}
 
@@ -133,20 +136,35 @@ def live_drift(rows: list[dict], skip=()) -> list[str]:
     return out
 
 
+def blocked_refusal(row: dict) -> str | None:
+    """production-line-v2 (Daniel approved, 2026-10-20): a row whose blocked_on is not empty never publishes. Until
+    this, release read only eligibility, pins and binding, so approved T5 rows labelled 'stage 2 name check' were
+    still eligible. The refusal names the row and the text, and says how a stale label is told from a real gate."""
+    text = str(row.get("blocked_on") or "").strip()
+    if not text:
+        return None
+    return (f"{row.get('id')} carries blocked_on: \"{text}\". release.py refuses any row whose blocked_on is not "
+            f"empty. If the gate it names is met, or it is a stale pre-tap label left on an already-approved row "
+            f"(e.g. \"Daniel's one tap on the rendered proof\" on a racked row), clear blocked_on on main's queue "
+            f"row and re-run; otherwise the gate is unmet and the piece waits")
+
+
 def plan(day: dt.date) -> dict:
-    """What the release for `day` would do. Pure reading; never touches the tree."""
+    """What the CONTENT line's release for `day` would do. Pure reading; never touches the tree. Patch rows are not
+    on this line: they never take the slot and never count toward 'published today' or the cap (plan_patches)."""
     rows = [r for r in pb.load_queue() if not r.get("_broken")]
     if day.weekday() not in pb.CADENCE_DAYS:
         return {"outcome": "SKIP", "why": f"{day:%a} is not a release day (Tuesdays only)"}
-    today_pub = [r["id"] for r in rows if published_on(r) == day]
+    content = [r for r in rows if not on_patch_line(r)]
+    today_pub = [r["id"] for r in content if published_on(r) == day]
     if today_pub:
         return {"outcome": "SKIP", "why": f"already published today: {', '.join(today_pub)} (one slot, one piece)"}
-    recent = [r for r in rows if (p := published_on(r)) and day - dt.timedelta(days=6) <= p <= day]
+    recent = [r for r in content if (p := published_on(r)) and day - dt.timedelta(days=6) <= p <= day]
     if len(recent) >= pb.PER_WEEK_CAP:
         return {"outcome": "SKIP", "why": f"cap: {len(recent)} published in the 7 days to {day} "
                                           f"({', '.join(r['id'] for r in recent)})"}
     eligible, drifted = pb.eligible_pieces(rows)
-    lost = [r["id"] for r in rows if pb.STAGES.index("RULED") <= pb.stage_index(r) < pb.STAGES.index("PUBLISHED")
+    lost = [r["id"] for r in content if pb.STAGES.index("RULED") <= pb.stage_index(r) < pb.STAGES.index("PUBLISHED")
             and any(not pb.blob_in_store(b) for b in (r.get("approved_blobs") or {}).values())]
     _, taken = pb.assign_slots(eligible, pb.next_slots(day - dt.timedelta(days=1), 12))
     piece = taken.get(day)
@@ -164,6 +182,9 @@ def plan(day: dt.date) -> dict:
         if drifted:
             why += f"; changed since approval, so back with Daniel: {', '.join(drifted)}"
         return {"outcome": "SKIP", "why": why}
+    refusal = blocked_refusal(piece)
+    if refusal:
+        return {"outcome": "FAIL", "piece": piece["id"], "why": refusal}
     problems = pin_problems(piece)
     if problems:
         return {"outcome": "FAIL", "piece": piece["id"], "why": "; ".join(problems)}
@@ -171,7 +192,70 @@ def plan(day: dt.date) -> dict:
     problems = binding.problems(piece)
     if problems:
         return {"outcome": "FAIL", "piece": piece["id"], "why": "; ".join(problems)}
+    stale = superseded_pages(piece, rows)
+    if stale:
+        return {"outcome": "FAIL", "piece": piece["id"],
+                "why": f"{piece['id']} pins pre-patch bytes of a page a published patch has since changed ("
+                       + "; ".join(stale) + "): publishing it would silently drop either the fix or the bytes "
+                       "Daniel approved. Redraft on current main and offer it again"}
     return {"outcome": "PUBLISH", "piece": piece["id"], "row": piece}
+
+
+def on_patch_line(row: dict) -> bool:
+    """Is this row on the patch line? A racked or drafted row: by its kind (a flipped kind fails its binding in
+    plan_patches). A PUBLISHED row: only if its v3 binding, which covers `kind`, still holds, so relabelling a
+    published content row as a patch can never free the content slot or the cap (production-line-v2 round 3)."""
+    if not pb.is_patch(row):
+        return False
+    if pb.stage_index(row) < pb.STAGES.index("PUBLISHED"):
+        return True
+    # round 4: only a genuine v3 binding covers `kind`. The legacy exception (GC-GLOSS-1) pins bytes, not kind, so a
+    # published row without a v3 binding is content, always, whatever its kind says.
+    return isinstance(row.get("binding"), dict) and row["binding"].get("version") == binding.BINDING_VERSION \
+        and not binding.problems(row)
+
+
+def superseded_pages(row: dict, rows: list[dict]) -> list[str]:
+    """Non-furniture paths whose pin on `row` a published patch superseded (pb.superseding_patch). Shared track
+    furniture is kept at the patch's bytes instead (apply); a PAGE cannot be, so the piece is refused."""
+    out = []
+    for rel in row.get("approved_blobs") or {}:
+        sup = pb.superseding_patch(row, rel, rows)
+        if sup and not rel.startswith(pb.SHARED_PREFIX):
+            out.append(f"{rel}: patch {sup[0]} published {sup[1][:12]}")
+    return out
+
+
+def plan_patches(day: dt.date) -> list[dict]:
+    """The PATCH line (Daniel, 2026-10-20: "it moves outside the queue ... One is content and one is patches to the
+    site"; "This is a website fix it shouldnt take a week"). Every racked patch is due on the next run, any day: no
+    Tuesday rule, no cap, no slot. Everything else is the content line's discipline unchanged: blocked_on, the pins,
+    the v3 binding (which now covers the lane), bytes in the store, and nothing in the tree changed since the tap.
+    One decision per patch row at stage RULED or later; a tapped fix that cannot go out is a FAIL, never a quiet
+    skip. Pure reading."""
+    rows = [r for r in pb.load_queue() if not r.get("_broken")]
+    ready, drifted = pb.eligible_pieces(rows, "patch")
+    out = []
+    for r in rows:
+        if pb.is_patch(r) and r.get("id") in drifted:
+            out.append({"outcome": "FAIL", "lane": "patch", "piece": r["id"],
+                        "why": "the tree no longer holds the bytes this patch was approved to replace, or its own "
+                               "bytes changed since Daniel's tap; back with him: " + "; ".join(drifted[r["id"]])})
+    for r in sorted(ready, key=lambda x: (str(x.get("since", "")), x.get("order", 999), x.get("id", ""))):
+        why = blocked_refusal(r)
+        if not why and any(not pb.blob_in_store(b) for b in (r.get("approved_blobs") or {}).values()):
+            why = f"approved bytes for {r['id']} are gone from the object store (restore its approved/<id> tag)"
+        why = why or "; ".join(pin_problems(r)) or "; ".join(binding.problems(r))
+        if not why and (r.get("index_entry") or any((r.get("replaces_blobs") or {}).get(rel) is None
+                                                     for rel in r.get("approved_blobs") or {})):
+            why = (f"{r['id']} is not a patch: it adds a page or a lessons-index listing main does not serve yet; "
+                   f"that is content and goes on the content line")
+        if not why:
+            live = live_drift(rows, skip=r.get("approved_blobs") or {})
+            why = ("live content that no approval pinned would be re-rendered: " + "; ".join(live)) if live else ""
+        out.append({"outcome": "FAIL", "lane": "patch", "piece": r["id"], "why": why} if why else
+                   {"outcome": "PUBLISH", "lane": "patch", "piece": r["id"], "row": r})
+    return out
 
 
 # ---------------------------------------------------------------- the index
@@ -200,6 +284,10 @@ def render_tracks(index_html: str, rows: list[dict], furniture_text=None) -> str
 
 
 def broken_links(paths: list[Path]) -> list[str]:
+    """Site-root links in the touched pages whose target the site will not serve. Case-SENSITIVE (round 4): the
+    target must be an exact path in git (ls-files) or one this release writes, because the host is case-sensitive
+    even when this Windows disk is not (/LESSONS/A/ resolves here and 404s live)."""
+    served = set(git("ls-files", "-z").split("\0")) | {p.relative_to(repo()).as_posix() for p in paths}
     bad = []
     for p in paths:
         if p.suffix != ".html" or not p.exists() or "tools" in p.relative_to(repo()).parts:
@@ -207,9 +295,8 @@ def broken_links(paths: list[Path]) -> list[str]:
         for link in LINK_RE.findall(p.read_text(encoding="utf-8")):
             if link.startswith("//"):
                 continue
-            target = repo() / link.lstrip("/")
-            ok = (target / "index.html").exists() if link.endswith("/") else (
-                target.is_file() or (target / "index.html").exists())
+            t = link.lstrip("/")
+            ok = (t + "index.html" in served) if (link.endswith("/")) else (t in served or f"{t}/index.html" in served)
             if not ok:
                 bad.append(f"{p.relative_to(repo()).as_posix()} -> {link}")
     return bad
@@ -263,7 +350,12 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
     _require_entry(day)
     if decision.get("outcome") != "PUBLISH":
         raise ReleaseError(f"nothing to publish: {decision.get('outcome')} - {decision.get('why', '')}")
-    fresh = plan(day)
+    is_patch_line = decision.get("lane") == "patch"
+    if is_patch_line:
+        fresh = next((d for d in plan_patches(day) if d.get("piece") == decision.get("piece")),
+                     {"outcome": "SKIP", "why": f"no racked patch {decision.get('piece')} on the patch line"})
+    else:
+        fresh = plan(day)
     if fresh.get("outcome") != "PUBLISH":
         raise ReleaseError(f"the decision was not re-derived: release time says {fresh.get('outcome')} - "
                            f"{fresh.get('why', '')}")
@@ -286,11 +378,28 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
     created_files: list[Path] = []
     created_dirs: list[Path] = []
     touched: list[Path] = []
+    rows_now = [r for r in pb.load_queue() if not r.get("_broken")]
+    kept: list[str] = []
     try:
         for rel, blob in row["approved_blobs"].items():
+            sup = None if is_patch_line else pb.superseding_patch(row, rel, rows_now)
+            if sup and not rel.startswith(pb.SHARED_PREFIX):
+                raise ReleaseError(f"{rel}: patch {sup[0]} changed this page after {pid}'s bytes were approved; "
+                                   f"redraft on current main")
+            if sup:
+                # shared furniture: this piece's pin predates a published patch that re-pinned it; keep the patch's
+                kept.append(f"{rel} keeps patch {sup[0]}'s bytes {sup[1][:12]} (this piece's older pin "
+                            f"{blob[:12]} is superseded for that path)")
+                continue
             dest = root / rel
             have = pb.blob_sha(dest) if dest.exists() else None
-            if have is not None and have != blob:
+            if have is not None and have != blob and is_patch_line:
+                # A patch replaces exactly the bytes main held when Daniel tapped it (replaces_blobs, recorded by
+                # approvals.rack): never an edit made after the tap, and never another patch's fix.
+                if have != (row.get("replaces_blobs") or {}).get(rel):
+                    raise ReleaseError(f"{rel} holds {have[:12]}, not the bytes patch {pid} was approved to replace; "
+                                       f"refusing to overwrite an edit made after the tap")
+            elif have is not None and have != blob:
                 # Replacing bytes is allowed only where the piece may replace (a revision, or shared track
                 # furniture) AND the tree holds bytes some approval pinned: a file edited outside an approval is
                 # never overwritten, it is refused.
@@ -329,8 +438,12 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
         rels = sorted({p.relative_to(root).as_posix() for p in touched})
         git("add", "--", *rels)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as fh:
-            fh.write(RELEASE_SUBJECT.format(pid=pid, day=day, title=row.get("title", pid)) + "\n\n"
-                     "Written by tools/release.py from the bytes Daniel approved (approved_blobs), "
+            fh.write((PATCH_SUBJECT if is_patch_line else RELEASE_SUBJECT).format(
+                         pid=pid, day=day, title=row.get("title", pid)) + "\n\n"
+                     + "".join(f"Re-pin: {k}.\n" for k in kept)
+                     + "".join(f"Re-pin: supersedes {v.get('piece')}'s pin on {rel} ({str(v.get('blob'))[:12]}).\n"
+                               for rel, v in (row.get("supersedes_pins") or {}).items())
+                     + "Written by tools/release.py from the bytes Daniel approved (approved_blobs), "
                      "re-hashed before commit.\n")
             msg = fh.name
         git("commit", "-q", "-F", msg)
@@ -410,8 +523,9 @@ def preflight(day: dt.date) -> list[str]:
     # never by its message, so nothing can ride along by naming itself well. approvals.py's own commits (an offer,
     # a tap applied) change only bookkeeping; a stranded release commit changes only what a row published today
     # pinned, plus the files the release itself writes.
-    todays = [r for r in pb.load_queue() if not r.get("_broken")
-              and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day]
+    published_today = [r for r in pb.load_queue() if not r.get("_broken")
+                       and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day]
+    todays = [r for r in published_today if not on_patch_line(r)]        # the content line
     paths = {h: commit_paths(h) for h, _ in ahead}
     if len(todays) != 1:
         # one slot, one piece: with zero or several rows published today, nothing can be proven to be "the" release
@@ -421,6 +535,17 @@ def preflight(day: dt.date) -> list[str]:
         stranded = []
     else:
         stranded = [h for h, _ in ahead if is_release_of(h, paths[h], todays[0])]
+    # The patch line: several patches may publish in a day, each its own commit. An unpushed commit is a stranded
+    # patch release only if it is the release of exactly one patch row published today whose v3 binding still holds
+    # (approved commit + tag + digest, lane included), so a forged "patch" row cannot carry a commit out.
+    for r in (r for r in published_today if on_patch_line(r)):
+        hits = [h for h, _ in ahead if is_release_of(h, paths[h], r)]
+        if not hits:
+            continue
+        if len(hits) > 1 or binding.problems(r):
+            raise ReleaseError(f"an unpushed commit looks like the release of patch {r.get('id')} but it is not "
+                               f"provably one bound patch release; a human looks first")
+        stranded += [h for h in hits if h not in stranded]
     bookkeeping = [h for h, _ in ahead if h not in stranded and paths[h] <= BOOKKEEPING]
     others = [s for h, s in ahead if h not in stranded and h not in bookkeeping]
     if others:
@@ -504,9 +629,101 @@ def alarm(entry: dict) -> None:
         "**DANIEL:** _pending_\n", encoding="utf-8", newline="\n")
 
 
+def stranded_patch(day: dt.date, h: str) -> dict | None:
+    """The patch row published today that unpushed commit `h` is the release of, if any."""
+    p = commit_paths(h)
+    return next((r for r in pb.load_queue() if not r.get("_broken") and pb.is_patch(r)
+                 and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day
+                 and is_release_of(h, p, r)), None)
+
+
+def run_patches(a, day: dt.date, owed: dict | None = None) -> list[dict]:
+    """Publish every racked patch, each as its own commit, pushed (with --push) before the next is made, so the
+    push guard always judges exactly one unpushed release. Each patch logs its own release_log line, lane "patch".
+    A refusal is logged and the run goes on (the content line is never held hostage by a fix); a failure AFTER a
+    commit was made ends the run, since a half-sent patch is for a human."""
+    done = []
+    for d in plan_patches(day):
+        if d["outcome"] == "PUBLISH" and owed_refusal(d["piece"], owed or {}):
+            d = {"outcome": "FAIL", "lane": "patch", "piece": d["piece"], "why": owed_refusal(d["piece"], owed)}
+        pe = {"date": day.isoformat(), "mode": "apply", **d}
+        try:
+            if d["outcome"] == "PUBLISH":
+                pe["commit"] = apply(day, d)
+                pe.update(outcome="COMMITTED", pushed=False)
+                if a.push:
+                    push_release(day, pe["commit"])
+                    pe.update(outcome="PUSHED-UNVERIFIED", pushed=True)
+                    if a.verify_live:
+                        pe["live"] = verify_live(d["row"], a.live_minutes)
+                        pe["outcome"] = "PUBLISHED"
+        except Exception as e:                # noqa: BLE001 - logged, then judged below
+            where = (f" (commit {pe['commit'][:7]} is on local main, pushed={pe.get('pushed', False)})"
+                     if pe.get("commit") else "")
+            pe.update(outcome="FAIL", why=f"{type(e).__name__}: {e}{where}")
+            log(pe)
+            done.append({k: pe.get(k) for k in ("piece", "outcome", "why", "commit") if pe.get(k)})
+            if pe.get("commit") and not pe.get("pushed"):
+                raise ReleaseError(f"patch {pe.get('piece')} failed after its commit was made: {e}") from e
+            continue
+        log(pe)
+        done.append({k: pe.get(k) for k in ("piece", "outcome", "why", "commit") if pe.get(k)})
+    return done
+
+
+#: Where owed rulings come from: a callable returning the ledger's owed RULING events (approvals.owed_rulings). None
+#: means the real ledger. Tests point it at a fake (tools/conftest.py keeps every test hermetic).
+OWED_SOURCE = None
+
+
+def owed_ruling_ids() -> dict[str, list[str]]:
+    """{piece id: [ledger ids]} of approval rulings Daniel tapped that are not applied yet. A REJECT tapped before a
+    release but not yet applied must stop that release, so this is read on every --apply run. If the ledger cannot be
+    read, that is UNKNOWN and the run fails: it never rounds to 'nothing owed'."""
+    import approvals
+    try:
+        if OWED_SOURCE:
+            events = OWED_SOURCE()
+        else:
+            led = approvals.ledger()
+            # round 5: the harness Ledger reads a missing file as empty. A ledger that is not there is UNKNOWN,
+            # never "nothing owed": a moved or renamed ledger must not let a tapped REJECT slip past.
+            path = getattr(led, "path", None)
+            if path is None or not Path(path).is_file() or Path(path).stat().st_size == 0:
+                raise FileNotFoundError(f"the ledger file is missing or empty: {path}")
+            events = approvals.owed_rulings(led)
+    except Exception as e:                    # noqa: BLE001
+        raise ReleaseError(f"cannot read the ledger for owed rulings ({type(e).__name__}: {e}); UNKNOWN is not "
+                           f"'nothing owed', so nothing publishes") from e
+    out: dict[str, list[str]] = {}
+    for ev in events:
+        m = approvals.TITLE_RE.match(str(ev.get("body", {}).get("decision", "")))
+        if m:
+            out.setdefault(m["id"], []).append(f"{ev.get('id')} {ev['body'].get('verdict')}")
+    return out
+
+
+def owed_refusal(pid: str, owed: dict) -> str | None:
+    if pid in owed:
+        return (f"{pid} has a ruling Daniel tapped that is not applied yet ({', '.join(owed[pid])}): it might be a "
+                f"REJECT; run `py tools/approvals.py apply` (it runs first in daily.cmd) and look at what it reports")
+    return None
+
+
 def run(a, day: dt.date, entry: dict) -> int:
+    entry.setdefault("lane", "content")
     if a.push:
         stranded = preflight(day)
+        patch_row_ = stranded_patch(day, stranded[0]) if len(stranded) == 1 else None
+        if patch_row_ is not None:
+            # a patch release an earlier run committed but could not push: re-push it, then carry on
+            push_release(day, stranded[0])
+            pe = {"date": day.isoformat(), "mode": "apply", "lane": "patch", "piece": patch_row_["id"],
+                  "outcome": "PUSHED-UNVERIFIED", "pushed": True, "commit": stranded[0],
+                  "why": "re-pushed a patch release commit that an earlier run committed but could not push"}
+            log(pe)
+            entry.setdefault("patch_outcomes", []).append({k: pe[k] for k in ("piece", "outcome", "commit")})
+            stranded = []
         if stranded and plan(day).get("outcome") != "SKIP":
             raise ReleaseError("a release commit from today is unpushed but the queue does not show today's piece "
                                "as published; a human looks first")
@@ -517,7 +734,14 @@ def run(a, day: dt.date, entry: dict) -> int:
             entry.update(outcome="PUSHED-UNVERIFIED", pushed=True, commit=stranded[0],
                          why="re-pushed today's release commit that an earlier run committed but could not push")
             return 0
+    owed = owed_ruling_ids()
+    # The patch line first: a fix never waits on the content line, and a content refusal never holds a fix.
+    patches = run_patches(a, day, owed)
+    if patches:
+        entry.setdefault("patch_outcomes", []).extend(patches)
     decision = plan(day)
+    if decision["outcome"] == "PUBLISH" and owed_refusal(decision["piece"], owed):
+        decision = {"outcome": "FAIL", "piece": decision["piece"], "why": owed_refusal(decision["piece"], owed)}
     entry.update(decision)
     if decision["outcome"] == "FAIL":
         return 1
@@ -550,10 +774,13 @@ def main(argv=None) -> int:
     if a.apply and day != today:
         print(f"REFUSED: --apply publishes today ({today}) only; {day} is a dry run.")
         return 1
-    entry = {"date": day.isoformat(), "mode": "apply" if a.apply else "dry-run"}
+    entry = {"date": day.isoformat(), "mode": "apply" if a.apply else "dry-run", "lane": "content"}
     if not a.apply:
         entry.update(plan(day))
         code = 1 if entry["outcome"] == "FAIL" else 0
+        for d in plan_patches(day):
+            print(f"PATCH {d['outcome']}  {d['piece']}  {d.get('why', 'publishes on this run (patch line)')}")
+            code = 1 if d["outcome"] == "FAIL" else code
     else:
         try:
             # A failure ends the run. There is no repair path: nothing here retries, rebases, force-pushes or pushes
@@ -567,7 +794,17 @@ def main(argv=None) -> int:
             entry.update(outcome="FAIL", why=f"{type(e).__name__}: {e}{where}")
             code = 1
         log(entry)
-        alarm(entry)
+        failed_patch = next((p for p in entry.get("patch_outcomes", []) if p.get("outcome") == "FAIL"), None)
+        if entry.get("outcome") != "FAIL" and failed_patch:
+            # a tapped fix that could not go out reaches Daniel like any failed run
+            alarm({"outcome": "FAIL", "date": entry["date"], "piece": f"patch {failed_patch.get('piece')}",
+                   "why": failed_patch.get("why", "?")})
+            code = 1
+        else:
+            alarm(entry)
+        for p in entry.get("patch_outcomes", []):
+            print(f"PATCH {p.get('outcome')}  {p.get('piece')}  {p.get('why', '')}"
+                  + (f"  commit {p['commit'][:7]}" if p.get("commit") else ""))
     print(f"{entry['outcome']}  {day} {day:%a}  {entry.get('piece', '')}  {entry.get('why', '')}"
           + (f"  commit {entry['commit'][:7]}" if entry.get("commit") else "")
           + (f"  {entry['live']}" if entry.get("live") else ""))
