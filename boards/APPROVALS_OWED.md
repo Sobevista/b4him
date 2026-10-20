@@ -177,7 +177,7 @@
 - **Open label on this row (blocked_on).** PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line) — marked pre-tap: your approval clears it.
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-10-20 APPROVE · ledger E00730 · applied by tools/approvals.py]
 
 ### APPROVE SITE-PATCH-HEADINGS-2 at f0e792c — Site patch - Title Case the n8n track heading (D21)
 
