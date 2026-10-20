@@ -2,10 +2,10 @@
 
 *Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 1.0 weeks** — **BELOW FLOOR** - stop opening new rungs, drain the queue  
-*(target 6w · floor 3w · 1 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 2.0 weeks** — **BELOW FLOOR** - stop opening new rungs, drain the queue  
+*(target 6w · floor 3w · 2 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-15 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
+16 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
 
 ## Waiting on Daniel
 
@@ -18,7 +18,7 @@
 | slot | piece | review by | note |
 |---|---|---|---|
 | **2026-10-27** Tue | Glossary I - Beginner terms | 2026-10-20 |  |
-| **2026-11-03** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-11-03** Tue | Silence Is Not a Grade - the gate that fails open | 2026-10-27 |  |
 | **2026-11-10** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-11-17** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-11-24** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
@@ -54,8 +54,9 @@
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 1
+**PREVIEWED** (DANIEL) — 2
   - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js`
+  - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
 
 **SCHEDULED** (the board) — 0
 
