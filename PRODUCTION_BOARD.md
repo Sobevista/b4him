@@ -7,7 +7,7 @@
 
 25 in the pipeline · 1 published · cadence Tuesday only, hard cap 1 per 7 days
 
-*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (2 open, 0 racked) runs outside that cadence — see its own section.*
+*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (4 open, 0 racked) runs outside that cadence — see its own section.*
 
 ## Redraft owed — Daniel sent these back
 
@@ -46,6 +46,8 @@
 
 - Glossary I revision - fold each word's four rows so the page is shorter (`GC-GLOSS-1-R1`) — waiting on Claude at DRAFTED
 - Site patch - Title Case every published heading (D21) (`SITE-PATCH-HEADINGS-1`) — **BLOCKED: PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line)** (release will refuse)
+- Site patch - Title Case the n8n track heading (D21) (`SITE-PATCH-HEADINGS-2`) — **BLOCKED: PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line)** (release will refuse)
+- Site patch - honour reduced motion site-wide (no animated jump scroll) (`SITE-PATCH-MOTION-1`) — **BLOCKED: PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line)** (release will refuse)
 
 ## The pipeline, by stage
 
