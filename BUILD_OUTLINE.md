@@ -152,3 +152,23 @@ Open (Daniel's): Enforce HTTPS when the cert lands; watermark could extend to se
 **Attention-test receipt:** PENDING — Claude has not acknowledged this note to Codex. When read, append the acknowledgment time, session identity, and disposition (including the contract/build reference or reason for deferral). File delivery alone is not evidence of attention.
 
 **Test closure — 2026-10-15:** Daniel reported "Didnt work, haha it was worth a shot" and requested this clarification. The file placement above was an experiment in attracting the active Claude session's attention, not a delivered message or a standing acknowledgment obligation. CLOSED: no acknowledgment observed/reported; the exact reason was not established. This closure supersedes the PENDING receipt and the request to acknowledge. Do not revive the notification test or treat it as a new assignment. The editorial deduplication finding remains a separate recommendation; this test neither implements nor resolves it. A later reader encountering this note is not evidence that the original live-session notification worked.
+
+### 2026-10-20 — first piece published; production line v2; two patches offered
+
+**Published:** GC-GLOSS-1 (Glossary I) on its Tue slot — the first published piece (`3c0d59b`).
+
+**Daniel's taps applied:** REJECT GC-GLOSS-2/3 (E00615/E00616; his note: Title Case all headings). APPROVE T4-L1..L6 at `bc31405` and T5-L1..L6 at `2dffd67` (ledger rows in the APPROVED commits, e.g. `0d7d78d`). `6245a98`: T5 stage-2 name check recorded PASS after the fact (T5 was tapped before it ran); stale T4 tap labels cleared; GC-GLOSS-2 back to redraft with his note.
+
+**Production line v2** (`7e5a0d5`, fast-forward of `integrate/2026-10-20`; merge `45dcccf`): REJECT carries Daniel's note and requeues; release refuses an open `blocked_on` or an unapplied ruling; a PATCH LINE separate from content (Daniel: patches move outside the queue — two schedules, content and patches); stage 2 runs before the tap as a record bound to blobs; furniture re-pin on a tapped patch; five breaker rounds. **D21:** headings are Title Case (`ba4970b`).
+
+**Offered for his tap:** GC-GLOSS-1-R1 (Glossary I fold + open-all, his request; `1a82b36`) and SITE-PATCH-HEADINGS-1 (79 headings on 21 pages; `485751b`). Proof: https://claude.ai/artifact/CB1BNZ67JUM4Lj8LciU53Q. **The headings patch must be tapped before 2026-10-27** — T4-L1 rewrites `lessons/index.html`.
+
+**Not yet ruled:** research commission b4him-site-operations (harness `Knowledge_Base/Research_Corpus/2026-10-20_b4him-site-operations/RECOMMENDATION.md`): two lines, a roster of seats, a maintenance calendar.
+
+**Known gaps:** `data/people_names.local.json` is absent, so the registry's known-name check cannot run (UNKNOWN, not PASS). Cycle run `b4him-gloss-r1-20261020-e66ba1` parked: orient gate UNKNOWN; the fix is harness-owned.
+
+**Next:**
+- Daniel taps the two patches (headings before 2026-10-27).
+- In flight: n8n track heading patch; reduced-motion patch; approvals hint fix; Glossary II/III fold.
+- 44 off-rule headings on the racked T4/T5 pages: patch each page after it publishes.
+- Supply `data/people_names.local.json` so the known-name check can run.

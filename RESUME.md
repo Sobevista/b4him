@@ -6,13 +6,13 @@
 
 ## Where this stands
 
-**v0 content complete, walkable, and DEPLOYED LIVE at https://b4him.com since 2026-07-22** (GitHub Pages / main-root + DNS + custom domain, HTTPS enforced; re-verified live 2026-09-28, HTTP 200). What has NOT happened is publishing — the content pipeline has shipped 0 pieces. (Full detail in `BUILD_OUTLINE.md` STATE OF BUILD.)
+**v0 content complete, walkable, and DEPLOYED LIVE at https://b4him.com since 2026-07-22** (GitHub Pages / main-root + DNS + custom domain, HTTPS enforced; re-verified live 2026-09-28, HTTP 200). Publishing has started: the first piece went out 2026-10-20 (`3c0d59b`). Counts and the rack live in `BUILD_OUTLINE.md` STATE OF BUILD and the queue, not here.
 
 Every nav room is real: **About** (eye-gate passed), **Games** (9 arcade rungs playable in-page via iframe), **Lessons** (a 13-module two-tier curriculum + a "find your door" quiz), **Writing** (the 8 web laws + arcade pointers), **Videos**/**Blog** (honest "coming" shells). Shared design system in `/style.css` + `/lesson.css`. Phase-0 parameters are effectively settled (M1–M5, D9/D10, and D11/D12 for the lessons).
 
 **Publishing is now automatic after Daniel's one tap (ruled 2026-10-13, ledger E00472; `PRODUCTION_PLAN.md` §2-3 amended).** The rack: his approval pins exact bytes (`approved_blobs` + the index furniture and entry hash) on main's queue, the bytes wait in git under an `approved/<id>` tag, and `tools/release.py` publishes them on their Tuesday slot (once weekly since E00568, 2026-10-15), pushes, and checks the live bytes. `tools/approvals.py` turns his tap in the harness app (`boards/APPROVALS_OWED.md`) into a racked row. Both were attacked by an independent breaker (11 real defects found, all closed; `tools/test_release_breaker.py`). Every `--apply` run logs to `release_log.jsonl` (local, ignored).
 
-**Glossary I (GC-GLOSS-1) is racked for Tue 2026-10-20** on main (RULED E00470, PREVIEWED E00471, tag `approved/GC-GLOSS-1` -> `cde8b20`). A full rehearsal of that release in a throwaway clone produced the page and the lessons index byte-identical to what Daniel previewed on `draft/gc-gloss-1`. **Do not edit `lessons/glossary-beginner/index.html`, `tools/tracks/n8n.html` or GC-GLOSS-1's `index_entry` before then** — an edit pulls it from its slot. Release preflight refuses while main carries unpushed non-release commits, so main must be pushed before the 20th (Daniel's go: b4him is public). His fold-the-rows idea is GC-GLOSS-1-R1, after publication.
+**Glossary I (GC-GLOSS-1) published on its Tue 2026-10-20 slot** (`3c0d59b`). Since 2026-10-20 the production line runs two lines — content and patches, on separate schedules (`7e5a0d5`; see STATE OF BUILD 2026-10-20). Headings are Title Case (D21, `ba4970b`). What is racked or awaiting a tap is in the queue and `boards/APPROVALS_OWED.md`, not restated here.
 
 **Still blocked outside the machine:** rung 1 (CY-RED-1) needs Chelsie's blue-seat review (E00189: red never self-clears). PT-6 is NOT owed — ruled 2026-09-07 (E00213/E00227): "Purple Foundations", tier three, "the break-and-detect track"; its two naming edits (rung01 hero label, `lessons/index.html` tier-three heading) are still undone. CY-BLUE-1/2 and CY-JARGON-1 wait on the external cross; CY-BLUE-2 also rests on claim X7, which the seat cross refuted (purple-team `NEXT_SESSION.md`).
 
@@ -36,8 +36,7 @@ v0 static only. v1 (embedded YouTube) and v2 (owned comments/Patreon) are writte
 
 ## Next action
 
-The site is live (deploy done 2026-07-22). The open work is PUBLISHING, not building — and runway (0.5 weeks, floor 3) is the number.
-- Glossary I publishes itself Tue 2026-10-20 once main is pushed and the scheduled task is registered.
-- Glossary II/III (E00473: a three-tier glossary from our own material) are being drafted on `draft/gc-gloss-2`.
+The site is live (deploy done 2026-07-22). The open work is PUBLISHING, not building. Current next actions live in the newest `BUILD_OUTLINE.md` STATE OF BUILD entry (2026-10-20); runway is computed from the queue (floor 3 weeks), not written here.
+- Glossary II/III (E00473) were REJECTED 2026-10-20 (E00615/E00616, "Title Case all headings") and are back to redraft (`6245a98`).
 - Harness Modules 9–22 are written and not on b4him; converting them is the fastest runway. The scars inventory (26 candidates) is the next source after that.
-- `tools/preview.py` (generalise the phone-tile proof) is owed so every draft reaches Daniel's tile with a proof.
+- `tools/preview.py` exists (`b8a306b`): the rendered proof Daniel approves from.
