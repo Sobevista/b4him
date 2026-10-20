@@ -32,8 +32,7 @@
 
 ## The pipeline, by stage
 
-**SOURCE** (build session) — 14
-  - Glossary II - Intermediate & Advanced terms · source: `Knowledge_Base/Teaching/_laptop_recovered/Automation_Vocabulary_Glossary.docx`
+**SOURCE** (build session) — 13
   - Advanced 1 - Orchestration · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 2 - Resilience · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
   - Advanced 3 - Instrumentation · source: `Knowledge_Base/Teaching/_laptop_recovered/The_5System_Curriculum.docx`
@@ -48,25 +47,26 @@
   - Blue team words, four ways each · source: `purple-team teaching/Module_02_Seeing_It.md section 'The jargon, four ways'` · **BLOCKED: RUNG1_CROSS.md**
   - Glossary I revision - fold each word's four rows so the page is shorter · source: `Daniel, 2026-10-13, approving Glossary I` · **BLOCKED: DEFERRED by Daniel (on his calendar) - not before GC-GLOSS-1 is published. An edit to the page before then voids its approval (approved_blobs) and the board pulls it from its slot.**
 
-**DRAFTED** (Claude) — 0
+**DRAFTED** (Claude) — 1
+  - Glossary II - Intermediate & Advanced terms · source: `Knowledge_Base/Teaching/_laptop_recovered/Automation_Vocabulary_Glossary.docx` · **BLOCKED: REDRAFT owed: Daniel REJECTED both halves (E00615 Glossary II, E00616 Glossary III; applied as E00660/E00662). His note (E00615): "The titles need Sentence Structure or whatever it is for instance the heading 'The twenty' should read 'The Twenty'"; E00616: "Same as Glossary 2". Daniel 2026-10-20: the redraft looks at ALL the headings as a whole, not just 'The twenty'. Then apply the Glossary I fold + open-all (GC-GLOSS-1-R1), a stage-2 re-read, and a fresh approvals.py offer.**
 
 **REVIEWED** (the other seat) — 0
 
 **RULED** (DANIEL) — 0
 
 **PREVIEWED** (DANIEL) — 12
-  - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
-  - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
-  - The Tripod - three kinds of checking · source: `Knowledge_Base/Teaching/Module_11_The_Tripod.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
-  - The Second Oracle - green proves you met your criteria · source: `Knowledge_Base/Teaching/Module_13_The_Second_Oracle.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
-  - Ask What It Optimised For - archaeology before inheritance · source: `Knowledge_Base/Teaching/Module_14_Ask_What_It_Optimised_For.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
-  - Math on the Table - locking parameters before the machine runs · source: `Knowledge_Base/Teaching/Module_12_Math_On_The_Table.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
-  - Success for Doing Nothing · source: `Knowledge_Base/Teaching/Module_21_Success_For_Doing_Nothing.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
-  - Ruled Is Not Applied · source: `Knowledge_Base/Teaching/Module_20_Ruled_Is_Not_Applied.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
-  - A Null Result Is Only as Strong as the Search Behind It · source: `Knowledge_Base/Teaching/Module_18_A_Null_Result_Is_Only_As_Strong_As_The_Search.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
-  - The Instrument Measures You First · source: `Knowledge_Base/Teaching/Module_17_The_Instrument_Measures_You_First.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
-  - Grade Each Leg Only on the Axis It Can Carry · source: `Knowledge_Base/Teaching/Module_19_Grade_Each_Leg_On_The_Axis_It_Can_Carry.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
-  - The Law Writer's Own Laws · source: `Knowledge_Base/Teaching/Module_22_The_Law_Writers_Own_Laws.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
+  - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md`
+  - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md`
+  - The Tripod - three kinds of checking · source: `Knowledge_Base/Teaching/Module_11_The_Tripod.md`
+  - The Second Oracle - green proves you met your criteria · source: `Knowledge_Base/Teaching/Module_13_The_Second_Oracle.md`
+  - Ask What It Optimised For - archaeology before inheritance · source: `Knowledge_Base/Teaching/Module_14_Ask_What_It_Optimised_For.md`
+  - Math on the Table - locking parameters before the machine runs · source: `Knowledge_Base/Teaching/Module_12_Math_On_The_Table.md`
+  - Success for Doing Nothing · source: `Knowledge_Base/Teaching/Module_21_Success_For_Doing_Nothing.md`
+  - Ruled Is Not Applied · source: `Knowledge_Base/Teaching/Module_20_Ruled_Is_Not_Applied.md`
+  - A Null Result Is Only as Strong as the Search Behind It · source: `Knowledge_Base/Teaching/Module_18_A_Null_Result_Is_Only_As_Strong_As_The_Search.md`
+  - The Instrument Measures You First · source: `Knowledge_Base/Teaching/Module_17_The_Instrument_Measures_You_First.md`
+  - Grade Each Leg Only on the Axis It Can Carry · source: `Knowledge_Base/Teaching/Module_19_Grade_Each_Leg_On_The_Axis_It_Can_Carry.md`
+  - The Law Writer's Own Laws · source: `Knowledge_Base/Teaching/Module_22_The_Law_Writers_Own_Laws.md`
 
 **SCHEDULED** (the board) — 0
 
