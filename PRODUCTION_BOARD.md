@@ -5,7 +5,7 @@
 **RUNWAY: 12.0 weeks** — healthy  
 *(target 6w · floor 3w · 12 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-25 in the pipeline · 5 published · cadence Tuesday only, hard cap 1 per 7 days
+26 in the pipeline · 5 published · cadence Tuesday only, hard cap 1 per 7 days
 
 *Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (0 open, 0 racked) runs outside that cadence — see its own section.*
 
@@ -14,14 +14,6 @@
 *RULED and PREVIEWED cover the bytes he saw (`approved_blobs`). These files changed after that, so the piece holds no slot until he rules and previews it again (`PRODUCTION_PLAN` §2: never inherited from a previous yes). A **live** piece listed here means the site no longer serves what he approved.*
 
 - **live** Site patch - Title Case every published heading (D21): lessons/index.html (approved 0b478c9a58de, now c949e035d96d)
-
-## Redraft owed — Daniel sent these back
-
-*A REJECT tap (`tools/approvals.py apply`) puts the piece back at DRAFTED with his note verbatim. The redraft is a new commit and comes back to him as a new tile.*
-
-| piece | line | branch | his ruling, verbatim |
-|---|---|---|---|
-| Glossary II - Intermediate & Advanced terms | content | `draft/gc-gloss-2` | Daniel REJECTED both halves (E00615 Glossary II, E00616 Glossary III; applied as E00660/E00662). His note (E00615): "The titles need Sentence Structure or whatever it is for instance the heading 'The twenty' should read 'The Twenty'"; E00616: "Same as Glossary 2". Daniel 2026-10-20: the redraft looks at ALL the headings as a whole, not just 'The twenty'. Then apply the Glossary I fold + open-all (GC-GLOSS-1-R1), a stage-2 re-read, and a fresh approvals.py offer. |
 
 ## Waiting on Daniel
 
@@ -71,8 +63,9 @@
   - The two numbers - why a detection that cries wolf catches nothing · source: `purple-team teaching/Module_02_Seeing_It.md + detections/cross_owner_note_read.yml v1 vs v2` · **BLOCKED: RUNG1_CROSS.md**
   - Blue team words, four ways each · source: `purple-team teaching/Module_02_Seeing_It.md section 'The jargon, four ways'` · **BLOCKED: RUNG1_CROSS.md**
 
-**DRAFTED** (Claude) — 1
-  - Glossary II - Intermediate & Advanced terms · source: `Knowledge_Base/Teaching/_laptop_recovered/Automation_Vocabulary_Glossary.docx` · **BLOCKED: REDRAFT owed: Daniel REJECTED both halves (E00615 Glossary II, E00616 Glossary III; applied as E00660/E00662). His note (E00615): "The titles need Sentence Structure or whatever it is for instance the heading 'The twenty' should read 'The Twenty'"; E00616: "Same as Glossary 2". Daniel 2026-10-20: the redraft looks at ALL the headings as a whole, not just 'The twenty'. Then apply the Glossary I fold + open-all (GC-GLOSS-1-R1), a stage-2 re-read, and a fresh approvals.py offer.**
+**DRAFTED** (Claude) — 2
+  - Glossary II - Intermediate terms · source: `harness Knowledge_Base/Teaching/Glossary_Tiers_II_III_terms.md (term list, per-term sources)`
+  - Glossary III - Advanced terms · source: `harness Knowledge_Base/Teaching/Glossary_Tiers_II_III_terms.md (term list, per-term sources)`
 
 **REVIEWED** (the other seat) — 0
 
