@@ -190,3 +190,15 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** _pending_
+
+### APPROVE SITE-PATCH-MOTION-1 at b31c7f6 — Site patch - honour reduced motion site-wide (no animated jump scroll)
+
+- **What this is to the build.** Site patch - honour reduced motion site-wide (no animated jump scroll) (? track), drafted 2026-10-20 on `patch/reduced-motion`. The invariant it teaches: *NOT NAMED*. **The rendered proof: https://claude.ai/artifact/CB1BNZ67JUM4Lj8LciU53Q**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `style.css` = blob `c19f298132f0`. No index entry is on the row, so the page will not be listed in the lessons index. This is a PATCH (the patch line, outside the content cadence): it publishes on the next daily release run after your tap, any day of the week, and takes no content slot.
+- **What it does to the aggregate, measured.** Runway is unchanged: a patch is on the patch line, not the content line.
+- **Cross-checked by, including where it is weak.** stage 2 PASS on 2026-10-20 by stage-2 reviewer agent s2r-7c, b4him session 33569fa0 (proof: Own regex scanner caught 20/20 planted tokens across 10 categories in a scratch copy, then found 0 true hits in the new style.css and its diff; the reduced-motion block overrides only scroll-behavior and the nav-link transition.)
+- **Open label on this row (blocked_on).** PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line) — marked pre-tap: your approval clears it.
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
