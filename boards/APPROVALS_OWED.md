@@ -99,7 +99,7 @@
 - **Cross-checked by, including where it is weak.**  | 2026-10-13 - the pages were then RE-VOICED into Daniel's first person (E00480) and re-read by an independent Fable seat against d50b52c and the diaries: invariant blocks byte-identical; PASS 4, PASS-WITH-FLAGS 1 (L1 habit line, left for Daniel), FAIL 1 (L3: who ran the two legs). The L3 fix (the two legs were outside AIs put the same ten questions; the language hole was in our threads, found by the searching outside AI) and advisories (L4 'with me', L5 'my comparisons') applied by the orchestrating seat, not re-read. voice_check PASS 6/6.
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-10-20 APPROVE · ledger E00623 · applied by tools/approvals.py]
 
 ### APPROVE T5-L2 at 2dffd67 — Ruled Is Not Applied
 

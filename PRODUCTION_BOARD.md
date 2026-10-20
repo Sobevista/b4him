@@ -2,10 +2,10 @@
 
 *Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 7.0 weeks** — healthy  
-*(target 6w · floor 3w · 7 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 8.0 weeks** — healthy  
+*(target 6w · floor 3w · 8 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-21 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
+22 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
 
 ## Waiting on Daniel
 
@@ -24,7 +24,7 @@
 | **2026-11-24** Tue | The Second Oracle - green proves you met your criteria | 2026-11-17 |  |
 | **2026-12-01** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-11-24 |  |
 | **2026-12-08** Tue | Math on the Table - locking parameters before the machine runs | 2026-12-01 |  |
-| **2026-12-15** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-12-15** Tue | Success for Doing Nothing | 2026-12-08 |  |
 | **2026-12-22** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-12-29** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2027-01-05** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
@@ -54,7 +54,7 @@
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 7
+**PREVIEWED** (DANIEL) — 8
   - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js`
   - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
@@ -62,6 +62,7 @@
   - The Second Oracle - green proves you met your criteria · source: `Knowledge_Base/Teaching/Module_13_The_Second_Oracle.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - Ask What It Optimised For - archaeology before inheritance · source: `Knowledge_Base/Teaching/Module_14_Ask_What_It_Optimised_For.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - Math on the Table - locking parameters before the machine runs · source: `Knowledge_Base/Teaching/Module_12_Math_On_The_Table.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
+  - Success for Doing Nothing · source: `Knowledge_Base/Teaching/Module_21_Success_For_Doing_Nothing.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
 
 **SCHEDULED** (the board) — 0
 
