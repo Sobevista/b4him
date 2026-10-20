@@ -544,3 +544,72 @@ def test_DEFECT_r3_pre_tap_regex_clears_a_gate_that_merely_mentions_daniels_one_
     label = "LEGAL HOLD: do not publish, not even after Daniel's one tap, until the client signs"
     tile, row = make(label)
     assert row.get("blocked_on") == label, f"cleared: {row.get('cleared_blocked_on')!r}"
+
+
+# ################################################################ ROUND 4 (build head 7a296f6)
+def test_DEFECT_r4_a_stage2_record_committed_together_with_new_page_bytes_binds_to_bytes_nobody_reviewed(drafted):
+    """Round 4 binds a record without `blobs` to 'the bytes committed alongside it'. A commit that writes the record
+    AND changes the page (here adding a name) makes the unreviewed bytes the bound ones, and the offer is admitted.
+    The commit that writes the record must not itself change the piece's files (or `blobs` must be required)."""
+    root, make = drafted
+    pid, ref = make()                                        # v1 drafted, no stage 2 yet
+    g(root, "checkout", "-q", ref)
+    page = f"lessons/{pid.lower()}/index.html"
+    (root / page).write_text("<h1>v2, as Jane Roe taught me</h1>\n", encoding="utf-8", newline="\n")
+    rows = [dict(r, reviewed=STAGE2) if r.get("id") == pid else r for r in pb.load_queue()]
+    write_queue(root, *rows, msg="stage 2 PASS recorded (and, in the same commit, new page bytes)")
+    g(root, "checkout", "-q", "main")
+    with pytest.raises(approvals.ApprovalError):
+        approvals.offer(pid, ref, PROOF, today=MON)
+
+
+def test_HOLDS_r4_a_record_then_a_later_page_edit_is_refused(drafted):
+    root, make = drafted
+    pid, ref = make(reviewed=STAGE2)
+    g(root, "checkout", "-q", ref)
+    (root / f"lessons/{pid.lower()}/index.html").write_text("<h1>edited after stage 2</h1>\n", encoding="utf-8",
+                                                           newline="\n")
+    g(root, "commit", "-q", "-am", "edit after review")
+    g(root, "checkout", "-q", "main")
+    with pytest.raises(approvals.ApprovalError, match="changed since the commit that recorded"):
+        approvals.offer(pid, ref, PROOF, today=MON)
+
+
+def test_DEFECT_r4_a_missing_ledger_file_reads_as_nothing_owed_and_release_proceeds(tmp_path, monkeypatch):
+    """The owed-ruling read is meant to fail closed ('UNKNOWN is not nothing owed'). The harness Ledger.raw() returns
+    [] when its file does not exist, so a moved/renamed/missing ledger yields 'nothing owed' and a tapped-but-unapplied
+    REJECT no longer stops the release."""
+    led = approvals.ledger()                                  # the real harness Ledger class
+    led.path = tmp_path / "moved" / "sessions.jsonl"         # the ledger is not there
+    monkeypatch.setattr(approvals, "ledger", lambda: led)
+    monkeypatch.setattr(release, "OWED_SOURCE", None)
+    with pytest.raises(release.ReleaseError):
+        release.owed_ruling_ids()
+
+
+def test_HOLDS_r4_an_unreadable_owed_source_fails_the_run(live):
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, content_row(root))
+
+    def boom():
+        raise OSError("ledger locked")
+    release.OWED_SOURCE = boom
+    try:
+        with pytest.raises(release.ReleaseError, match="UNKNOWN"):
+            release.run(SCHEDULED, TUE, {"date": TUE.isoformat(), "mode": "apply"})
+    finally:
+        release.OWED_SOURCE = lambda: []
+    assert not (root / "lessons" / "c1").exists()
+
+
+def test_HOLDS_r4_case_sensitive_link_check_accepts_links_the_release_itself_writes(live):
+    """A content piece whose page links to its own new path and to a published page (exact case) publishes."""
+    root, old, new, pubrow = live
+    src = root.parent / "c.html"
+    src.write_bytes(b'<h1>C</h1><a href="/lessons/c1/">self</a><a href="/lessons/p/">p</a><a href="/lessons/a/index.html">a</a>\n')
+    blob = g(root, "hash-object", "-w", str(src))
+    c = v3_testkit.bind({"id": "C1", "order": 3, "title": "C", "stage": "PREVIEWED", "previewed": "2026-10-01",
+                         "approved_blobs": {"lessons/c1/index.html": blob}})
+    write_queue(root, pubrow, c)
+    entry = {"date": TUE.isoformat(), "mode": "apply"}
+    assert release.run(SCHEDULED, TUE, entry) == 0 and entry["outcome"] == "COMMITTED", entry
