@@ -673,14 +673,18 @@ def drafts(tmp_path, monkeypatch):
     g(root, "checkout", "-q", "-b", "draft/g2")
     (root / "lessons" / "g2").mkdir()
     (root / G2).write_text("<h1>Glossary II</h1>\n", encoding="utf-8", newline="\n")
-    write_rows(root, dict(g2, stage="DRAFTED", page=G2, branch="draft/g2", index_entry=G2_ENTRY), t4)
+    # production-line-v2 round 2: offer() refuses a draft with no stage-2 review recorded, so the fixture records one
+    # (fixture data only; no assertion in this file changed)
+    write_rows(root, dict(g2, stage="DRAFTED", page=G2, branch="draft/g2", index_entry=G2_ENTRY,
+                          reviewed="2026-10-12 - other seat"), t4)
     commit_all(root, "draft g2")
 
     g(root, "checkout", "-q", "main")
     g(root, "checkout", "-q", "-b", "draft/t4")
     (root / "lessons" / "t4").mkdir()
     (root / T4).write_text(MACHINE, encoding="utf-8", newline="\n")
-    write_rows(root, g2, dict(t4, stage="DRAFTED", page=T4, branch="draft/t4", index_entry=T4_ENTRY))
+    write_rows(root, g2, dict(t4, stage="DRAFTED", page=T4, branch="draft/t4", index_entry=T4_ENTRY,
+                              reviewed="2026-10-12 - other seat"))
     commit_all(root, "draft t4, machine voice")
     t4_machine = g(root, "rev-parse", "HEAD")
     (root / T4).write_text(DANIEL, encoding="utf-8", newline="\n")

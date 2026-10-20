@@ -111,6 +111,15 @@ need to establish two different schedules. One is content and one is patches to 
 | Log | `release_log.jsonl`, lane `content` | its own line per patch, lane `patch` |
 
 The v3 binding covers the line, so a racked content row relabelled `patch` cannot jump the cadence.
+**A tapped patch re-pins what it changes.** At the tap it records `supersedes_pins` (each path a published
+piece pinned, and whose pin it was); once it publishes, it owns those paths, and a piece approved
+before that day keeps the patch's bytes there instead of writing its older pin back (said in the
+release commit). An untapped patch on a branch touches no pin on main.
+
+**Stage 2 is a gate on the offer, not a label the tap erases.** `approvals.py offer` refuses any piece
+whose `reviewed` does not name a stage 2 by another seat. A patch may skip it only with
+`patch_scope: case-only` or `layout-only`, and only when offer proves that on the bytes (letter case
+alone differs from main, or the visible text is identical); the tile says it was exempted.
 §5's "corrections publish immediately and outside the cadence" is now this line.
 
 **Two more rules from the same day.** A **REJECT** tap puts the piece back at DRAFTED on main with

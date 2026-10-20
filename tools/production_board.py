@@ -159,8 +159,36 @@ def published_owners(rows: list[dict]) -> dict[str, tuple[str, str]]:
     pubs = [r for r in rows if not r.get("_broken") and stage_index(r) >= STAGES.index("PUBLISHED")]
     for r in sorted(pubs, key=lambda r: (str(r.get("published", "")), r.get("order", 999))):
         for rel, blob in (r.get("approved_blobs") or {}).items():
+            if superseding_patch(r, rel, rows):
+                continue                          # this pin was superseded by a published patch: the patch owns rel
             out[rel] = (r.get("id"), blob)
     return out
+
+
+def superseding_patch(row: dict, rel: str, rows: list[dict]) -> tuple[str, str] | None:
+    """(patch id, blob) when a PUBLISHED patch re-pinned `rel` after `row`'s pin was approved, else None.
+
+    production-line-v2: a tapped patch re-pins the exact paths it changes (approvals.rack records them as
+    supersedes_pins). From its publish day, any older approval's pin on those paths is superseded for those paths
+    only: the release keeps the patch's bytes there instead of writing the older pin back, and drift is judged
+    against the patch. A piece approved AFTER the patch published holds a newer pin and is not superseded."""
+    mine = str(row.get("published", ""))[:10] if (is_patch(row) and
+                                                  stage_index(row) >= STAGES.index("PUBLISHED")) else None
+    approved_on = ready_date(row)
+    best = None
+    for p in rows:
+        if p is row or p.get("id") == row.get("id") or p.get("_broken") or not is_patch(p):
+            continue
+        if stage_index(p) < STAGES.index("PUBLISHED") or rel not in (p.get("approved_blobs") or {}):
+            continue
+        pub = str(p.get("published", ""))[:10]
+        if mine is not None and pub <= mine:
+            continue                              # an older patch never supersedes a newer one
+        if mine is None and approved_on is not None and approved_on.isoformat() > pub:
+            continue                              # approved after the patch went live: a newer pin, kept
+        if best is None or pub > best[0]:
+            best = (pub, p.get("id"), p["approved_blobs"][rel])
+    return (best[1], best[2]) if best else None
 
 
 def approval_drift(row: dict, owners: dict | None = None, approved: dict | None = None) -> list[str]:
@@ -378,7 +406,8 @@ def build(today: dt.date) -> str:
             state = "racked: publishes on the next release run"
         else:
             state = f"waiting on {STAGE_OWNER.get(r.get('stage', 'SOURCE'), '?')} at {r.get('stage', 'SOURCE')}"
-        A(f"- {r.get('title','?')} (`{r.get('id')}`) — {state}")
+        repin = "; ".join(f"`{rel}` (was {v.get('piece')}'s pin)" for rel, v in (r.get("supersedes_pins") or {}).items())
+        A(f"- {r.get('title','?')} (`{r.get('id')}`) — {state}" + (f" · re-pins {repin}" if repin else ""))
     for r in sorted(shipped, key=lambda x: str(x.get("published", "")), reverse=True)[:5]:
         A(f"- {r.get('title','?')} (`{r.get('id')}`) — published {r.get('published', '?')}")
     A("")

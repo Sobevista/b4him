@@ -38,6 +38,7 @@ WED = dt.date(2026, 10, 21)
 PROOF = "https://claude.ai/artifact/example"
 NOTE = 'The titles need Sentence Structure or whatever it is for instance the heading "The twenty" should read "The Twenty"'
 SCHEDULED = argparse.Namespace(push=False, verify_live=False, live_minutes=0)
+STAGE2 = "2026-10-12 - stage 2 by a seat that neither wrote nor rendered the page: PASS"
 
 
 def g(root, *args):
@@ -186,7 +187,7 @@ def labelled(tmp_path, monkeypatch):
 
     def make(label):
         row = {"id": "T5", "order": 5, "title": "T5", "stage": "DRAFTED", "page": "lessons/t5/index.html",
-               "branch": "draft/t5", "blocked_on": label}
+               "branch": "draft/t5", "blocked_on": label, "reviewed": STAGE2}
         draft(root, row, {"lessons/t5/index.html": "<h1>t5</h1>\n"})
         title = approvals.offer("T5", "draft/t5", PROOF, today=dt.date(2026, 10, 12))
         led = Ledger()
@@ -392,7 +393,7 @@ def test_a_patch_tapped_end_to_end_records_what_it_replaces_and_ships_next_run(t
     write_queue(root, {"id": "P", "order": 1, "title": "Page P", "stage": "PUBLISHED", "published": "2026-10-06",
                        "approved_blobs": {PAGE: old}}, msg="base")
     draft(root, {"id": "FIX-1", "kind": "patch", "order": 90, "title": "Heading case", "stage": "DRAFTED",
-                 "page": PAGE, "branch": "draft/fix-1"}, {PAGE: "<h1>The Twenty</h1>\n"})
+                 "page": PAGE, "branch": "draft/fix-1", "patch_scope": "case-only"}, {PAGE: "<h1>The Twenty</h1>\n"})
     title = approvals.offer("FIX-1", "draft/fix-1", PROOF, today=TUE)
     assert "patch line" in (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
     led = Ledger()
@@ -401,6 +402,122 @@ def test_a_patch_tapped_end_to_end_records_what_it_replaces_and_ships_next_run(t
     assert qrow("FIX-1")["replaces_blobs"] == {PAGE: old}
     release.run(SCHEDULED, WED, {"date": WED.isoformat(), "mode": "apply"})
     assert (root / PAGE).read_text(encoding="utf-8") == "<h1>The Twenty</h1>\n"
+
+
+# ================================================================ round 2: stage 2 is a gate on the OFFER
+@pytest.fixture
+def unreviewed(tmp_path, monkeypatch):
+    root = init_repo(tmp_path, monkeypatch)
+    (root / PAGE).parent.mkdir(parents=True)
+    (root / PAGE).write_text("<main><h1>The twenty</h1><p>Words.</p></main>\n", encoding="utf-8", newline="\n")
+    write_queue(root, {"id": "P", "order": 1, "title": "Page P", "stage": "PUBLISHED", "published": "2026-10-06",
+                       "approved_blobs": {PAGE: pb.blob_sha(root / PAGE)}}, msg="base")
+
+    def make(pid, files, **row):
+        r = {"id": pid, "order": 7, "title": pid, "stage": "DRAFTED", "branch": f"draft/{pid.lower()}", **row}
+        r.setdefault("page", next(iter(files)))
+        draft(root, r, files)
+        return f"draft/{pid.lower()}"
+    return root, make
+
+
+def test_offer_refuses_a_content_piece_with_no_stage2_review_and_names_what_is_missing(unreviewed):
+    root, make = unreviewed
+    ref = make("T5", {"lessons/t5/index.html": "<h1>t5</h1>\n"})
+    with pytest.raises(approvals.ApprovalError, match=r"stage-2 review.*`reviewed` is empty"):
+        approvals.offer("T5", ref, PROOF, today=MON)
+    ref = make("T6", {"lessons/t6/index.html": "<h1>t6</h1>\n"}, reviewed="NOT YET: queued for the name check")
+    with pytest.raises(approvals.ApprovalError, match="does not name a stage 2"):
+        approvals.offer("T6", ref, PROOF, today=MON)
+    assert not (root / "boards" / "APPROVALS_OWED.md").exists()
+    ref = make("T7", {"lessons/t7/index.html": "<h1>t7</h1>\n"}, reviewed=STAGE2)
+    assert approvals.offer("T7", ref, PROOF, today=MON)
+
+
+def test_a_patch_needs_stage2_unless_its_case_or_layout_only_claim_is_proved_on_the_bytes(unreviewed):
+    root, make = unreviewed
+    ref = make("FIX-W", {PAGE: "<main><h1>The Twenty</h1><p>New words.</p></main>\n"}, kind="patch",
+               patch_scope="case-only")
+    with pytest.raises(approvals.ApprovalError, match="changes more than letter case"):
+        approvals.offer("FIX-W", ref, PROOF, today=MON)
+    ref = make("FIX-N", {PAGE: "<main><h1>The Twenty</h1><p>Words.</p></main>\n"}, kind="patch")
+    with pytest.raises(approvals.ApprovalError, match="stage-2 review"):
+        approvals.offer("FIX-N", ref, PROOF, today=MON)
+    ref = make("FIX-C", {PAGE: "<main><h1>The Twenty</h1><p>Words.</p></main>\n"}, kind="patch",
+               patch_scope="case-only")
+    approvals.offer("FIX-C", ref, PROOF, today=MON)
+    ref = make("FIX-L", {PAGE: '<main class="wide">\n  <h1>The twenty</h1>\n  <p>Words.</p>\n</main>\n'},
+               kind="patch", patch_scope="layout-only")
+    approvals.offer("FIX-L", ref, PROOF, today=MON)
+    tiles = (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
+    assert "EXEMPT from stage 2 as a case-only patch" in tiles and "EXEMPT from stage 2 as a layout-only patch" in tiles
+
+
+# ================================================================ round 2: a tapped patch RE-PINS what it changes
+GLOSS_PAGE = "lessons/glossary-beginner/index.html"
+FURN = "tools/tracks/n8n.html"
+G1_ENTRY = {"track": "n8n", "numeral": "I", "href": "/lessons/glossary-beginner/", "title": "Glossary I",
+            "blurb": "Words."}
+
+
+@pytest.fixture
+def glossary_live(tmp_path, monkeypatch):
+    """GC-GLOSS-1 as on main: PUBLISHED, pinning its page and the n8n furniture, both in the tree."""
+    root = init_repo(tmp_path, monkeypatch)
+    (root / GLOSS_PAGE).parent.mkdir(parents=True)
+    (root / GLOSS_PAGE).write_text("<h1>The twenty</h1>\n", encoding="utf-8", newline="\n")
+    old_furn, old_page = pb.blob_sha(root / FURN), pb.blob_sha(root / GLOSS_PAGE)
+    g1 = {"id": "GC-GLOSS-1", "order": 1, "title": "Glossary I", "stage": "PUBLISHED", "published": "2026-10-20",
+          "previewed": "2026-10-12", "approved_blobs": {GLOSS_PAGE: old_page, FURN: old_furn},
+          "index_entry": G1_ENTRY, "approved_index_entry": pb.entry_sha(G1_ENTRY)}
+    write_queue(root, g1, msg="base")
+    return root, g1, old_furn, old_page
+
+
+def test_a_tapped_patch_to_a_published_pieces_pins_leaves_the_next_content_release_publish(glossary_live):
+    root, g1, old_furn, old_page = glossary_live
+    furn_text = (root / FURN).read_text(encoding="utf-8")
+    assert "track" in furn_text
+    new_furn_text = furn_text.replace("track", "Track", 1)
+    draft(root, {"id": "FIX-H", "kind": "patch", "order": 90, "title": "Heading case", "stage": "DRAFTED",
+                 "files": [GLOSS_PAGE, FURN], "branch": "draft/fix-h", "patch_scope": "case-only"},
+          {GLOSS_PAGE: "<h1>The Twenty</h1>\n", FURN: new_furn_text})
+    # a racked content piece on the same track, approved BEFORE the patch, pinning the OLD furniture
+    src = root.parent / "c2.html"
+    src.write_bytes(b"<h1>Two</h1>\n")
+    c2_entry = {**G1_ENTRY, "numeral": "II", "href": "/lessons/two/", "title": "Two"}
+    c2 = v3_testkit.bind({"id": "C2", "order": 2, "title": "Two", "stage": "PREVIEWED", "previewed": "2026-10-14",
+                          "approved_blobs": {"lessons/two/index.html": g(root, "hash-object", "-w", str(src)),
+                                             FURN: old_furn},
+                          "index_entry": c2_entry, "approved_index_entry": pb.entry_sha(c2_entry)})
+    write_queue(root, g1, c2, msg="C2 racked")
+
+    # untapped: offering the patch never touches main's pins, and the content line is unaffected
+    queue_before = pb.QUEUE.read_text(encoding="utf-8")
+    title = approvals.offer("FIX-H", "draft/fix-h", PROOF, today=TUE)
+    assert pb.QUEUE.read_text(encoding="utf-8") == queue_before
+    assert release.plan(dt.date(2026, 10, 27))["outcome"] == "PUBLISH"
+
+    led = Ledger()
+    led.rule(title, "APPROVE")
+    assert approvals.apply(today=TUE, led=led)[0].startswith("APPLIED  APPROVE  FIX-H")
+    fix = qrow("FIX-H")
+    assert fix["supersedes_pins"] == {GLOSS_PAGE: {"piece": "GC-GLOSS-1", "blob": old_page},
+                                      FURN: {"piece": "GC-GLOSS-1", "blob": old_furn}}
+    release.run(SCHEDULED, WED, {"date": WED.isoformat(), "mode": "apply"})
+    new_furn = pb.blob_sha(root / FURN)
+    assert new_furn == fix["approved_blobs"][FURN] and new_furn != old_furn
+    assert "Re-pin: supersedes GC-GLOSS-1's pin" in g(root, "log", "-1", "--format=%B")
+
+    nxt = dt.date(2026, 10, 27)
+    d = release.plan(nxt)
+    assert (d["outcome"], d.get("piece")) == ("PUBLISH", "C2"), d
+    entry = {"date": nxt.isoformat(), "mode": "apply"}
+    assert release.run(SCHEDULED, nxt, entry) == 0 and entry["outcome"] == "COMMITTED", entry
+    assert pb.blob_sha(root / FURN) == new_furn            # the older pin never writes the patch back out
+    assert "keeps patch FIX-H's bytes" in g(root, "log", "-1", "--format=%B")
+    assert "CHANGED SINCE" not in pb.build(nxt)
+    assert release.live_drift(pb.load_queue()) == []
 
 
 def test_production_plan_names_the_two_lines_in_daniels_words():

@@ -340,8 +340,16 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
     created_files: list[Path] = []
     created_dirs: list[Path] = []
     touched: list[Path] = []
+    rows_now = [r for r in pb.load_queue() if not r.get("_broken")]
+    kept: list[str] = []
     try:
         for rel, blob in row["approved_blobs"].items():
+            sup = None if is_patch_line else pb.superseding_patch(row, rel, rows_now)
+            if sup:
+                # this piece's pin on rel predates a published patch that re-pinned it: keep the patch's bytes
+                kept.append(f"{rel} keeps patch {sup[0]}'s bytes {sup[1][:12]} (this piece's older pin "
+                            f"{blob[:12]} is superseded for that path)")
+                continue
             dest = root / rel
             have = pb.blob_sha(dest) if dest.exists() else None
             if have is not None and have != blob and is_patch_line:
@@ -391,7 +399,10 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as fh:
             fh.write((PATCH_SUBJECT if is_patch_line else RELEASE_SUBJECT).format(
                          pid=pid, day=day, title=row.get("title", pid)) + "\n\n"
-                     "Written by tools/release.py from the bytes Daniel approved (approved_blobs), "
+                     + "".join(f"Re-pin: {k}.\n" for k in kept)
+                     + "".join(f"Re-pin: supersedes {v.get('piece')}'s pin on {rel} ({str(v.get('blob'))[:12]}).\n"
+                               for rel, v in (row.get("supersedes_pins") or {}).items())
+                     + "Written by tools/release.py from the bytes Daniel approved (approved_blobs), "
                      "re-hashed before commit.\n")
             msg = fh.name
         git("commit", "-q", "-F", msg)

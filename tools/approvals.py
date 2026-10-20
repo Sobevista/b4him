@@ -100,6 +100,52 @@ def pinned(commit: str, row: dict) -> dict:
     return blobs_at(commit, files)
 
 
+# ---------------------------------------------------------------- stage 2 before the tap
+#: `reviewed` must name stage 2 by a seat that is not the author (PRODUCTION_PLAN section 2: stage 2's owner is
+#: "the other seat"). Any one of these phrases counts; a row that starts "NOT YET" never does.
+STAGE2_RE = re.compile(r"stage[ -]2|other seat|neither wrote|did not write", re.I)
+#: The two patch scopes that may skip stage 2, because offer() proves the claim mechanically on the bytes.
+PATCH_SCOPES = ("case-only", "layout-only")
+
+
+def stage2_gate(pid: str, commit: str, row: dict) -> str | None:
+    """production-line-v2, round 2 (2026-10-20): T5 was tapped before its stage-2 name check and a blocked_on label was
+    the only trace. So stage 2 is a gate on the OFFER, not a label the tap erases: no tile without it.
+
+    Content: `reviewed` must name a stage 2 by another seat (STAGE2_RE). Patch: the same, OR `patch_scope` is
+    "case-only" (every file equals main's current bytes except for letter case) or "layout-only" (every file's
+    visible text equals main's current visible text), checked here on the bytes; the proof link is required for
+    every tile anyway. Returns None when stage 2 is recorded, else the text the tile shows for the exemption."""
+    review = str(row.get("reviewed") or "").strip()
+    if review and not review.upper().startswith("NOT YET") and STAGE2_RE.search(review):
+        return None
+    scope = row.get("patch_scope")
+    if pb.is_patch(row) and scope in PATCH_SCOPES:
+        import voice_check
+        for rel in piece_files(row):
+            old = subprocess.run(["git", "-C", str(repo()), "show", f"main:{rel}"], capture_output=True)
+            if old.returncode:
+                raise ApprovalError(f"{pid}: claims {scope} but {rel} is not on main, so there is nothing it only "
+                                    f"re-cases or re-lays-out; it needs a stage-2 review recorded in `reviewed`")
+            before, after = old.stdout.decode("utf-8", "replace"), git("show", f"{commit}:{rel}")
+            same = (before.casefold() == after.casefold() if scope == "case-only" else
+                    " ".join(voice_check.visible_text(before).split()) ==
+                    " ".join(voice_check.visible_text(after).split()))
+            if not same:
+                raise ApprovalError(f"{pid}: claims {scope} but {rel} changes more than "
+                                    f"{'letter case' if scope == 'case-only' else 'layout (its visible text differs)'}"
+                                    f"; it needs a stage-2 review recorded in `reviewed`")
+        return (f"EXEMPT from stage 2 as a {scope} patch: proved by tools/approvals.py on the bytes (every file equals "
+                f"main's except {'letter case' if scope == 'case-only' else 'markup; visible text identical'})")
+    missing = ("`reviewed` is empty" if not review else
+               f"`reviewed` (\"{review[:80]}\") does not name a stage 2 by another seat")
+    raise ApprovalError(f"{pid} at {commit[:7]} has no stage-2 review recorded, so it does not go in front of Daniel: "
+                        f"{missing}. Record the independent review on the row (e.g. \"<date> - stage 2 by a seat that "
+                        f"neither wrote nor rendered the page: ...\")"
+                        + ("; or, for a patch, set patch_scope to case-only/layout-only if that is all it is"
+                           if pb.is_patch(row) else ""))
+
+
 # ---------------------------------------------------------------- offer
 def title_for(pid: str, commit: str, row: dict) -> str:
     return f"APPROVE {pid} at {commit[:7]} — {row.get('title', pid)}"
@@ -122,6 +168,9 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
             if not v["pass"]:
                 raise ApprovalError(f"{rel} fails the voice check: first person {v['rate']}/1k (floor "
                                     f"{voice_check.FLOOR}), unglossed {[u.split(':')[0] for u in v['unglossed']]}")
+    exemption = stage2_gate(pid, commit, row)
+    if exemption:
+        row = dict(row, reviewed=exemption)
     title = title_for(pid, commit, row)
     path = board_path()
     text = path.read_text(encoding="utf-8") if path.exists() else (
@@ -232,7 +281,7 @@ def main_row(pid: str) -> dict | None:
 
 #: Fields that only an approval writes. A rejected piece carries none of them back to drafting.
 APPROVAL_FIELDS = ("ruled", "previewed", "approved_blobs", "approved_commit", "approved_tag", "approved_index_entry",
-                   "binding", "replaces_blobs", "cleared_blocked_on")
+                   "binding", "replaces_blobs", "supersedes_pins", "cleared_blocked_on")
 
 
 def requeue(pid: str, commit: str, event: dict, today: dt.date) -> dict:
@@ -289,6 +338,11 @@ def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
         row.pop("blocked_on", None)
     if pb.is_patch(row):
         row["replaces_blobs"] = {rel: pb.blob_sha(repo() / rel) for rel in blobs}
+        # RE-PIN, recorded: for every path a PUBLISHED piece pinned, this patch's bytes become the pin once it
+        # publishes (pb.published_owners: a patch owns its paths from its publish day). Named here, never silent.
+        owners = pb.published_owners([r for r in pb.load_queue() if not r.get("_broken")])
+        row["supersedes_pins"] = {rel: {"piece": owners[rel][0], "blob": owners[rel][1]}
+                                  for rel in blobs if rel in owners and owners[rel][1] != blobs[rel]}
     if row.get("index_entry"):
         row["approved_index_entry"] = pb.entry_sha(row["index_entry"])
     row["binding"] = binding.make(row)        # v3 (production-boundary-v1): release re-derives the approval from this
