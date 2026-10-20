@@ -1,0 +1,410 @@
+"""production-line-v2 (Daniel's rulings of 2026-10-20). Each test is RED on main at 3c0d59b and GREEN on the build.
+
+    py -m pytest tools/test_production_line_v2.py -q
+
+1. A REJECT carries his note verbatim onto the piece's queue row (back to DRAFTED, branch kept, blocked_on =
+   "REDRAFT owed: <ledger id> <note>"), into the application ledger event, and onto the board. Found 2026-10-20:
+   his notes on GC-GLOSS-2/3 (E00615/E00616) were dropped; E00660 wrote note: null and nothing went back to drafting.
+2. An APPROVE clears a pre-tap blocked_on (the tap supersedes it) unless it names a post-approval gate.
+3. release.py refuses any row whose blocked_on is non-empty, naming the row and the text, in the log.
+4. The patch line: kind "patch" is outside the content cadence (no Tuesday rule, no 7-day cap, no content slot),
+   publishes on the next run after the tap, and still only the exact pinned bytes. Daniel: "it moves outside the
+   queue. Then we will need to establish two different schedules. One is content and one is patches to the site."
+"""
+import argparse
+import datetime as dt
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+
+import pytest
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import approvals  # noqa: E402
+import binding  # noqa: E402
+import production_board as pb  # noqa: E402
+import release  # noqa: E402
+import v3_testkit  # noqa: E402
+
+GIT = shutil.which("git")
+pytestmark = pytest.mark.skipif(not GIT, reason="git not on PATH")
+
+MON = dt.date(2026, 10, 19)
+TUE = dt.date(2026, 10, 20)
+WED = dt.date(2026, 10, 21)
+PROOF = "https://claude.ai/artifact/example"
+NOTE = 'The titles need Sentence Structure or whatever it is for instance the heading "The twenty" should read "The Twenty"'
+SCHEDULED = argparse.Namespace(push=False, verify_live=False, live_minutes=0)
+
+
+def g(root, *args):
+    return subprocess.run([GIT, "-C", str(root), *args], capture_output=True, check=True,
+                          encoding="utf-8").stdout.strip()
+
+
+class Ledger:
+    """The ledger surface approvals.apply uses, with the note field the harness app writes on a ruling."""
+    def __init__(self):
+        self.events = []
+
+    def rule(self, decision, verdict, note=None):
+        body = {"decision": decision, "verdict": verdict, "applied": False, "by": "daniel"}
+        if note is not None:
+            body["note"] = note
+        ev = {"id": f"E{len(self.events) + 600:05d}", "kind": "RULING", "body": body}
+        self.events.append(ev)
+        return ev
+
+    def rulings_owed(self):
+        sup = {e["body"]["target"] for e in self.events if e["kind"] == "SUPERSEDE"}
+        return [e for e in self.events if e["kind"] == "RULING" and not e["body"]["applied"] and e["id"] not in sup]
+
+    def append(self, kind, by, body):
+        ev = {"id": f"E{len(self.events) + 600:05d}", "kind": kind, "by": by, "body": body}
+        self.events.append(ev)
+        return ev
+
+    def applied(self):
+        return [e for e in self.events if e["kind"] == "RULING" and e["body"].get("applied")]
+
+
+def init_repo(tmp_path, monkeypatch):
+    root = tmp_path / "site"
+    (root / "tools" / "tracks").mkdir(parents=True)
+    shutil.copy(HERE / "tracks" / "n8n.html", root / "tools" / "tracks" / "n8n.html")
+    (root / "lessons" / "a").mkdir(parents=True)
+    (root / "lessons" / "a" / "index.html").write_text("<p>a</p>\n", encoding="utf-8", newline="\n")
+    (root / "lessons" / "index.html").write_text(
+        "<nav></nav>\n\n<!-- b4him:track n8n (generated) -->\n<!-- /b4him:track n8n -->\n", encoding="utf-8",
+        newline="\n")
+    (root / ".gitignore").write_text("release_log.jsonl\nrelease_alarm.md\n__pycache__/\n", encoding="utf-8")
+    g(tmp_path, "init", "-q", "-b", "main", str(root))
+    for k, v in (("user.email", "t@example.invalid"), ("user.name", "t"), ("core.autocrlf", "false")):
+        g(root, "config", k, v)
+    monkeypatch.setattr(pb, "REPO", root)
+    monkeypatch.setattr(pb, "QUEUE", root / "production_queue.jsonl")
+    monkeypatch.setattr(pb, "BOARD", root / "PRODUCTION_BOARD.md")
+    return root
+
+
+def write_queue(root, *rows, msg="queue"):
+    pb.QUEUE.write_text("# q\n" + "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8", newline="\n")
+    g(root, "add", "-A")
+    g(root, "commit", "-q", "-m", msg)
+
+
+def draft(root, row, files):
+    """Commit `row` and `files` on draft/<id> and return to main. Returns the draft commit."""
+    branch = row["branch"]
+    g(root, "checkout", "-q", "-b", branch)
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8", newline="\n")
+    rows = [r for r in pb.load_queue() if r.get("id") != row["id"]] + [row]
+    write_queue(root, *rows, msg="draft")
+    commit = g(root, "rev-parse", "HEAD")
+    g(root, "checkout", "-q", "main")
+    return commit
+
+
+def qrow(pid):
+    return next(r for r in pb.load_queue() if r.get("id") == pid)
+
+
+# ================================================================ 1. REJECT carries the note
+@pytest.fixture
+def g2(tmp_path, monkeypatch):
+    root = init_repo(tmp_path, monkeypatch)
+    base = {"id": "G2", "order": 2, "title": "Glossary II", "stage": "SOURCE", "track": "n8n"}
+    write_queue(root, base, msg="base")
+    row = dict(base, stage="DRAFTED", page="lessons/g2/index.html", branch="draft/g2", reviewed="other seat")
+    draft(root, row, {"lessons/g2/index.html": "<h1>The twenty</h1>\n"})
+    return root
+
+
+def test_reject_carries_daniels_note_onto_the_queue_row_the_ledger_and_the_board(g2):
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    led = Ledger()
+    ev = led.rule(title, "REJECT", NOTE)
+    report = approvals.apply(today=MON, led=led)
+    assert report[0].startswith("APPLIED  REJECT  G2"), report
+    row = qrow("G2")
+    assert row["stage"] == "DRAFTED", row
+    assert row["branch"] == "draft/g2"
+    assert row["blocked_on"] == f"REDRAFT owed: {ev['id']} {NOTE}"
+    done = led.applied()[-1]
+    assert done["body"]["note"] == NOTE, done                  # never null when the ruling had one
+    assert NOTE in done["body"]["binds"]
+    board = (g2 / "PRODUCTION_BOARD.md").read_text(encoding="utf-8")
+    assert NOTE in board and "REDRAFT" in board
+    assert NOTE in (g2 / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
+    assert g(g2, "status", "--porcelain") == ""
+    assert NOTE in g(g2, "log", "-1", "--format=%B")
+    assert not led.rulings_owed()
+
+
+def test_reject_with_no_note_still_requeues_and_says_no_note_given(g2):
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    led = Ledger()
+    ev = led.rule(title, "REJECT")
+    assert approvals.apply(today=MON, led=led)[0].startswith("APPLIED  REJECT  G2")
+    row = qrow("G2")
+    assert row["stage"] == "DRAFTED" and row["blocked_on"] == f"REDRAFT owed: {ev['id']} no note given"
+    assert "no note given" in (g2 / "PRODUCTION_BOARD.md").read_text(encoding="utf-8")
+
+
+def test_reject_of_a_piece_with_no_row_on_main_adds_its_row(g2):
+    # GC-GLOSS-3's case: the tile's piece exists only on its draft branch.
+    write_queue(g2, msg="main's queue has no G2 row")
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    led = Ledger()
+    led.rule(title, "REJECT", "Same as Glossary 2")
+    assert approvals.apply(today=MON, led=led)[0].startswith("APPLIED  REJECT  G2")
+    row = qrow("G2")
+    assert row["stage"] == "DRAFTED" and row["blocked_on"].endswith(" Same as Glossary 2")
+
+
+def test_reject_never_unpublishes_a_live_row(g2):
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    write_queue(g2, {"id": "G2", "order": 2, "title": "Glossary II", "stage": "PUBLISHED", "published": "2026-10-13"},
+                msg="already live")
+    led = Ledger()
+    led.rule(title, "REJECT", NOTE)
+    report = approvals.apply(today=MON, led=led)
+    assert report[0].startswith("OWED") and "PUBLISHED" in report[0], report
+    assert qrow("G2")["stage"] == "PUBLISHED" and len(led.rulings_owed()) == 1
+
+
+# ================================================================ 2. APPROVE and blocked_on
+@pytest.fixture
+def labelled(tmp_path, monkeypatch):
+    root = init_repo(tmp_path, monkeypatch)
+    write_queue(root, msg="base")
+
+    def make(label):
+        row = {"id": "T5", "order": 5, "title": "T5", "stage": "DRAFTED", "page": "lessons/t5/index.html",
+               "branch": "draft/t5", "blocked_on": label}
+        draft(root, row, {"lessons/t5/index.html": "<h1>t5</h1>\n"})
+        title = approvals.offer("T5", "draft/t5", PROOF, today=dt.date(2026, 10, 12))
+        led = Ledger()
+        led.rule(title, "APPROVE")
+        assert approvals.apply(today=dt.date(2026, 10, 12), led=led)[0].startswith("APPLIED  APPROVE  T5")
+        return qrow("T5")
+    return root, make
+
+
+def test_approve_clears_a_pre_tap_blocked_on_and_keeps_the_text(labelled):
+    root, make = labelled
+    row = make("stage 2: independent name check by a seat that did not write the page")
+    assert "blocked_on" not in row or not row["blocked_on"], row
+    assert "independent name check" in row["cleared_blocked_on"]
+    assert release.plan(TUE)["outcome"] == "PUBLISH"
+
+
+def test_approve_keeps_a_post_approval_gate_and_release_refuses_it(labelled):
+    root, make = labelled
+    row = make("POST-APPROVAL: wait for the course page to go live first")
+    assert row["blocked_on"].startswith("POST-APPROVAL:")
+    d = release.plan(TUE)
+    assert d["outcome"] == "FAIL" and "T5" in d["why"] and "course page" in d["why"], d
+
+
+# ================================================================ release-side fixture
+@pytest.fixture
+def live(tmp_path, monkeypatch):
+    """A site with one published page (PAGE at OLD bytes) and new bytes in the store for a patch."""
+    root = init_repo(tmp_path, monkeypatch)
+    (root / "lessons" / "p").mkdir(parents=True)
+    (root / PAGE).write_text("<h1>The twenty</h1>\n", encoding="utf-8", newline="\n")
+    old = pb.blob_sha(root / PAGE)
+    pubrow = {"id": "P", "order": 1, "title": "Page P", "stage": "PUBLISHED", "published": "2026-10-06",
+              "approved_blobs": {PAGE: old}}
+    write_queue(root, pubrow, msg="base")
+    src = tmp_path / "fixed.html"
+    src.write_bytes(b"<h1>The Twenty</h1>\n")
+    new = g(root, "hash-object", "-w", str(src))
+    return root, old, new, pubrow
+
+
+PAGE = "lessons/p/index.html"
+
+
+def patch_row(old, new, **kw):
+    row = {"id": "FIX-1", "kind": "patch", "order": 90, "title": "Heading case on Page P", "stage": "PREVIEWED",
+           "previewed": "2026-10-19", "since": "2026-10-19", "approved_blobs": {PAGE: new},
+           "replaces_blobs": {PAGE: old}}
+    row.update(kw)
+    return v3_testkit.bind(row)
+
+
+def content_row(root, tmp_path_bytes=b"<h1>C</h1>\n", **kw):
+    src = root.parent / "c.html"
+    src.write_bytes(tmp_path_bytes)
+    blob = g(root, "hash-object", "-w", str(src))
+    row = {"id": "C1", "order": 3, "title": "Content one", "stage": "PREVIEWED", "previewed": "2026-10-01",
+           "approved_blobs": {"lessons/c1/index.html": blob}}
+    row.update(kw)
+    return v3_testkit.bind(row)
+
+
+def log_lines(root):
+    p = root / "release_log.jsonl"
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines()] if p.exists() else []
+
+
+# ================================================================ 3. release refuses blocked_on
+def test_release_refuses_a_row_with_blocked_on_naming_the_row_and_the_text_in_the_log(live):
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, content_row(root, blocked_on="stage 2: independent name check"))
+    entry = {"date": TUE.isoformat(), "mode": "apply"}
+    assert release.run(SCHEDULED, TUE, entry) == 1
+    assert entry["outcome"] == "FAIL" and entry["piece"] == "C1"
+    assert "C1" in entry["why"] and "stage 2: independent name check" in entry["why"], entry
+    release.log(entry)
+    assert "stage 2: independent name check" in log_lines(root)[-1]["why"]
+    assert not (root / "lessons" / "c1").exists()
+
+
+def test_a_stale_pre_tap_label_on_an_approved_row_is_refused_with_a_message_that_says_so(live):
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, content_row(root, blocked_on="Daniel's one tap on the rendered proof (E00472)"))
+    d = release.plan(TUE)
+    assert d["outcome"] == "FAIL" and "Daniel's one tap on the rendered proof (E00472)" in d["why"]
+    assert "stale" in d["why"] and "clear" in d["why"], d
+
+
+# ================================================================ 4. the patch line
+def test_a_tapped_patch_publishes_on_the_next_run_even_a_wednesday(live):
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, patch_row(old, new))
+    entry = {"date": WED.isoformat(), "mode": "apply"}
+    assert release.run(SCHEDULED, WED, entry) == 0
+    assert entry["outcome"] == "SKIP" and entry.get("lane") == "content"       # the content line: not a release day
+    assert pb.blob_sha(root / PAGE) == new
+    assert qrow("FIX-1")["stage"] == "PUBLISHED" and qrow("FIX-1")["published"] == WED.isoformat()
+    lines = [l for l in log_lines(root) if l.get("lane") == "patch"]
+    assert len(lines) == 1 and lines[0]["outcome"] == "COMMITTED" and lines[0]["piece"] == "FIX-1", lines
+    assert g(root, "status", "--porcelain") == ""
+
+
+def test_a_patch_ignores_the_cap_and_never_takes_the_content_slot(live, tmp_path):
+    root, old, new, pubrow = live
+    # Tue: one content piece published Fri 10-16 fills the cap; the patch goes out anyway.
+    capped = {"id": "P0", "order": 2, "title": "P0", "stage": "PUBLISHED", "published": "2026-10-16"}
+    write_queue(root, pubrow, capped, patch_row(old, new))
+    entry = {"date": TUE.isoformat(), "mode": "apply"}
+    assert release.run(SCHEDULED, TUE, entry) == 0
+    assert entry["outcome"] == "SKIP" and "cap" in entry["why"]
+    assert pb.blob_sha(root / PAGE) == new
+
+
+def test_a_published_patch_does_not_consume_the_content_week(live):
+    root, old, new, pubrow = live
+    shipped = {"id": "FIX-0", "kind": "patch", "order": 91, "title": "earlier fix", "stage": "PUBLISHED",
+               "published": "2026-10-19"}
+    write_queue(root, pubrow, shipped, content_row(root))
+    d = release.plan(TUE)
+    assert d["outcome"] == "PUBLISH" and d["piece"] == "C1", d
+
+
+def test_tuesday_with_a_patch_and_a_content_piece_publishes_both_and_pushes_each(live, tmp_path):
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, patch_row(old, new), content_row(root))
+    bare = tmp_path / "origin.git"
+    g(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    g(root, "remote", "add", "origin", str(bare))
+    g(root, "push", "-q", "origin", "main")
+    args = argparse.Namespace(push=True, verify_live=False, live_minutes=0)
+    entry = {"date": TUE.isoformat(), "mode": "apply"}
+    with release.scheduled_entry(TUE):
+        assert release.run(args, TUE, entry) == 0, entry
+    assert entry["outcome"] == "PUSHED-UNVERIFIED" and entry["piece"] == "C1", entry
+    assert g(bare, "rev-parse", "main") == g(root, "rev-parse", "HEAD")
+    subjects = g(root, "log", "-2", "--format=%s").splitlines()
+    assert subjects[0].startswith("PUBLISHED C1") and subjects[1].startswith("PATCHED FIX-1"), subjects
+    assert [l["outcome"] for l in log_lines(root) if l.get("lane") == "patch"] == ["PUSHED-UNVERIFIED"]
+
+
+def test_a_patch_publishes_only_its_pinned_bytes(live):
+    root, old, new, pubrow = live
+    # an edit to the page after the tap: the tree no longer holds the bytes the patch replaces
+    (root / PAGE).write_text("<h1>hand edit</h1>\n", encoding="utf-8", newline="\n")
+    g(root, "commit", "-q", "-am", "hand edit")
+    write_queue(root, pubrow, patch_row(old, new))
+    entry = {"date": WED.isoformat(), "mode": "apply"}
+    release.run(SCHEDULED, WED, entry)
+    assert (root / PAGE).read_text(encoding="utf-8") == "<h1>hand edit</h1>\n"
+    lines = [l for l in log_lines(root) if l.get("lane") == "patch"]
+    assert lines and lines[-1]["outcome"] in ("SKIP", "FAIL") and "FIX-1" in json.dumps(lines[-1]), lines
+
+
+def test_an_unbound_patch_is_refused_and_logged_in_the_patch_lane(live):
+    root, old, new, pubrow = live
+    row = patch_row(old, new)
+    row.pop("binding")
+    write_queue(root, pubrow, row)
+    entry = {"date": WED.isoformat(), "mode": "apply"}
+    release.run(SCHEDULED, WED, entry)
+    assert pb.blob_sha(root / PAGE) == old
+    lines = [l for l in log_lines(root) if l.get("lane") == "patch"]
+    assert lines and lines[-1]["outcome"] == "FAIL" and "UNVERIFIED" in lines[-1]["why"], lines
+
+
+def test_a_patch_with_blocked_on_is_refused(live):
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, patch_row(old, new, blocked_on="POST-APPROVAL: after the redesign"))
+    release.run(SCHEDULED, WED, {"date": WED.isoformat(), "mode": "apply"})
+    assert pb.blob_sha(root / PAGE) == old
+    lines = [l for l in log_lines(root) if l.get("lane") == "patch"]
+    assert lines and lines[-1]["outcome"] == "FAIL" and "after the redesign" in lines[-1]["why"], lines
+
+
+def test_flipping_a_racked_content_row_to_patch_breaks_its_binding(live):
+    root, old, new, pubrow = live
+    row = content_row(root)
+    assert binding.problems(row) == []
+    flipped = dict(row, kind="patch")
+    assert binding.problems(flipped), "kind is part of what Daniel approved: a content row cannot jump the cadence"
+    back = patch_row(old, new)
+    assert binding.problems(dict(back, kind="revision of a published page"))
+
+
+def test_the_board_shows_the_two_lines_separately(live):
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, patch_row(old, new), content_row(root))
+    board = pb.build(MON)
+    assert "## The content line" in board and "## The patch line" in board
+    slots = [l for l in board.splitlines() if l.startswith("| **20")]
+    assert not any("Heading case on Page P" in l for l in slots)
+    patch_part = board.split("## The patch line", 1)[1]
+    assert "Heading case on Page P" in patch_part and "next release run" in patch_part
+    assert "**RUNWAY: 1.0 weeks**" in board                  # runway counts the content line only
+
+
+def test_a_patch_tapped_end_to_end_records_what_it_replaces_and_ships_next_run(tmp_path, monkeypatch):
+    root = init_repo(tmp_path, monkeypatch)
+    (root / PAGE).parent.mkdir(parents=True)
+    (root / PAGE).write_text("<h1>The twenty</h1>\n", encoding="utf-8", newline="\n")
+    old = pb.blob_sha(root / PAGE)
+    write_queue(root, {"id": "P", "order": 1, "title": "Page P", "stage": "PUBLISHED", "published": "2026-10-06",
+                       "approved_blobs": {PAGE: old}}, msg="base")
+    draft(root, {"id": "FIX-1", "kind": "patch", "order": 90, "title": "Heading case", "stage": "DRAFTED",
+                 "page": PAGE, "branch": "draft/fix-1"}, {PAGE: "<h1>The Twenty</h1>\n"})
+    title = approvals.offer("FIX-1", "draft/fix-1", PROOF, today=TUE)
+    assert "patch line" in (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
+    led = Ledger()
+    led.rule(title, "APPROVE")
+    assert approvals.apply(today=TUE, led=led)[0].startswith("APPLIED  APPROVE  FIX-1")
+    assert qrow("FIX-1")["replaces_blobs"] == {PAGE: old}
+    release.run(SCHEDULED, WED, {"date": WED.isoformat(), "mode": "apply"})
+    assert (root / PAGE).read_text(encoding="utf-8") == "<h1>The Twenty</h1>\n"
+
+
+def test_production_plan_names_the_two_lines_in_daniels_words():
+    text = (HERE.parent / "PRODUCTION_PLAN.md").read_text(encoding="utf-8")
+    assert "it moves outside the queue" in text and "two different schedules" in text
+    assert "shouldnt take a week" in text or "shouldn't take a week" in text
+    assert "patch line" in text.lower() and "content line" in text.lower()
