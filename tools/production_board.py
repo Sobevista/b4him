@@ -429,7 +429,9 @@ def build(today: dt.date) -> str:
         for r in sorted(at, key=lambda x: x.get("order", 999)):
             src = f" · source: `{r['source']}`" if r.get("source") else ""
             blocked = f" · **BLOCKED: {r['blocked_on']}**" if r.get("blocked_on") else ""
-            A(f"  - {r.get('title','?')}{src}{blocked}")
+            repin = "".join(f" · furniture `{rel}` re-pinned by {by}"
+                            for rel, by in (r.get("furniture_repinned_by") or {}).items())
+            A(f"  - {r.get('title','?')}{src}{blocked}{repin}")
         A("")
 
     # ---- maintenance --------------------------------------------------------

@@ -449,10 +449,17 @@ def test_offer_refuses_a_content_piece_with_no_stage2_record_and_names_what_is_m
     ref = make("T8", {"lessons/t8/index.html": "<h1>t8</h1>\n"}, reviewed=dict(STAGE2, verdict="FAIL"))
     with pytest.raises(approvals.ApprovalError, match="verdict is 'FAIL'"):
         approvals.offer("T8", ref, PROOF, today=MON)
-    ref = make("T9", {"lessons/t9/index.html": "<h1>t9</h1>\n"}, reviewed=dict(STAGE2, by="drafting seat"),
-               drafted_by="drafting seat")
-    with pytest.raises(approvals.ApprovalError, match="the seat that wrote the piece"):
+    ref = make("T9", {"lessons/t9/index.html": "<h1>t9</h1>\n"}, reviewed=dict(STAGE2, by="seat-42"),
+               drafted_by="seat-42")
+    with pytest.raises(approvals.ApprovalError, match="recorded as drafting the piece"):
         approvals.offer("T9", ref, PROOF, today=MON)
+    # round 4: the git author of the piece's bytes is the drafter too (fixture commits are authored by "t")
+    ref = make("T11", {"lessons/t11/index.html": "<h1>t11</h1>\n"}, reviewed=dict(STAGE2, by="t"))
+    with pytest.raises(approvals.ApprovalError, match="git author of the piece's own bytes"):
+        approvals.offer("T11", ref, PROOF, today=MON)
+    ref = make("T12", {"lessons/t12/index.html": "<h1>t12</h1>\n"}, reviewed=dict(STAGE2, by="Claude"))
+    with pytest.raises(approvals.ApprovalError, match="names a model, not a seat"):
+        approvals.offer("T12", ref, PROOF, today=MON)
     ref = make("T10", {"lessons/t10/index.html": "<h1>t10</h1>\n"}, reviewed={k: STAGE2[k] for k in ("date", "by")})
     with pytest.raises(approvals.ApprovalError, match="lacks verdict, proof"):
         approvals.offer("T10", ref, PROOF, today=MON)
@@ -560,17 +567,68 @@ def test_a_tapped_patch_to_a_published_pieces_pins_leaves_the_next_content_relea
 
 
 def test_a_patch_over_a_path_a_racked_piece_pins_is_refused_at_offer_and_at_rack(glossary_live):
+    # round 4: a racked piece's PAGE pin still locks it; furniture does not (next test)
     root, g1, old_furn, old_page = glossary_live
     fix_h(root)
     title = approvals.offer("FIX-H", "draft/fix-h", PROOF, today=TUE)       # nothing racked yet: offered
-    write_queue(root, g1, racked_c2(root, g1, old_furn), msg="C2 racked after the offer")
-    with pytest.raises(approvals.ApprovalError, match="pinned by racked C2"):
+    src = root.parent / "rev.html"
+    src.write_bytes(b"<h1>The twenty, revised</h1>\n")
+    rev = v3_testkit.bind({"id": "R1", "order": 5, "title": "rev", "kind": pb.REVISION, "stage": "PREVIEWED",
+                           "previewed": "2026-10-19",
+                           "approved_blobs": {GLOSS_PAGE: g(root, "hash-object", "-w", str(src))}})
+    write_queue(root, g1, rev, msg="a revision of the page racked after the offer")
+    with pytest.raises(approvals.ApprovalError, match="pinned by racked R1"):
         approvals.offer("FIX-H", "draft/fix-h", "https://claude.ai/artifact/again", today=TUE)
     led = Ledger()
     led.rule(title, "APPROVE")
     report = approvals.apply(today=TUE, led=led)
-    assert report[0].startswith("OWED") and "pinned by racked C2" in report[0], report
+    assert report[0].startswith("OWED") and "pinned by racked R1" in report[0], report
     assert "FIX-H" not in {r.get("id") for r in pb.load_queue()}
+
+
+def test_a_patch_over_furniture_racked_content_pins_is_allowed_and_the_re_pin_is_recorded(glossary_live):
+    # round 4 (Daniel: "a website fix shouldnt take a week"): racked content does not lock its track's furniture
+    root, g1, old_furn, old_page = glossary_live
+    write_queue(root, g1, racked_c2(root, g1, old_furn), msg="C2 racked")
+    fix_h(root)
+    title = approvals.offer("FIX-H", "draft/fix-h", PROOF, today=TUE)
+    tile = (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
+    assert "Furniture re-pinned by FIX-H" in tile and "C2" in tile
+    led = Ledger()
+    led.rule(title, "APPROVE")
+    assert approvals.apply(today=TUE, led=led)[0].startswith("APPLIED  APPROVE  FIX-H")
+    assert qrow("C2")["furniture_repinned_by"][FURN].startswith("FIX-H")
+    assert binding.problems(qrow("C2")) == []                  # the mark is not part of C2's approval
+    assert "re-pinned by FIX-H" in (root / "PRODUCTION_BOARD.md").read_text(encoding="utf-8")
+    release.run(SCHEDULED, WED, {"date": WED.isoformat(), "mode": "apply"})
+    new_furn = pb.blob_sha(root / FURN)
+    assert new_furn != old_furn
+    nxt = dt.date(2026, 10, 27)
+    entry = {"date": nxt.isoformat(), "mode": "apply"}
+    assert release.run(SCHEDULED, nxt, entry) == 0 and entry.get("piece") == "C2", entry
+    assert pb.blob_sha(root / FURN) == new_furn
+
+
+def test_a_reject_tapped_but_not_yet_applied_stops_the_release(live, monkeypatch):
+    # round 4 gap: a REJECT tapped before a Tuesday run but not applied must not let the piece publish
+    root, old, new, pubrow = live
+    write_queue(root, pubrow, content_row(root), patch_row(old, new))
+    owed = [{"id": "E00999", "kind": "RULING", "body": {"decision": "APPROVE C1 at 1234567 — Content one",
+                                                        "verdict": "REJECT", "applied": False}},
+            {"id": "E01000", "kind": "RULING", "body": {"decision": "APPROVE FIX-1 at 1234567 — fix",
+                                                        "verdict": "REJECT", "applied": False}}]
+    monkeypatch.setattr(release, "OWED_SOURCE", lambda: owed)
+    entry = {"date": TUE.isoformat(), "mode": "apply"}
+    assert release.run(SCHEDULED, TUE, entry) == 1
+    assert entry["outcome"] == "FAIL" and "E00999" in entry["why"], entry
+    assert not (root / "lessons" / "c1").exists() and pb.blob_sha(root / PAGE) == old
+    assert [p["outcome"] for p in entry["patch_outcomes"]] == ["FAIL"]
+
+    def unreadable():
+        raise OSError("ledger offline")
+    monkeypatch.setattr(release, "OWED_SOURCE", unreadable)
+    with pytest.raises(release.ReleaseError, match="UNKNOWN"):
+        release.run(SCHEDULED, TUE, {"date": TUE.isoformat(), "mode": "apply"})
 
 
 def test_a_second_racked_patch_on_the_same_path_is_refused_at_rack(glossary_live):

@@ -27,8 +27,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import production_board as pb  # noqa: E402
 
 INDEPENDENT = re.compile(r"stage 2 by a seat that (?:neither wrote|did not write)", re.I)
-PASSED = re.compile(r"\bPASS\b|\b0 forbidden names\b")
-CAPTURE = re.compile(r"capture [0-9a-f-]+|on the approved bytes at [0-9a-f]{7}")
+PASSED = re.compile(r"\bPASS\b")
+#: round 4: any of these ANYWHERE in the prose means the verdict is not a clean PASS: UNKNOWN never rounds to PASS.
+DOUBT = re.compile(r"\bFAIL|\bnot\b|n't\b|\bno\b|\bnever\b|pending|NOT YET|\bawait|\bqueued\b|\bflag|\bunverified\b"
+                   r"|\bgap\b|\bcould not\b|\bWITH-FLAGS\b", re.I)
+BOUND_AT = re.compile(r"on the approved bytes at ([0-9a-f]{7,40})")
 
 
 def record(row: dict) -> tuple[dict | None, str]:
@@ -39,14 +42,22 @@ def record(row: dict) -> tuple[dict | None, str]:
         return None, "no review recorded"
     if pb.stage_index(row) < pb.ELIGIBLE_STAGE:
         return None, f"at {row.get('stage')}: not racked or published, so it must get a real record before its offer"
-    first = text.split(" | ")[0]
-    if not INDEPENDENT.search(first):
+    if not INDEPENDENT.search(text):
         return None, "prose does not say a seat that did not write the page ran stage 2"
-    if not PASSED.search(first):
-        return None, "prose does not state a pass"
-    proof = CAPTURE.search(first)
-    return ({"date": first[:10], "by": "independent stage-2 seat (migrated from prose)", "verdict": "PASS",
-             "proof": proof.group(0) if proof else "see notes (migrated from prose)", "notes": text}, "converted")
+    if not PASSED.search(text):
+        return None, "prose does not record a PASS verdict"
+    doubt = DOUBT.search(text)
+    if doubt:
+        return None, f"prose qualifies its verdict ({doubt.group(0)!r} at char {doubt.start()}): not a clean PASS"
+    rec = {"date": text[:10], "by": "independent stage-2 seat (migrated from prose)", "verdict": "PASS",
+           "proof": "migrated from prose; see notes", "notes": text}
+    bound = BOUND_AT.search(text)
+    if bound and str(row.get("approved_commit", "")).startswith(bound.group(1)) and row.get("approved_blobs"):
+        rec["blobs"] = dict(row["approved_blobs"])          # the bytes it names are the bytes the tap pinned
+    else:
+        rec["unbound"] = True                               # cannot name its bytes: admits no new offer
+    return rec, "converted" + ("" if "blobs" in rec else " (unbound)")
+
 
 
 def main(argv=None) -> int:
@@ -60,8 +71,7 @@ def main(argv=None) -> int:
         if r.get("_broken") or not r.get("reviewed"):
             continue
         rec, why = record(r)
-        print(f"{'CONVERT' if rec else 'SKIPPED'}  {r.get('id')}: {why}"
-              + (f" -> date {rec['date']}, proof {rec['proof']}" if rec else ""))
+        print(f"{'CONVERT' if rec else 'SKIPPED'}  {r.get('id')}: {why}")
         if rec:
             changes[r["id"]] = rec
     if not a.write or not changes:

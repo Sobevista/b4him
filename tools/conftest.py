@@ -17,6 +17,14 @@ BOUNDARY_MODULES = {"test_production_boundary", "test_boundary_breaker"}
 
 
 @pytest.fixture(autouse=True)
+def _no_real_ledger(monkeypatch):
+    """Every test is hermetic about the harness ledger: release.run reads owed rulings (production-line-v2 round 4)
+    from release.OWED_SOURCE, which defaults to the REAL ledger. Tests see none unless they set their own."""
+    import release
+    monkeypatch.setattr(release, "OWED_SOURCE", lambda: [])
+
+
+@pytest.fixture(autouse=True)
 def _as_if_scheduled(request, tmp_path_factory, monkeypatch):
     if request.module.__name__.split(".")[-1] in BOUNDARY_MODULES:
         return

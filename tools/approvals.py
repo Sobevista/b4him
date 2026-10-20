@@ -24,7 +24,7 @@ production-line-v2 (Daniel, 2026-10-20: "The change needs to be in the productio
     blocked_on = "REDRAFT owed: <ledger id> <his note verbatim>" ("no note given" when there was none), carries the
     note into the application ledger event and the tile marker, and the board lists it under "Redraft owed".
     Until this, a REJECT marked the tile and moved nothing, and the note was written as null (E00660).
-  * APPROVE clears ONLY a blocked_on marked as waiting for the tap (PRE_TAP_RE), kept as cleared_blocked_on; every
+  * APPROVE clears ONLY a blocked_on marked as waiting for the tap (pre_tap), kept as cleared_blocked_on; every
     other label survives and the tile shows it; release.py refuses any row whose blocked_on is not empty.
   * OFFER requires a structured stage-2 PASS record in `reviewed` (stage2_problem); a patch may skip it only as a
     proved case-only change, and must be a patch (patch_problems: served paths only, no index entry, no path a
@@ -104,22 +104,60 @@ def pinned(commit: str, row: dict) -> dict:
 
 
 # ---------------------------------------------------------------- stage 2 before the tap
-# production-line-v2 round 3 (orchestrator, after the breaker): stage 2 is a STRUCTURED record, not a phrase. Phrase
-# matching admitted "stage 2 not done" and "stage 2 FAILED". The row's `reviewed` field must be
+# production-line-v2 (orchestrator, after the breaker): stage 2 is a STRUCTURED record, not a phrase. The row's
+# `reviewed` field must be
 #     {"date": "YYYY-MM-DD", "by": "<the seat that ran it>", "verdict": "PASS", "proof": "<where the report is>"}
-# A string `reviewed` (the legacy prose form) never admits a new offer; it is read only on rows already racked or
-# published (tools/migrate_stage2.py turns the real queue's recorded PASSes into records, for a human to run).
+# and it is BOUND TO THE BYTES IT CHECKED (round 4): either it carries "blobs" {path: blob} equal to the piece's files
+# now, or (the default) it covers exactly the bytes committed alongside it, i.e. the piece's files must be unchanged
+# since the commit that wrote this record onto the row. A redraft after a REJECT therefore needs a new record.
+# A record marked "unbound" (a legacy migration that could not name its bytes) and any prose never admit an offer.
 STAGE2_KEYS = ("date", "by", "verdict", "proof")
 #: The one patch scope that may skip stage 2, proved on the FULL bytes of every file (head, attributes, CSS, script):
 #: every byte equals main's except ASCII letter case. "layout-only" was dropped: visible-text equality let a name in
 #: via <title>, alt, CSS content, script and the nav/footer (breaker, 2026-10-20).
 CASE_ONLY = "case-only"
-#: blocked_on labels a tap clears: only those marked as waiting for the tap itself. Everything else survives it.
-PRE_TAP_RE = re.compile(r"^\s*pre-tap\s*:|daniel'?s one tap", re.I)
+#: blocked_on labels a tap clears (round 4): only a label that STARTS "PRE-TAP:" or is exactly one of the known
+#: tap-wait strings. A label that merely mentions the tap ("not even after Daniel's one tap") survives it.
+PRE_TAP_PREFIX = "PRE-TAP:"
+TAP_WAIT_LABELS = frozenset({"Daniel's one tap on the rendered proof (E00472)", "Daniel's one tap"})
+#: The author rule (round 4). Rows have not carried who drafted them, so `by` must name a SPECIFIC seat that is
+#: provably not the drafter: not the row's drafted_by (recorded going forward), not the git author of any commit
+#: that wrote the piece's bytes on its branch, not a bare model/product name (every seat is "claude": the name says
+#: nothing about which seat), and not a self-description of the drafting seat.
+GENERIC_SEATS = frozenset({"claude", "fable", "opus", "sonnet", "haiku", "assistant", "ai", "gpt", "model", "llm"})
+DRAFTER_WORDS = frozenset({"author", "self", "drafted", "drafter", "drafting", "wrote", "writer", "same"})
 
 
-def stage2_problem(row: dict) -> str | None:
-    """None when `reviewed` is a stage-2 record that admits an offer, else what is wrong with it."""
+def pre_tap(label: str) -> bool:
+    label = str(label or "").strip()
+    return label.upper().startswith(PRE_TAP_PREFIX) or label in TAP_WAIT_LABELS
+
+
+def record_commit(pid: str, commit: str, rec) -> str | None:
+    """The commit that wrote this exact stage-2 record onto the row: the oldest commit of the latest unbroken run
+    (walking back from `commit` over commits touching the queue) whose row carries an identical `reviewed`."""
+    found = None
+    for c in git("log", "--format=%H", commit, "--", "production_queue.jsonl").split():
+        try:
+            r = row_at(c, pid)
+        except ApprovalError:
+            break
+        if r.get("reviewed") != rec:
+            break
+        found = c
+    return found
+
+
+def drafting_authors(commit: str, files: list[str]) -> set[str]:
+    """Names and emails (casefolded) of the git authors who wrote the piece's files on its branch."""
+    base = git("merge-base", "main", commit, check=False).strip()
+    rng = f"{base}..{commit}" if base else commit
+    out = git("log", "--format=%an%x00%ae", rng, "--", *files, check=False)
+    return {x.strip().casefold() for line in out.splitlines() for x in line.split("\0") if x.strip()}
+
+
+def stage2_problem(row: dict, pid: str | None = None, commit: str | None = None) -> str | None:
+    """None when `reviewed` is a stage-2 record that admits an offer of `pid` at `commit`, else what is wrong."""
     rec = row.get("reviewed")
     if not isinstance(rec, dict):
         return ("`reviewed` is empty" if not rec else
@@ -128,15 +166,40 @@ def stage2_problem(row: dict) -> str | None:
     if missing:
         return f"the stage-2 record lacks {', '.join(missing)}"
     try:
-        dt.date.fromisoformat(str(rec["date"])[:10])
+        dt.date.fromisoformat(str(rec["date"]))
     except ValueError:
         return f"the stage-2 record's date {rec['date']!r} is not a date"
     if rec["verdict"] != "PASS":
         return f"the stage-2 verdict is {rec['verdict']!r}, not PASS"
-    author = {str(row.get(k)).strip().casefold() for k in ("author", "drafted_by") if row.get(k)}
-    if str(rec["by"]).strip().casefold() in author | {"author", "self", "the author"}:
-        return f"stage 2 was run by {rec['by']!r}, the seat that wrote the piece"
+    by = str(rec["by"]).strip()
+    tokens = [t for t in re.split(r"[^0-9a-z]+", by.casefold()) if t]
+    if not tokens or tokens[0] in GENERIC_SEATS:
+        return f"stage 2 `by` {by!r} names a model, not a seat: name the specific seat or session that ran it"
+    if DRAFTER_WORDS & set(tokens):
+        return f"stage 2 `by` {by!r} describes the drafting seat; stage 2 is run by a seat that did not write it"
+    if row.get("drafted_by") and by.casefold() == str(row["drafted_by"]).strip().casefold():
+        return f"stage 2 was run by {by!r}, the seat recorded as drafting the piece (drafted_by)"
+    if rec.get("unbound"):
+        return "the stage-2 record is unbound (it cannot name the bytes it checked), so it admits no new offer"
+    if pid and commit:
+        files = piece_files(row)
+        now = blobs_at(commit, files)
+        if by.casefold() in drafting_authors(commit, files):
+            return f"stage 2 `by` {by!r} is a git author of the piece's own bytes"
+        if rec.get("blobs") is not None:
+            if rec["blobs"] != now:
+                return "the stage-2 record's blobs are not the piece's bytes now: a redraft needs a new stage 2"
+        else:
+            at = record_commit(pid, commit, rec)
+            try:
+                then = blobs_at(at, files) if at else None
+            except ApprovalError:
+                then = None
+            if then != now:
+                return ("the piece's bytes changed since the commit that recorded this stage 2"
+                        + (f" ({at[:7]})" if at else "") + ": a redraft needs a new stage 2")
     return None
+
 
 
 def stage2_text(rec) -> str:
@@ -151,27 +214,44 @@ def on_main(rel: str) -> bytes | None:
     return None if p.returncode else p.stdout
 
 
-def racked_holders(rel: str, but: str) -> list[str]:
+def racked_holders(rel: str, but: str, patches_only: bool = False) -> list[str]:
     """Ids of RACKED (approved, not yet published) rows on main's queue, other than `but`, that pin `rel`."""
     return [r.get("id") for r in pb.load_queue() if not r.get("_broken") and r.get("id") != but
             and pb.ELIGIBLE_STAGE <= pb.stage_index(r) < pb.STAGES.index("PUBLISHED")
-            and rel in (r.get("approved_blobs") or {})]
+            and rel in (r.get("approved_blobs") or {}) and (pb.is_patch(r) or not patches_only)]
+
+
+def is_furniture(rel: str) -> bool:
+    return rel.startswith(pb.SHARED_PREFIX) or rel == "lessons/index.html"
 
 
 def patch_problems(pid: str, row: dict, files: list[str]) -> list[str]:
-    """What makes a kind:"patch" row not a patch. A patch changes only what main already serves: no new page, no
-    lessons-index listing (that is content, and goes on the content line). It may not touch a path a racked piece
-    pins (that piece's approved bytes would be silently replaced or would erase the fix)."""
+    """What makes a kind:"patch" row not a patch, or not one that may go now. A patch changes only what main already
+    serves: no new page, no lessons-index listing (that is content). It may not touch a PAGE a racked piece pins
+    (that piece's approved text would be silently replaced, or would erase the fix), nor any path another racked
+    patch pins (the second would erase the first). Shared FURNITURE pinned by racked content IS allowed (round 4,
+    Daniel: "a website fix shouldnt take a week"): the patch supersedes those furniture pins, recorded on each
+    affected racked row (rack) and shown on the tile; those pieces publish with the patched furniture."""
     out = []
     if row.get("index_entry"):
         out.append("it carries an index_entry: a new lessons-index listing is content, not a patch")
     for rel in files:
         if on_main(rel) is None:
             out.append(f"{rel} is not a page main already serves: a new page is content, not a patch")
-        held = racked_holders(rel, pid)
+        held = racked_holders(rel, pid, patches_only=is_furniture(rel))
         if held:
             out.append(f"{rel} is pinned by racked {', '.join(held)}: publish or pull that first, then redraft "
                        f"the patch on current main")
+    return out
+
+
+def furniture_repins(pid: str, files) -> dict[str, list[str]]:
+    """{racked content id: [furniture paths]} whose furniture pins this patch supersedes."""
+    out: dict[str, list[str]] = {}
+    for rel in files:
+        if is_furniture(rel):
+            for holder in racked_holders(rel, pid):
+                out.setdefault(holder, []).append(rel)
     return out
 
 
@@ -180,7 +260,7 @@ def stage2_gate(pid: str, commit: str, row: dict) -> str | None:
     stage 2 gates the OFFER. Content needs a PASS record by another seat. A patch needs the same, unless it is
     `patch_scope: "case-only"` AND every file's full bytes equal main's except ASCII letter case. Returns None when
     the record admits it, else the exemption text the tile shows; raises with what is missing otherwise."""
-    problem = stage2_problem(row)
+    problem = stage2_problem(row, pid, commit)
     if problem is None:
         return None
     if pb.is_patch(row) and row.get("patch_scope") == CASE_ONLY:
@@ -226,6 +306,7 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
         if bad:
             raise ApprovalError(f"{pid} is labelled a patch but is not one: " + "; ".join(bad))
     exemption = stage2_gate(pid, commit, row)
+    repins = furniture_repins(pid, blobs) if pb.is_patch(row) else {}
     title = title_for(pid, commit, row)
     path = board_path()
     text = path.read_text(encoding="utf-8") if path.exists() else (
@@ -260,9 +341,13 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
          f"(one piece ÷ {pb.PER_WEEK_CAP} a week)."),
         f"- **Cross-checked by, including where it is weak.** {review}",
         *([f"- **Open label on this row (blocked_on).** {label}"
-           + (" — marked pre-tap: your approval clears it." if PRE_TAP_RE.search(label) else
+           + (" — marked pre-tap: your approval clears it." if pre_tap(label) else
               " — your tap does NOT clear it; release refuses the piece until a session clears it once the gate "
               "is met.")] if label else []),
+        *([f"- **Furniture re-pinned by {pid}.** These racked pieces will publish with this patch's furniture "
+           f"instead of the furniture they were approved with: "
+           + "; ".join(f"{h} ({', '.join(f'`{r}`' for r in rels)})" for h, rels in repins.items())]
+          if repins else []),
         f"- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; "
         f"a rejected piece goes back to drafting and returns here as a new commit.",
         "", PENDING, "",
@@ -352,7 +437,8 @@ def main_row(pid: str) -> dict | None:
 
 #: Fields that only an approval writes. A rejected piece carries none of them back to drafting.
 APPROVAL_FIELDS = ("ruled", "previewed", "approved_blobs", "approved_commit", "approved_tag", "approved_index_entry",
-                   "binding", "replaces_blobs", "supersedes_pins", "cleared_blocked_on")
+                   "binding", "replaces_blobs", "supersedes_pins", "cleared_blocked_on", "repins_furniture_of",
+                   "furniture_repinned_by")
 
 
 def requeue(pid: str, commit: str, event: dict, today: dt.date) -> dict:
@@ -390,8 +476,8 @@ def requeue(pid: str, commit: str, event: dict, today: dt.date) -> dict:
 def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
     """Copy the approved row onto main's queue at PREVIEWED with its pinned blobs. One line changes (or one is added).
 
-    blocked_on (production-line-v2 round 3): a tap clears ONLY a label marked as waiting for the tap itself
-    (PRE_TAP_RE: "PRE-TAP: ..." or the known "Daniel's one tap" wait), kept in cleared_blocked_on. Every other label
+    blocked_on (production-line-v2 round 4): a tap clears ONLY a label that starts "PRE-TAP:" or is exactly a known
+    tap-wait string (pre_tap), kept in cleared_blocked_on. Every other label
     survives the tap, the tile showed it to him, and release.py refuses the row until a session clears it.
 
     A patch is re-checked here (it may have changed since the offer: a piece racked in between): no new page, no
@@ -416,12 +502,23 @@ def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
     row.update(stage="PREVIEWED", ruled=stamp, previewed=stamp, approved_blobs=blobs,
                approved_commit=commit, approved_tag=f"approved/{pid}", since=today.isoformat())
     label = str(row.get("blocked_on") or "").strip()
-    if label and PRE_TAP_RE.search(label):
+    if label and pre_tap(label):
         row["cleared_blocked_on"] = f"{label} (cleared by Daniel's tap, ledger {event['id']})"
         row.pop("blocked_on", None)
     elif not label:
         row.pop("blocked_on", None)
     if pb.is_patch(row):
+        # furniture re-pin over RACKED content, recorded visibly on each affected row (not part of its binding)
+        repins = furniture_repins(pid, blobs)
+        if repins:
+            row["repins_furniture_of"] = repins
+            for holder, rels in repins.items():
+                other = main_row(holder)
+                marks = dict(other.get("furniture_repinned_by") or {})
+                marks.update({rel: f"{pid} (tapped {today}, ledger {event['id']}; takes effect when it publishes)"
+                              for rel in rels})
+                other["furniture_repinned_by"] = marks
+                put_row(holder, other)
         row["replaces_blobs"] = {rel: pb.blob_sha(repo() / rel) for rel in blobs}
         # RE-PIN, recorded: for every path a PUBLISHED piece pinned, this patch's bytes become the pin once it
         # publishes (pb.published_owners: a patch owns its paths from its publish day). Named here, never silent.

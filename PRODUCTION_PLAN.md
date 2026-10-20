@@ -113,9 +113,12 @@ need to establish two different schedules. One is content and one is patches to 
 §5's "corrections publish immediately and outside the cadence" is now this line.
 
 **What a patch may be.** Only a change to paths main already serves: no new page, no lessons-index
-listing (that is content). It may not touch a path a racked-but-unpublished piece pins, and a second
-racked patch on a path is refused at the tap. A row's `kind` is part of its v3 binding, so it cannot be
-changed after the tap, and a published row is on the patch line only while that binding holds.
+listing (that is content). It may not touch a PAGE a racked-but-unpublished piece pins, nor any path
+another racked patch pins. It MAY change shared furniture (track furniture, the lessons index) that racked
+content pins: that re-pin is recorded on each affected racked row and on the tile and board, and those
+pieces publish with the patched furniture, so a website fix never waits behind the content queue. A
+row's `kind` is part of its v3 binding, so it cannot be changed after the tap; a published row is on the
+patch line only while a v3 binding holds (the legacy GC-GLOSS-1 is content, always).
 
 **A tapped patch re-pins what it changes.** At the tap it records `supersedes_pins` (each path a
 published piece pinned, and whose pin it was), and once live it owns those paths. A content piece that
@@ -125,16 +128,22 @@ commit; a page refuses the piece, "redraft on current main". A piece drafted bef
 after it is refused at the tap the same way. An untapped patch touches no pin on main.
 
 **Stage 2 is a gate on the offer, and it is a record, not a phrase.** `approvals.py offer` requires
-`reviewed = {"date", "by", "verdict": "PASS", "proof"}`, with `by` not the author's seat. Prose never
-admits a new offer (`tools/migrate_stage2.py` converts the recorded PASSes on racked and published rows).
+`reviewed = {"date", "by", "verdict": "PASS", "proof"}`. It is bound to the bytes it checked: it carries
+`blobs` equal to the piece's files, or covers exactly the bytes committed with it, so a redraft needs a new
+record. `by` must name a specific seat: not the row's `drafted_by` (record it at draft time), not a git
+author of the piece's bytes, not a bare model name ("claude"), not a self-description ("the seat that
+drafted it"). Prose and "unbound" records never admit a new offer (`tools/migrate_stage2.py` converts only
+prose that records a clean PASS with no qualifier anywhere; everything else it skips and says why).
 A patch may skip stage 2 only as `patch_scope: "case-only"`, proved on the full bytes of every file
 (every byte equal to main's except ASCII letter case); any other change needs stage 2.
 
 **REJECT and labels.** A **REJECT** tap puts the piece back at DRAFTED on main with his note verbatim in
 `blocked_on` ("REDRAFT owed: <ledger id> <note>"), in the ledger, and on the board; a REJECT after an
 applied APPROVE on the same tile un-racks it the same way. **Release refuses any row whose `blocked_on`
-is not empty.** A tap clears only a label marked as waiting for the tap (`PRE-TAP: ...`, or the
-"Daniel's one tap" wait), kept in `cleared_blocked_on`; every other label survives, and the tile shows it.
+is not empty**, nor any piece with a ruling Daniel tapped that is not applied yet (a REJECT tapped before a
+run but not applied stops it; an unreadable ledger stops every publish). A tap clears only a label that
+starts `PRE-TAP:` or is exactly a known tap-wait string, kept in `cleared_blocked_on`; every other label
+survives, and the tile shows it. Release link checks are case-sensitive (exact paths in git).
 
 ## 4. Preview — what "seeing it" means
 
