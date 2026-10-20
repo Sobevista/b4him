@@ -22,7 +22,7 @@
 - **Cross-checked by, including where it is weak.** 2026-10-13 - stage 2 by a seat that neither wrote nor rendered the page (own scanner, 26/26 planted tokens caught; 0 forbidden names; sources spot-checked): PASS. 4 advisories then fixed in 8c5bdf0 (fire-and-forget error path, circuit-breaker half-open, untrusted-input overclaim, meta-monitoring cross-link); reviewer's scanner re-run on the fixed bytes: 0 hits.
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-10-20 REJECT · ledger E00616 · applied by tools/approvals.py]
 
 ### APPROVE T4-L1 at bc31405 — Silence Is Not a Grade - the gate that fails open
 
