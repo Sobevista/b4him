@@ -45,6 +45,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import binding  # noqa: E402
 import production_board as pb  # noqa: E402
+import serve_surface  # noqa: E402
 
 HARNESS = Path(r"C:\Users\dansl\Claude\Projects\Data Import\Connection")
 ACTOR = "b4him-approvals"
@@ -218,17 +219,34 @@ def patch_problems(pid: str, row: dict, files: list[str]) -> list[str]:
     patch pins (the second would erase the first). Shared FURNITURE pinned by racked content IS allowed (round 4,
     Daniel: "a website fix shouldnt take a week"): the patch supersedes those furniture pins, recorded on each
     affected racked row (rack) and shown on the tile; those pieces publish with the patched furniture."""
-    out = []
+    out = list(serve_surface.scope_problems(row, files))
     if row.get("index_entry"):
         out.append("it carries an index_entry: a new lessons-index listing is content, not a patch")
     for rel in files:
-        if on_main(rel) is None:
+        # a site-config patch may create _config.yml (SITE-PATCH-SERVE-1): it is no page, and Pages never serves it
+        if on_main(rel) is None and not (row.get("patch_scope") == serve_surface.SITE_CONFIG
+                                         and rel == serve_surface.CONFIG):
             out.append(f"{rel} is not a page main already serves: a new page is content, not a patch")
         held = racked_holders(rel, pid, patches_only=is_furniture(rel))
         if held:
             out.append(f"{rel} is pinned by racked {', '.join(held)}: publish or pull that first, then redraft "
                        f"the patch on current main")
     return out
+
+
+def site_config_problems(row: dict, commit: str) -> list[str]:
+    """A site-config patch's _config.yml at `commit`, laid over main's tracked files: it may hide no file the site
+    serves and must hide every internal one (serve_surface.surface, the same logic tools/test_serve_config.py runs).
+    Any other row: [] (scope_problems already refuses _config.yml there)."""
+    if row.get("patch_scope") != serve_surface.SITE_CONFIG:
+        return []
+    p = subprocess.run(["git", "-C", str(repo()), "show", f"{commit}:{serve_surface.CONFIG}"], capture_output=True)
+    if p.returncode:
+        return [f"{serve_surface.CONFIG} is not in {commit[:7]}"]
+    try:
+        return serve_surface.surface(serve_surface.Tree.worktree(repo(), {serve_surface.CONFIG: p.stdout}))[2]
+    except serve_surface.SurfaceError as e:
+        return [str(e)]
 
 
 def furniture_repins(pid: str, files) -> dict[str, list[str]]:
@@ -293,6 +311,13 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
         bad = patch_problems(pid, row, list(blobs))
         if bad:
             raise ApprovalError(f"{pid} is labelled a patch but is not one: " + "; ".join(bad))
+    else:
+        bad = serve_surface.scope_problems(row, list(blobs))
+        if bad:
+            raise ApprovalError(f"{pid}: " + "; ".join(bad))
+    bad = site_config_problems(row, commit)
+    if bad:
+        raise ApprovalError(f"{pid}: its {serve_surface.CONFIG} would not give the site's surface: " + "; ".join(bad))
     exemption = stage2_gate(pid, commit, row)
     repins = furniture_repins(pid, blobs) if pb.is_patch(row) else {}
     title = title_for(pid, commit, row)
@@ -479,7 +504,14 @@ def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
         bad = patch_problems(pid, row, list(blobs))
         if bad:
             raise ApprovalError(f"{pid} cannot be racked as a patch: " + "; ".join(bad))
+        bad = site_config_problems(row, commit)
+        if bad:
+            raise ApprovalError(f"{pid} cannot be racked: its {serve_surface.CONFIG} would not give the site's "
+                                f"surface: " + "; ".join(bad))
     else:
+        bad = serve_surface.scope_problems(row, list(blobs))
+        if bad:
+            raise ApprovalError(f"{pid} cannot be racked: " + "; ".join(bad))
         stale = [f"{rel} (patch {p.get('id')} changed it on {p.get('published')})" for rel, blob in blobs.items()
                  for p in rows_now if pb.is_patch(p) and pb.stage_index(p) >= pb.STAGES.index("PUBLISHED")
                  and (p.get("replaces_blobs") or {}).get(rel) == blob != (p.get("approved_blobs") or {}).get(rel)]

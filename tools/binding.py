@@ -55,6 +55,12 @@ def digest(row: dict) -> str:
     # removing a kind after the tap breaks the binding (and a published row's kind is trusted only through it).
     if row.get("kind"):
         body["kind"] = row["kind"]
+    # SITE-PATCH-SERVE-1 round 2: the site-config scope decides what may be written (only _config.yml) and how it is
+    # verified live (the served surface), so it is part of what he approved. Only that scope adds the key, so every
+    # existing row's digest (case-only patches included) is byte-for-byte what it was, while adding or removing
+    # site-config after the tap breaks the binding.
+    if row.get("patch_scope") == "site-config":
+        body["patch_scope"] = row["patch_scope"]
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 

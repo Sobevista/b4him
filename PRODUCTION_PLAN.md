@@ -120,6 +120,13 @@ pieces publish with the patched furniture, so a website fix never waits behind t
 row's `kind` is part of its v3 binding, so it cannot be changed after the tap; a published row is on the
 patch line only while a v3 binding holds (the legacy GC-GLOSS-1 is content, always).
 
+**The site-config patch (SITE-PATCH-SERVE-1, carrying Daniel's E00761 "curated Workshop").** A patch with
+`patch_scope: "site-config"` may change ONLY `_config.yml` (exact path; no page, no index entry) and is the only row
+that may carry it. It may create the file, needs a stage-2 record like any non-case patch, and its scope is in the v3
+binding. Its `_config.yml` laid over main must hide no file the site serves and every internal one
+(`tools/serve_surface.py`, checked at offer, rack and release). Pages never serves `/_config.yml`, so release verifies
+it live by the served surface: every SERVED path 200 with main's bytes, the INTERNAL sample 404, polled.
+
 **A tapped patch re-pins what it changes.** At the tap it records `supersedes_pins` (each path a
 published piece pinned, and whose pin it was), and once live it owns those paths. A content piece that
 pins pre-patch bytes there (exactly the bytes the patch replaced, or approved no later than the patch
