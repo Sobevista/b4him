@@ -395,3 +395,152 @@ def test_HOLDS_an_unrelated_unpushed_commit_stops_a_patch_push_and_is_logged(liv
         with pytest.raises(release.ReleaseError):
             release.run(args, WED, entry)
     assert "sneak" not in g(bare, "log", "--format=%s", "main")
+
+
+# ################################################################ ROUND 3 (build head d801ef1)
+import migrate_stage2  # noqa: E402
+
+
+# ---------------------------------------------------------------- (1) the structured stage-2 record
+@pytest.mark.parametrize("bad", [
+    dict(STAGE2, verdict="pass"), dict(STAGE2, verdict="PASS "), dict(STAGE2, proof=""), dict(STAGE2, proof="  "),
+    dict(STAGE2, by="Author"), dict(STAGE2, by=" SELF "), dict(STAGE2, date="last tuesday"),
+    {k: v for k, v in STAGE2.items() if k != "by"}, "2026-10-12 - stage 2 by a seat that did not write the page: PASS",
+])
+def test_HOLDS_r3_a_malformed_stage2_record_never_admits_an_offer(drafted, bad):
+    root, make = drafted
+    pid, ref = make(reviewed=bad)
+    with pytest.raises(approvals.ApprovalError):
+        approvals.offer(pid, ref, PROOF, today=MON)
+
+
+def test_DEFECT_r3_a_stage2_pass_for_older_bytes_admits_a_redraft_whose_text_nobody_checked(g2):
+    """Ruling (d). The record names a date, a seat and a proof, but not the bytes it checked. After a REJECT the row
+    keeps `reviewed` (requeue strips only approval fields), so the redraft, here adding a real-looking name, goes in
+    front of Daniel on the OLD stage-2 PASS. The record must be bound to the blobs/commit it checked."""
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    led = Ledger()
+    led.rule(title, "REJECT", "redo the heading")
+    assert approvals.apply(today=MON, led=led)[0].startswith("APPLIED  REJECT")
+    g(g2, "checkout", "-q", "draft/g2")
+    (g2 / "lessons" / "g2" / "index.html").write_text("<h1>The Twenty, as Jane Roe taught me</h1>\n",
+                                                       encoding="utf-8", newline="\n")
+    g(g2, "commit", "-q", "-am", "redraft")
+    g(g2, "checkout", "-q", "main")
+    with pytest.raises(approvals.ApprovalError):
+        approvals.offer("G2", "draft/g2", PROOF, today=dt.date(2026, 10, 21))
+
+
+def test_DEFECT_r3_stage2_by_is_never_checked_when_the_row_names_no_author(drafted):
+    """The by-is-not-the-author check compares against row['author'/'drafted_by']. 0 of 27 rows on the real queue
+    carry either field, so in practice any `by`, including the drafting seat's own name, passes."""
+    root, make = drafted
+    pid, ref = make(reviewed=dict(STAGE2, by="claude, the seat that drafted this page"))
+    with pytest.raises(approvals.ApprovalError):
+        approvals.offer(pid, ref, PROOF, today=MON)
+
+
+@pytest.mark.parametrize("prose", [
+    "2026-10-12 - stage 2 by a seat that did not write the page: did not PASS, 2 real names found",
+    "2026-10-12 - stage 2 by a seat that neither wrote nor rendered the page: FAIL; a re-run to PASS is pending",
+])
+def test_DEFECT_r3_migrate_stage2_converts_a_failed_review_into_a_PASS_record(prose):
+    """UNKNOWN never rounds to PASS: migrate_stage2.PASSED matches the bare word PASS anywhere in the first segment."""
+    rec, why = migrate_stage2.record({"id": "X", "stage": "PREVIEWED", "reviewed": prose})
+    assert rec is None, f"converted to {rec}"
+
+
+# ---------------------------------------------------------------- (2) case-only on the full bytes
+@pytest.fixture
+def linked(tmp_path, monkeypatch):
+    root = init_repo(tmp_path, monkeypatch)
+    (root / PAGE).parent.mkdir(parents=True)
+    (root / PAGE).write_text('<h1>The twenty</h1><a href="/lessons/a/">a</a>\n', encoding="utf-8", newline="\n")
+    write_queue(root, {"id": "P", "order": 1, "title": "Page P", "stage": "PUBLISHED", "published": "2026-10-06",
+                       "approved_blobs": {PAGE: pb.blob_sha(root / PAGE)}}, msg="base")
+
+    def make(pid, text):
+        draft(root, {"id": pid, "kind": "patch", "order": 90, "title": pid, "stage": "DRAFTED", "page": PAGE,
+                     "branch": f"draft/{pid.lower()}", "patch_scope": "case-only"}, {PAGE: text})
+        return f"draft/{pid.lower()}"
+    return root, make
+
+
+@pytest.mark.parametrize("text", [
+    '<h1>The twenty</h1><a href="/lessons/a/">İ</a>\n',          # Turkish dotted capital I
+    '<h1>The twenty</h1><a href="/lessons/a/">Σ</a>\n',          # Greek
+    '<h1>The twenty</h1><a href="/lessons/a/">a</a>\r\n',             # CRLF
+])
+def test_HOLDS_r3_case_only_refuses_non_ascii_and_line_ending_changes(linked, text):
+    root, make = linked
+    ref = make("FIX-U", text)
+    with pytest.raises(approvals.ApprovalError):
+        approvals.offer("FIX-U", ref, PROOF, today=MON)
+
+
+def test_DEFECT_r3_a_case_only_patch_that_breaks_a_link_publishes_on_a_case_insensitive_disk(linked):
+    """A case-only patch re-cases an href (/lessons/a/ -> /LESSONS/A/). It is exempt from stage 2 (fine: no new
+    name) but release.broken_links checks targets with Path.exists(), which is case-insensitive on this Windows box,
+    so a link that 404s on a case-sensitive host goes live without a refusal."""
+    root, make = linked
+    ref = make("FIX-L", '<h1>The Twenty</h1><a href="/LESSONS/A/">a</a>\n')
+    title = approvals.offer("FIX-L", ref, PROOF, today=MON)
+    led = Ledger()
+    led.rule(title, "APPROVE")
+    assert approvals.apply(today=MON, led=led)[0].startswith("APPLIED")
+    release.run(SCHEDULED, WED, {"date": WED.isoformat(), "mode": "apply"})
+    assert "/LESSONS/A/" not in (root / PAGE).read_text(encoding="utf-8"), "a case-broken link went live"
+
+
+# ---------------------------------------------------------------- (3) patch scope vs racked furniture
+def test_DEFECT_r3_a_furniture_patch_is_locked_out_while_any_racked_piece_on_that_track_pins_the_furniture(
+        glossary_live):
+    """Ruling (c): 'a website fix shouldnt take a week'. patch_problems refuses any path a racked piece pins, and
+    every racked listed piece pins its track's furniture. On the real queue T4-L1..L6 pin tools/tracks/tier4.html and
+    T5-L1..L6 pin tier5.html: at 1 per 7 days, a fix to either track's furniture cannot be offered for ~12 weeks."""
+    root, g1, old_furn, old_page = glossary_live
+    src = root.parent / "c2.html"
+    src.write_bytes(b"<h1>Two</h1>\n")
+    entry = {**G1_ENTRY, "numeral": "II", "href": "/lessons/two/", "title": "Two"}
+    c2 = v3_testkit.bind({"id": "C2", "order": 2, "title": "Two", "stage": "PREVIEWED", "previewed": "2026-10-14",
+                          "approved_blobs": {"lessons/two/index.html": g(root, "hash-object", "-w", str(src)),
+                                             FURN: old_furn},
+                          "index_entry": entry, "approved_index_entry": pb.entry_sha(entry)})
+    write_queue(root, g1, c2, msg="C2 racked")
+    furn = (root / FURN).read_text(encoding="utf-8")
+    draft(root, {"id": "FIX-F", "kind": "patch", "order": 90, "title": "furniture case", "stage": "DRAFTED",
+                 "files": [FURN], "branch": "draft/fix-f", "patch_scope": "case-only"},
+          {FURN: furn.replace("track", "Track", 1)})
+    approvals.offer("FIX-F", "draft/fix-f", PROOF, today=TUE)       # must be offerable: the fix cannot wait weeks
+
+
+# ---------------------------------------------------------------- (5) kind in the binding
+def test_HOLDS_r3_adding_kind_patch_to_a_kindless_racked_row_breaks_its_binding(live):
+    root, old, new, pubrow = live
+    c = content_row(root)
+    assert "kind" not in c and binding.problems(c) == []
+    assert binding.problems(dict(c, kind="patch"))
+
+
+def test_DEFECT_r3_relabelling_the_legacy_published_piece_as_a_patch_frees_todays_slot(live):
+    """on_patch_line trusts a PUBLISHED row's kind only through binding.problems. The legacy piece (GC-GLOSS-1, no
+    v3 binding) passes through legacy_problems, whose bytes_digest does not cover `kind`, so adding kind:"patch" to
+    it (published TODAY on the real queue) frees today's content slot for a second piece."""
+    root, old, new, pubrow = live
+    gloss = {"id": "GC-GLOSS-1", "order": 1, "title": "Glossary I", "stage": "PUBLISHED", "published": TUE.isoformat(),
+             "approved_blobs": {"lessons/a/index.html": pb.blob_sha(root / "lessons" / "a" / "index.html")}}
+    c1 = content_row(root)
+    write_queue(root, pubrow, gloss, c1)
+    assert release.plan(TUE)["outcome"] == "SKIP"
+    write_queue(root, pubrow, dict(gloss, kind="patch"), c1, msg="relabel")
+    assert release.plan(TUE)["outcome"] != "PUBLISH", "relabelling the legacy piece freed today's content slot"
+
+
+# ---------------------------------------------------------------- (6) PRE-TAP clearing
+def test_DEFECT_r3_pre_tap_regex_clears_a_gate_that_merely_mentions_daniels_one_tap(gated):
+    """PRE_TAP_RE searches for "daniel's one tap" ANYWHERE, so a gate that says it must survive the tap is cleared by
+    it (the tile even tells him 'your approval clears it', contradicting the label)."""
+    root, make = gated
+    label = "LEGAL HOLD: do not publish, not even after Daniel's one tap, until the client signs"
+    tile, row = make(label)
+    assert row.get("blocked_on") == label, f"cleared: {row.get('cleared_blocked_on')!r}"
