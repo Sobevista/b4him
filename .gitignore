@@ -11,3 +11,5 @@ release_task_output.log
 data/people_names.local.json
 # The live capability inventory names this machine's tasks and paths: local evidence, never committed to a public repo.
 tools/capability_inventory/output/
+# The rack backup's local log (tools/rack_backup.py): one line per run, names this machine's Drive path. Local evidence.
+rack_backup_log.jsonl
