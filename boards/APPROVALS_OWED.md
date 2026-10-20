@@ -189,7 +189,7 @@
 - **Open label on this row (blocked_on).** PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line) — marked pre-tap: your approval clears it.
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-10-20 APPROVE · ledger E00731 · applied by tools/approvals.py]
 
 ### APPROVE SITE-PATCH-MOTION-1 at b31c7f6 — Site patch - honour reduced motion site-wide (no animated jump scroll)
 
