@@ -110,22 +110,31 @@ need to establish two different schedules. One is content and one is patches to 
 | Bytes | only the pinned `approved_blobs` (binding, pins, re-hash) | the same checks, plus `replaces_blobs`: it may overwrite only the bytes main held at the tap |
 | Log | `release_log.jsonl`, lane `content` | its own line per patch, lane `patch` |
 
-The v3 binding covers the line, so a racked content row relabelled `patch` cannot jump the cadence.
-**A tapped patch re-pins what it changes.** At the tap it records `supersedes_pins` (each path a published
-piece pinned, and whose pin it was); once it publishes, it owns those paths, and a piece approved
-before that day keeps the patch's bytes there instead of writing its older pin back (said in the
-release commit). An untapped patch on a branch touches no pin on main.
-
-**Stage 2 is a gate on the offer, not a label the tap erases.** `approvals.py offer` refuses any piece
-whose `reviewed` does not name a stage 2 by another seat. A patch may skip it only with
-`patch_scope: case-only` or `layout-only`, and only when offer proves that on the bytes (letter case
-alone differs from main, or the visible text is identical); the tile says it was exempted.
 §5's "corrections publish immediately and outside the cadence" is now this line.
 
-**Two more rules from the same day.** A **REJECT** tap puts the piece back at DRAFTED on main with
-his note verbatim in `blocked_on` ("REDRAFT owed: <ledger id> <note>"), in the ledger, and on the
-board. **Release refuses any row whose `blocked_on` is not empty**; an APPROVE tap clears pre-tap
-labels (kept in `cleared_blocked_on`) except one starting `POST-APPROVAL:`.
+**What a patch may be.** Only a change to paths main already serves: no new page, no lessons-index
+listing (that is content). It may not touch a path a racked-but-unpublished piece pins, and a second
+racked patch on a path is refused at the tap. A row's `kind` is part of its v3 binding, so it cannot be
+changed after the tap, and a published row is on the patch line only while that binding holds.
+
+**A tapped patch re-pins what it changes.** At the tap it records `supersedes_pins` (each path a
+published piece pinned, and whose pin it was), and once live it owns those paths. A content piece that
+pins pre-patch bytes there (exactly the bytes the patch replaced, or approved no later than the patch
+went live) is handled on the bytes: shared track furniture keeps the patch's bytes, said in the release
+commit; a page refuses the piece, "redraft on current main". A piece drafted before a patch and tapped
+after it is refused at the tap the same way. An untapped patch touches no pin on main.
+
+**Stage 2 is a gate on the offer, and it is a record, not a phrase.** `approvals.py offer` requires
+`reviewed = {"date", "by", "verdict": "PASS", "proof"}`, with `by` not the author's seat. Prose never
+admits a new offer (`tools/migrate_stage2.py` converts the recorded PASSes on racked and published rows).
+A patch may skip stage 2 only as `patch_scope: "case-only"`, proved on the full bytes of every file
+(every byte equal to main's except ASCII letter case); any other change needs stage 2.
+
+**REJECT and labels.** A **REJECT** tap puts the piece back at DRAFTED on main with his note verbatim in
+`blocked_on` ("REDRAFT owed: <ledger id> <note>"), in the ledger, and on the board; a REJECT after an
+applied APPROVE on the same tile un-racks it the same way. **Release refuses any row whose `blocked_on`
+is not empty.** A tap clears only a label marked as waiting for the tap (`PRE-TAP: ...`, or the
+"Daniel's one tap" wait), kept in `cleared_blocked_on`; every other label survives, and the tile shows it.
 
 ## 4. Preview — what "seeing it" means
 

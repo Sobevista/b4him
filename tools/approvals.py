@@ -24,9 +24,12 @@ production-line-v2 (Daniel, 2026-10-20: "The change needs to be in the productio
     blocked_on = "REDRAFT owed: <ledger id> <his note verbatim>" ("no note given" when there was none), carries the
     note into the application ledger event and the tile marker, and the board lists it under "Redraft owed".
     Until this, a REJECT marked the tile and moved nothing, and the note was written as null (E00660).
-  * APPROVE clears a pre-tap blocked_on (kept as cleared_blocked_on), except one starting "POST-APPROVAL:", which
-    names a gate only meetable after the tap; release.py refuses any row whose blocked_on is not empty.
-  * A patch (kind "patch") also records replaces_blobs, and its tile says it is on the patch line.
+  * APPROVE clears ONLY a blocked_on marked as waiting for the tap (PRE_TAP_RE), kept as cleared_blocked_on; every
+    other label survives and the tile shows it; release.py refuses any row whose blocked_on is not empty.
+  * OFFER requires a structured stage-2 PASS record in `reviewed` (stage2_problem); a patch may skip it only as a
+    proved case-only change, and must be a patch (patch_problems: served paths only, no index entry, no path a
+    racked piece pins). A patch records replaces_blobs and supersedes_pins; its tile says it is on the patch line.
+  * A REJECT after an applied APPROVE on the same tile un-racks the piece (requeue + a second marker line).
 """
 from __future__ import annotations
 
@@ -101,49 +104,99 @@ def pinned(commit: str, row: dict) -> dict:
 
 
 # ---------------------------------------------------------------- stage 2 before the tap
-#: `reviewed` must name stage 2 by a seat that is not the author (PRODUCTION_PLAN section 2: stage 2's owner is
-#: "the other seat"). Any one of these phrases counts; a row that starts "NOT YET" never does.
-STAGE2_RE = re.compile(r"stage[ -]2|other seat|neither wrote|did not write", re.I)
-#: The two patch scopes that may skip stage 2, because offer() proves the claim mechanically on the bytes.
-PATCH_SCOPES = ("case-only", "layout-only")
+# production-line-v2 round 3 (orchestrator, after the breaker): stage 2 is a STRUCTURED record, not a phrase. Phrase
+# matching admitted "stage 2 not done" and "stage 2 FAILED". The row's `reviewed` field must be
+#     {"date": "YYYY-MM-DD", "by": "<the seat that ran it>", "verdict": "PASS", "proof": "<where the report is>"}
+# A string `reviewed` (the legacy prose form) never admits a new offer; it is read only on rows already racked or
+# published (tools/migrate_stage2.py turns the real queue's recorded PASSes into records, for a human to run).
+STAGE2_KEYS = ("date", "by", "verdict", "proof")
+#: The one patch scope that may skip stage 2, proved on the FULL bytes of every file (head, attributes, CSS, script):
+#: every byte equals main's except ASCII letter case. "layout-only" was dropped: visible-text equality let a name in
+#: via <title>, alt, CSS content, script and the nav/footer (breaker, 2026-10-20).
+CASE_ONLY = "case-only"
+#: blocked_on labels a tap clears: only those marked as waiting for the tap itself. Everything else survives it.
+PRE_TAP_RE = re.compile(r"^\s*pre-tap\s*:|daniel'?s one tap", re.I)
+
+
+def stage2_problem(row: dict) -> str | None:
+    """None when `reviewed` is a stage-2 record that admits an offer, else what is wrong with it."""
+    rec = row.get("reviewed")
+    if not isinstance(rec, dict):
+        return ("`reviewed` is empty" if not rec else
+                "`reviewed` is prose, not a stage-2 record; prose never admits a new offer")
+    missing = [k for k in STAGE2_KEYS if not str(rec.get(k) or "").strip()]
+    if missing:
+        return f"the stage-2 record lacks {', '.join(missing)}"
+    try:
+        dt.date.fromisoformat(str(rec["date"])[:10])
+    except ValueError:
+        return f"the stage-2 record's date {rec['date']!r} is not a date"
+    if rec["verdict"] != "PASS":
+        return f"the stage-2 verdict is {rec['verdict']!r}, not PASS"
+    author = {str(row.get(k)).strip().casefold() for k in ("author", "drafted_by") if row.get(k)}
+    if str(rec["by"]).strip().casefold() in author | {"author", "self", "the author"}:
+        return f"stage 2 was run by {rec['by']!r}, the seat that wrote the piece"
+    return None
+
+
+def stage2_text(rec) -> str:
+    if isinstance(rec, dict):
+        return (f"stage 2 {rec.get('verdict')} on {rec.get('date')} by {rec.get('by')} (proof: {rec.get('proof')})"
+                + (f"; {rec['notes']}" if rec.get("notes") else ""))
+    return str(rec or "NOT YET: no independent review is recorded on the row")
+
+
+def on_main(rel: str) -> bytes | None:
+    p = subprocess.run(["git", "-C", str(repo()), "show", f"main:{rel}"], capture_output=True)
+    return None if p.returncode else p.stdout
+
+
+def racked_holders(rel: str, but: str) -> list[str]:
+    """Ids of RACKED (approved, not yet published) rows on main's queue, other than `but`, that pin `rel`."""
+    return [r.get("id") for r in pb.load_queue() if not r.get("_broken") and r.get("id") != but
+            and pb.ELIGIBLE_STAGE <= pb.stage_index(r) < pb.STAGES.index("PUBLISHED")
+            and rel in (r.get("approved_blobs") or {})]
+
+
+def patch_problems(pid: str, row: dict, files: list[str]) -> list[str]:
+    """What makes a kind:"patch" row not a patch. A patch changes only what main already serves: no new page, no
+    lessons-index listing (that is content, and goes on the content line). It may not touch a path a racked piece
+    pins (that piece's approved bytes would be silently replaced or would erase the fix)."""
+    out = []
+    if row.get("index_entry"):
+        out.append("it carries an index_entry: a new lessons-index listing is content, not a patch")
+    for rel in files:
+        if on_main(rel) is None:
+            out.append(f"{rel} is not a page main already serves: a new page is content, not a patch")
+        held = racked_holders(rel, pid)
+        if held:
+            out.append(f"{rel} is pinned by racked {', '.join(held)}: publish or pull that first, then redraft "
+                       f"the patch on current main")
+    return out
 
 
 def stage2_gate(pid: str, commit: str, row: dict) -> str | None:
-    """production-line-v2, round 2 (2026-10-20): T5 was tapped before its stage-2 name check and a blocked_on label was
-    the only trace. So stage 2 is a gate on the OFFER, not a label the tap erases: no tile without it.
-
-    Content: `reviewed` must name a stage 2 by another seat (STAGE2_RE). Patch: the same, OR `patch_scope` is
-    "case-only" (every file equals main's current bytes except for letter case) or "layout-only" (every file's
-    visible text equals main's current visible text), checked here on the bytes; the proof link is required for
-    every tile anyway. Returns None when stage 2 is recorded, else the text the tile shows for the exemption."""
-    review = str(row.get("reviewed") or "").strip()
-    if review and not review.upper().startswith("NOT YET") and STAGE2_RE.search(review):
+    """production-line-v2: T5 was tapped before its stage-2 name check and a blocked_on label was the only trace. So
+    stage 2 gates the OFFER. Content needs a PASS record by another seat. A patch needs the same, unless it is
+    `patch_scope: "case-only"` AND every file's full bytes equal main's except ASCII letter case. Returns None when
+    the record admits it, else the exemption text the tile shows; raises with what is missing otherwise."""
+    problem = stage2_problem(row)
+    if problem is None:
         return None
-    scope = row.get("patch_scope")
-    if pb.is_patch(row) and scope in PATCH_SCOPES:
-        import voice_check
+    if pb.is_patch(row) and row.get("patch_scope") == CASE_ONLY:
         for rel in piece_files(row):
-            old = subprocess.run(["git", "-C", str(repo()), "show", f"main:{rel}"], capture_output=True)
-            if old.returncode:
-                raise ApprovalError(f"{pid}: claims {scope} but {rel} is not on main, so there is nothing it only "
-                                    f"re-cases or re-lays-out; it needs a stage-2 review recorded in `reviewed`")
-            before, after = old.stdout.decode("utf-8", "replace"), git("show", f"{commit}:{rel}")
-            same = (before.casefold() == after.casefold() if scope == "case-only" else
-                    " ".join(voice_check.visible_text(before).split()) ==
-                    " ".join(voice_check.visible_text(after).split()))
-            if not same:
-                raise ApprovalError(f"{pid}: claims {scope} but {rel} changes more than "
-                                    f"{'letter case' if scope == 'case-only' else 'layout (its visible text differs)'}"
-                                    f"; it needs a stage-2 review recorded in `reviewed`")
-        return (f"EXEMPT from stage 2 as a {scope} patch: proved by tools/approvals.py on the bytes (every file equals "
-                f"main's except {'letter case' if scope == 'case-only' else 'markup; visible text identical'})")
-    missing = ("`reviewed` is empty" if not review else
-               f"`reviewed` (\"{review[:80]}\") does not name a stage 2 by another seat")
-    raise ApprovalError(f"{pid} at {commit[:7]} has no stage-2 review recorded, so it does not go in front of Daniel: "
-                        f"{missing}. Record the independent review on the row (e.g. \"<date> - stage 2 by a seat that "
-                        f"neither wrote nor rendered the page: ...\")"
-                        + ("; or, for a patch, set patch_scope to case-only/layout-only if that is all it is"
-                           if pb.is_patch(row) else ""))
+            before = on_main(rel)
+            after = subprocess.run(["git", "-C", str(repo()), "show", f"{commit}:{rel}"], capture_output=True).stdout
+            if before is None or before.lower() != after.lower():
+                raise ApprovalError(f"{pid}: claims case-only but {rel} changes more than letter case (full bytes "
+                                    f"compared, head and attributes included); it needs a stage-2 record: {problem}")
+        return ("EXEMPT from stage 2 as a case-only patch: proved by tools/approvals.py on the full bytes (every file "
+                "equals main's except ASCII letter case)")
+    raise ApprovalError(
+        f"{pid} at {commit[:7]} has no stage-2 PASS on record, so it does not go in front of Daniel: {problem}. "
+        f"Record it on the row as reviewed = {{\"date\", \"by\", \"verdict\": \"PASS\", \"proof\"}}"
+        + ("; layout-only no longer exempts a patch, only a proved case-only change does" if pb.is_patch(row) else ""))
+
 
 
 # ---------------------------------------------------------------- offer
@@ -168,9 +221,11 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
             if not v["pass"]:
                 raise ApprovalError(f"{rel} fails the voice check: first person {v['rate']}/1k (floor "
                                     f"{voice_check.FLOOR}), unglossed {[u.split(':')[0] for u in v['unglossed']]}")
+    if pb.is_patch(row):
+        bad = patch_problems(pid, row, list(blobs))
+        if bad:
+            raise ApprovalError(f"{pid} is labelled a patch but is not one: " + "; ".join(bad))
     exemption = stage2_gate(pid, commit, row)
-    if exemption:
-        row = dict(row, reviewed=exemption)
     title = title_for(pid, commit, row)
     path = board_path()
     text = path.read_text(encoding="utf-8") if path.exists() else (
@@ -181,7 +236,8 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
         "`tools/release.py` publishes it. Any edit after that pulls it and comes back here as a new tile.*\n")
     if f"### {title}\n" in text:
         raise ApprovalError(f"already offered: {title}")
-    review = row.get("reviewed") or "NOT YET: no independent review is recorded on the row"
+    review = exemption or stage2_text(row.get("reviewed"))
+    label = str(row.get("blocked_on") or "").strip()
     entry = row.get("index_entry")
     lines = [
         "", f"### {title}", "",
@@ -203,6 +259,10 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
          f"- **What it does to the aggregate, measured.** Runway rises by {1 / pb.PER_WEEK_CAP:.1f} weeks "
          f"(one piece ÷ {pb.PER_WEEK_CAP} a week)."),
         f"- **Cross-checked by, including where it is weak.** {review}",
+        *([f"- **Open label on this row (blocked_on).** {label}"
+           + (" — marked pre-tap: your approval clears it." if PRE_TAP_RE.search(label) else
+              " — your tap does NOT clear it; release refuses the piece until a session clears it once the gate "
+              "is met.")] if label else []),
         f"- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; "
         f"a rejected piece goes back to drafting and returns here as a new commit.",
         "", PENDING, "",
@@ -248,6 +308,17 @@ def mark_board(title: str, verdict: str, event: str, today: dt.date, note: str |
                         + (f" — his note: {' '.join(note.splitlines())}" if note else ""))
             path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
             return
+    if verdict == "REJECT":
+        # a REJECT tapped after an APPROVE on the same tile was applied: record it under the earlier ruling
+        for j in range(i + 1, len(lines)):
+            if lines[j].startswith("### "):
+                break
+            if lines[j].startswith("**DANIEL:** [RULED") and " APPROVE " in lines[j]:
+                lines.insert(j + 1, f"**DANIEL:** [RULED {today} REJECT after the APPROVE above was applied · ledger "
+                                    f"{event} · unracked by tools/approvals.py]"
+                                    + (f" — his note: {' '.join(note.splitlines())}" if note else ""))
+                path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+                return
     raise ApprovalError(f"no pending marker under: {title}")
 
 
@@ -319,19 +390,33 @@ def requeue(pid: str, commit: str, event: dict, today: dt.date) -> dict:
 def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
     """Copy the approved row onto main's queue at PREVIEWED with its pinned blobs. One line changes (or one is added).
 
-    blocked_on (production-line-v2): his tap supersedes every pre-tap label, so it is cleared and its text kept in
-    cleared_blocked_on. The one exception is a label that starts with "POST-APPROVAL:", which names a gate that can
-    only be met after the tap; it stays, and release.py refuses the row until a session clears it.
+    blocked_on (production-line-v2 round 3): a tap clears ONLY a label marked as waiting for the tap itself
+    (PRE_TAP_RE: "PRE-TAP: ..." or the known "Daniel's one tap" wait), kept in cleared_blocked_on. Every other label
+    survives the tap, the tile showed it to him, and release.py refuses the row until a session clears it.
 
-    A patch also records replaces_blobs: the bytes main holds at each pinned path at the tap, so the release may
-    replace exactly those and never an edit made after he looked."""
+    A patch is re-checked here (it may have changed since the offer: a piece racked in between): no new page, no
+    index entry, no path a racked piece pins. It records replaces_blobs (the bytes main holds at each pinned path at
+    the tap; the release replaces exactly those) and supersedes_pins. A content piece that pins the PRE-patch bytes
+    of a path a published patch changed was drafted before the patch: refused, redraft on current main."""
     row = row_at(commit, pid)
     blobs = pinned(commit, row)
+    rows_now = [r for r in pb.load_queue() if not r.get("_broken")]
+    if pb.is_patch(row):
+        bad = patch_problems(pid, row, list(blobs))
+        if bad:
+            raise ApprovalError(f"{pid} cannot be racked as a patch: " + "; ".join(bad))
+    else:
+        stale = [f"{rel} (patch {p.get('id')} changed it on {p.get('published')})" for rel, blob in blobs.items()
+                 for p in rows_now if pb.is_patch(p) and pb.stage_index(p) >= pb.STAGES.index("PUBLISHED")
+                 and (p.get("replaces_blobs") or {}).get(rel) == blob != (p.get("approved_blobs") or {}).get(rel)]
+        if stale:
+            raise ApprovalError(f"{pid} at {commit[:7]} pins bytes a published patch has since replaced: "
+                                f"{'; '.join(stale)}. Redraft on current main and offer it again")
     stamp = f"{today} - Daniel, one tap in the app on the rendered proof (ledger {event['id']})"
     row.update(stage="PREVIEWED", ruled=stamp, previewed=stamp, approved_blobs=blobs,
                approved_commit=commit, approved_tag=f"approved/{pid}", since=today.isoformat())
     label = str(row.get("blocked_on") or "").strip()
-    if label and not label.startswith(pb.POST_APPROVAL_PREFIX):
+    if label and PRE_TAP_RE.search(label):
         row["cleared_blocked_on"] = f"{label} (cleared by Daniel's tap, ledger {event['id']})"
         row.pop("blocked_on", None)
     elif not label:

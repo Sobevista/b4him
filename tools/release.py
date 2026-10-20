@@ -155,7 +155,7 @@ def plan(day: dt.date) -> dict:
     rows = [r for r in pb.load_queue() if not r.get("_broken")]
     if day.weekday() not in pb.CADENCE_DAYS:
         return {"outcome": "SKIP", "why": f"{day:%a} is not a release day (Tuesdays only)"}
-    content = [r for r in rows if not pb.is_patch(r)]
+    content = [r for r in rows if not on_patch_line(r)]
     today_pub = [r["id"] for r in content if published_on(r) == day]
     if today_pub:
         return {"outcome": "SKIP", "why": f"already published today: {', '.join(today_pub)} (one slot, one piece)"}
@@ -192,7 +192,33 @@ def plan(day: dt.date) -> dict:
     problems = binding.problems(piece)
     if problems:
         return {"outcome": "FAIL", "piece": piece["id"], "why": "; ".join(problems)}
+    stale = superseded_pages(piece, rows)
+    if stale:
+        return {"outcome": "FAIL", "piece": piece["id"],
+                "why": f"{piece['id']} pins pre-patch bytes of a page a published patch has since changed ("
+                       + "; ".join(stale) + "): publishing it would silently drop either the fix or the bytes "
+                       "Daniel approved. Redraft on current main and offer it again"}
     return {"outcome": "PUBLISH", "piece": piece["id"], "row": piece}
+
+
+def on_patch_line(row: dict) -> bool:
+    """Is this row on the patch line? A racked or drafted row: by its kind (a flipped kind fails its binding in
+    plan_patches). A PUBLISHED row: only if its v3 binding, which covers `kind`, still holds, so relabelling a
+    published content row as a patch can never free the content slot or the cap (production-line-v2 round 3)."""
+    if not pb.is_patch(row):
+        return False
+    return pb.stage_index(row) < pb.STAGES.index("PUBLISHED") or not binding.problems(row)
+
+
+def superseded_pages(row: dict, rows: list[dict]) -> list[str]:
+    """Non-furniture paths whose pin on `row` a published patch superseded (pb.superseding_patch). Shared track
+    furniture is kept at the patch's bytes instead (apply); a PAGE cannot be, so the piece is refused."""
+    out = []
+    for rel in row.get("approved_blobs") or {}:
+        sup = pb.superseding_patch(row, rel, rows)
+        if sup and not rel.startswith(pb.SHARED_PREFIX):
+            out.append(f"{rel}: patch {sup[0]} published {sup[1][:12]}")
+    return out
 
 
 def plan_patches(day: dt.date) -> list[dict]:
@@ -215,6 +241,10 @@ def plan_patches(day: dt.date) -> list[dict]:
         if not why and any(not pb.blob_in_store(b) for b in (r.get("approved_blobs") or {}).values()):
             why = f"approved bytes for {r['id']} are gone from the object store (restore its approved/<id> tag)"
         why = why or "; ".join(pin_problems(r)) or "; ".join(binding.problems(r))
+        if not why and (r.get("index_entry") or any((r.get("replaces_blobs") or {}).get(rel) is None
+                                                     for rel in r.get("approved_blobs") or {})):
+            why = (f"{r['id']} is not a patch: it adds a page or a lessons-index listing main does not serve yet; "
+                   f"that is content and goes on the content line")
         if not why:
             live = live_drift(rows, skip=r.get("approved_blobs") or {})
             why = ("live content that no approval pinned would be re-rendered: " + "; ".join(live)) if live else ""
@@ -345,8 +375,11 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
     try:
         for rel, blob in row["approved_blobs"].items():
             sup = None if is_patch_line else pb.superseding_patch(row, rel, rows_now)
+            if sup and not rel.startswith(pb.SHARED_PREFIX):
+                raise ReleaseError(f"{rel}: patch {sup[0]} changed this page after {pid}'s bytes were approved; "
+                                   f"redraft on current main")
             if sup:
-                # this piece's pin on rel predates a published patch that re-pinned it: keep the patch's bytes
+                # shared furniture: this piece's pin predates a published patch that re-pinned it; keep the patch's
                 kept.append(f"{rel} keeps patch {sup[0]}'s bytes {sup[1][:12]} (this piece's older pin "
                             f"{blob[:12]} is superseded for that path)")
                 continue
@@ -354,8 +387,8 @@ def apply(day: dt.date, decision: dict, push: bool = False) -> str:
             have = pb.blob_sha(dest) if dest.exists() else None
             if have is not None and have != blob and is_patch_line:
                 # A patch replaces exactly the bytes main held when Daniel tapped it (replaces_blobs, recorded by
-                # approvals.rack) or bytes some approval pinned; an edit made after the tap is never overwritten.
-                if have != (row.get("replaces_blobs") or {}).get(rel) and have not in approved.get(rel, set()):
+                # approvals.rack): never an edit made after the tap, and never another patch's fix.
+                if have != (row.get("replaces_blobs") or {}).get(rel):
                     raise ReleaseError(f"{rel} holds {have[:12]}, not the bytes patch {pid} was approved to replace; "
                                        f"refusing to overwrite an edit made after the tap")
             elif have is not None and have != blob:
@@ -484,7 +517,7 @@ def preflight(day: dt.date) -> list[str]:
     # pinned, plus the files the release itself writes.
     published_today = [r for r in pb.load_queue() if not r.get("_broken")
                        and pb.stage_index(r) >= pb.STAGES.index("PUBLISHED") and published_on(r) == day]
-    todays = [r for r in published_today if not pb.is_patch(r)]          # the content line
+    todays = [r for r in published_today if not on_patch_line(r)]        # the content line
     paths = {h: commit_paths(h) for h, _ in ahead}
     if len(todays) != 1:
         # one slot, one piece: with zero or several rows published today, nothing can be proven to be "the" release
@@ -497,7 +530,7 @@ def preflight(day: dt.date) -> list[str]:
     # The patch line: several patches may publish in a day, each its own commit. An unpushed commit is a stranded
     # patch release only if it is the release of exactly one patch row published today whose v3 binding still holds
     # (approved commit + tag + digest, lane included), so a forged "patch" row cannot carry a commit out.
-    for r in (r for r in published_today if pb.is_patch(r)):
+    for r in (r for r in published_today if on_patch_line(r)):
         hits = [h for h, _ in ahead if is_release_of(h, paths[h], r)]
         if not hits:
             continue

@@ -38,7 +38,9 @@ WED = dt.date(2026, 10, 21)
 PROOF = "https://claude.ai/artifact/example"
 NOTE = 'The titles need Sentence Structure or whatever it is for instance the heading "The twenty" should read "The Twenty"'
 SCHEDULED = argparse.Namespace(push=False, verify_live=False, live_minutes=0)
-STAGE2 = "2026-10-12 - stage 2 by a seat that neither wrote nor rendered the page: PASS"
+#: round 3: stage 2 is a structured record (approvals.STAGE2_KEYS), never prose
+STAGE2 = {"date": "2026-10-12", "by": "independent name-check seat", "verdict": "PASS",
+          "proof": "harness helper-report archive, capture 0000"}
 
 
 def g(root, *args):
@@ -121,7 +123,7 @@ def g2(tmp_path, monkeypatch):
     root = init_repo(tmp_path, monkeypatch)
     base = {"id": "G2", "order": 2, "title": "Glossary II", "stage": "SOURCE", "track": "n8n"}
     write_queue(root, base, msg="base")
-    row = dict(base, stage="DRAFTED", page="lessons/g2/index.html", branch="draft/g2", reviewed="other seat")
+    row = dict(base, stage="DRAFTED", page="lessons/g2/index.html", branch="draft/g2", reviewed=STAGE2)
     draft(root, row, {"lessons/g2/index.html": "<h1>The twenty</h1>\n"})
     return root
 
@@ -197,12 +199,21 @@ def labelled(tmp_path, monkeypatch):
     return root, make
 
 
-def test_approve_clears_a_pre_tap_blocked_on_and_keeps_the_text(labelled):
+def test_approve_clears_only_a_label_marked_pre_tap_and_keeps_the_text(labelled):
+    # round 3: the tap clears ONLY a label marked as waiting for the tap; everything else survives it
+    root, make = labelled
+    row = make("PRE-TAP: waiting for Daniel's one tap on the rendered proof")
+    assert "blocked_on" not in row or not row["blocked_on"], row
+    assert "waiting for Daniel's one tap" in row["cleared_blocked_on"]
+    assert release.plan(TUE)["outcome"] == "PUBLISH"
+
+
+def test_approve_keeps_an_unmarked_label_and_the_tile_showed_it(labelled):
     root, make = labelled
     row = make("stage 2: independent name check by a seat that did not write the page")
-    assert "blocked_on" not in row or not row["blocked_on"], row
-    assert "independent name check" in row["cleared_blocked_on"]
-    assert release.plan(TUE)["outcome"] == "PUBLISH"
+    assert row["blocked_on"].startswith("stage 2:")
+    assert "stage 2: independent name check" in (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
+    assert release.plan(TUE)["outcome"] == "FAIL"
 
 
 def test_approve_keeps_a_post_approval_gate_and_release_refuses_it(labelled):
@@ -304,11 +315,16 @@ def test_a_patch_ignores_the_cap_and_never_takes_the_content_slot(live, tmp_path
 
 def test_a_published_patch_does_not_consume_the_content_week(live):
     root, old, new, pubrow = live
-    shipped = {"id": "FIX-0", "kind": "patch", "order": 91, "title": "earlier fix", "stage": "PUBLISHED",
-               "published": "2026-10-19"}
+    a = "lessons/a/index.html"
+    shipped = v3_testkit.bind({"id": "FIX-0", "kind": "patch", "order": 91, "title": "earlier fix",
+                               "stage": "PUBLISHED", "published": "2026-10-19",
+                               "approved_blobs": {a: pb.blob_sha(root / a)}})
     write_queue(root, pubrow, shipped, content_row(root))
     d = release.plan(TUE)
     assert d["outcome"] == "PUBLISH" and d["piece"] == "C1", d
+    # round 3: a published row is on the patch line only through its binding (which covers kind)
+    write_queue(root, pubrow, {k: v for k, v in shipped.items() if k != "binding"}, content_row(root))
+    assert release.plan(TUE)["outcome"] == "SKIP"
 
 
 def test_tuesday_with_a_patch_and_a_content_piece_publishes_both_and_pushes_each(live, tmp_path):
@@ -421,36 +437,55 @@ def unreviewed(tmp_path, monkeypatch):
     return root, make
 
 
-def test_offer_refuses_a_content_piece_with_no_stage2_review_and_names_what_is_missing(unreviewed):
+def test_offer_refuses_a_content_piece_with_no_stage2_record_and_names_what_is_missing(unreviewed):
     root, make = unreviewed
     ref = make("T5", {"lessons/t5/index.html": "<h1>t5</h1>\n"})
-    with pytest.raises(approvals.ApprovalError, match=r"stage-2 review.*`reviewed` is empty"):
+    with pytest.raises(approvals.ApprovalError, match=r"no stage-2 PASS.*`reviewed` is empty"):
         approvals.offer("T5", ref, PROOF, today=MON)
-    ref = make("T6", {"lessons/t6/index.html": "<h1>t6</h1>\n"}, reviewed="NOT YET: queued for the name check")
-    with pytest.raises(approvals.ApprovalError, match="does not name a stage 2"):
+    ref = make("T6", {"lessons/t6/index.html": "<h1>t6</h1>\n"},
+               reviewed="2026-10-12 - stage 2 by a seat that neither wrote nor rendered the page: PASS")
+    with pytest.raises(approvals.ApprovalError, match="prose never admits a new offer"):
         approvals.offer("T6", ref, PROOF, today=MON)
+    ref = make("T8", {"lessons/t8/index.html": "<h1>t8</h1>\n"}, reviewed=dict(STAGE2, verdict="FAIL"))
+    with pytest.raises(approvals.ApprovalError, match="verdict is 'FAIL'"):
+        approvals.offer("T8", ref, PROOF, today=MON)
+    ref = make("T9", {"lessons/t9/index.html": "<h1>t9</h1>\n"}, reviewed=dict(STAGE2, by="drafting seat"),
+               drafted_by="drafting seat")
+    with pytest.raises(approvals.ApprovalError, match="the seat that wrote the piece"):
+        approvals.offer("T9", ref, PROOF, today=MON)
+    ref = make("T10", {"lessons/t10/index.html": "<h1>t10</h1>\n"}, reviewed={k: STAGE2[k] for k in ("date", "by")})
+    with pytest.raises(approvals.ApprovalError, match="lacks verdict, proof"):
+        approvals.offer("T10", ref, PROOF, today=MON)
     assert not (root / "boards" / "APPROVALS_OWED.md").exists()
     ref = make("T7", {"lessons/t7/index.html": "<h1>t7</h1>\n"}, reviewed=STAGE2)
     assert approvals.offer("T7", ref, PROOF, today=MON)
+    assert "stage 2 PASS on 2026-10-12 by independent name-check seat" in \
+        (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
 
 
-def test_a_patch_needs_stage2_unless_its_case_or_layout_only_claim_is_proved_on_the_bytes(unreviewed):
+def test_a_patch_needs_stage2_unless_a_case_only_claim_is_proved_on_the_full_bytes(unreviewed):
     root, make = unreviewed
     ref = make("FIX-W", {PAGE: "<main><h1>The Twenty</h1><p>New words.</p></main>\n"}, kind="patch",
                patch_scope="case-only")
     with pytest.raises(approvals.ApprovalError, match="changes more than letter case"):
         approvals.offer("FIX-W", ref, PROOF, today=MON)
     ref = make("FIX-N", {PAGE: "<main><h1>The Twenty</h1><p>Words.</p></main>\n"}, kind="patch")
-    with pytest.raises(approvals.ApprovalError, match="stage-2 review"):
+    with pytest.raises(approvals.ApprovalError, match="no stage-2 PASS"):
         approvals.offer("FIX-N", ref, PROOF, today=MON)
+    # layout-only no longer exempts (round 3): markup changes need stage 2 like anything else
+    ref = make("FIX-L", {PAGE: '<main class="wide">\n  <h1>The twenty</h1>\n  <p>Words.</p>\n</main>\n'},
+               kind="patch", patch_scope="layout-only")
+    with pytest.raises(approvals.ApprovalError, match="layout-only no longer exempts"):
+        approvals.offer("FIX-L", ref, PROOF, today=MON)
     ref = make("FIX-C", {PAGE: "<main><h1>The Twenty</h1><p>Words.</p></main>\n"}, kind="patch",
                patch_scope="case-only")
     approvals.offer("FIX-C", ref, PROOF, today=MON)
-    ref = make("FIX-L", {PAGE: '<main class="wide">\n  <h1>The twenty</h1>\n  <p>Words.</p>\n</main>\n'},
-               kind="patch", patch_scope="layout-only")
-    approvals.offer("FIX-L", ref, PROOF, today=MON)
     tiles = (root / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
-    assert "EXEMPT from stage 2 as a case-only patch" in tiles and "EXEMPT from stage 2 as a layout-only patch" in tiles
+    assert "EXEMPT from stage 2 as a case-only patch" in tiles
+    # with a stage-2 PASS a layout change is a fine patch
+    ref = make("FIX-R", {PAGE: '<main class="wide"><h1>The twenty</h1><p>Words.</p></main>\n'}, kind="patch",
+               reviewed=STAGE2)
+    approvals.offer("FIX-R", ref, PROOF, today=MON)
 
 
 # ================================================================ round 2: a tapped patch RE-PINS what it changes
@@ -474,29 +509,31 @@ def glossary_live(tmp_path, monkeypatch):
     return root, g1, old_furn, old_page
 
 
-def test_a_tapped_patch_to_a_published_pieces_pins_leaves_the_next_content_release_publish(glossary_live):
-    root, g1, old_furn, old_page = glossary_live
-    furn_text = (root / FURN).read_text(encoding="utf-8")
-    assert "track" in furn_text
-    new_furn_text = furn_text.replace("track", "Track", 1)
+def fix_h(root):
+    """FIX-H: the Glossary I heading-case patch, on its draft branch: page and n8n furniture, case-only."""
+    new_furn_text = (root / FURN).read_text(encoding="utf-8").replace("track", "Track", 1)
     draft(root, {"id": "FIX-H", "kind": "patch", "order": 90, "title": "Heading case", "stage": "DRAFTED",
                  "files": [GLOSS_PAGE, FURN], "branch": "draft/fix-h", "patch_scope": "case-only"},
           {GLOSS_PAGE: "<h1>The Twenty</h1>\n", FURN: new_furn_text})
-    # a racked content piece on the same track, approved BEFORE the patch, pinning the OLD furniture
+
+
+def racked_c2(root, g1, old_furn, previewed="2026-10-14"):
     src = root.parent / "c2.html"
     src.write_bytes(b"<h1>Two</h1>\n")
     c2_entry = {**G1_ENTRY, "numeral": "II", "href": "/lessons/two/", "title": "Two"}
-    c2 = v3_testkit.bind({"id": "C2", "order": 2, "title": "Two", "stage": "PREVIEWED", "previewed": "2026-10-14",
-                          "approved_blobs": {"lessons/two/index.html": g(root, "hash-object", "-w", str(src)),
-                                             FURN: old_furn},
-                          "index_entry": c2_entry, "approved_index_entry": pb.entry_sha(c2_entry)})
-    write_queue(root, g1, c2, msg="C2 racked")
+    return v3_testkit.bind({"id": "C2", "order": 2, "title": "Two", "stage": "PREVIEWED", "previewed": previewed,
+                            "approved_blobs": {"lessons/two/index.html": g(root, "hash-object", "-w", str(src)),
+                                               FURN: old_furn},
+                            "index_entry": c2_entry, "approved_index_entry": pb.entry_sha(c2_entry)})
 
+
+def test_a_tapped_patch_to_a_published_pieces_pins_leaves_the_next_content_release_publish(glossary_live):
+    root, g1, old_furn, old_page = glossary_live
+    fix_h(root)
     # untapped: offering the patch never touches main's pins, and the content line is unaffected
     queue_before = pb.QUEUE.read_text(encoding="utf-8")
     title = approvals.offer("FIX-H", "draft/fix-h", PROOF, today=TUE)
     assert pb.QUEUE.read_text(encoding="utf-8") == queue_before
-    assert release.plan(dt.date(2026, 10, 27))["outcome"] == "PUBLISH"
 
     led = Ledger()
     led.rule(title, "APPROVE")
@@ -509,6 +546,8 @@ def test_a_tapped_patch_to_a_published_pieces_pins_leaves_the_next_content_relea
     assert new_furn == fix["approved_blobs"][FURN] and new_furn != old_furn
     assert "Re-pin: supersedes GC-GLOSS-1's pin" in g(root, "log", "-1", "--format=%B")
 
+    # a content piece on the same track, approved BEFORE the patch, pinning the OLD furniture, racked
+    write_queue(root, *pb.load_queue(), racked_c2(root, g1, old_furn), msg="C2 racked")
     nxt = dt.date(2026, 10, 27)
     d = release.plan(nxt)
     assert (d["outcome"], d.get("piece")) == ("PUBLISH", "C2"), d
@@ -518,6 +557,56 @@ def test_a_tapped_patch_to_a_published_pieces_pins_leaves_the_next_content_relea
     assert "keeps patch FIX-H's bytes" in g(root, "log", "-1", "--format=%B")
     assert "CHANGED SINCE" not in pb.build(nxt)
     assert release.live_drift(pb.load_queue()) == []
+
+
+def test_a_patch_over_a_path_a_racked_piece_pins_is_refused_at_offer_and_at_rack(glossary_live):
+    root, g1, old_furn, old_page = glossary_live
+    fix_h(root)
+    title = approvals.offer("FIX-H", "draft/fix-h", PROOF, today=TUE)       # nothing racked yet: offered
+    write_queue(root, g1, racked_c2(root, g1, old_furn), msg="C2 racked after the offer")
+    with pytest.raises(approvals.ApprovalError, match="pinned by racked C2"):
+        approvals.offer("FIX-H", "draft/fix-h", "https://claude.ai/artifact/again", today=TUE)
+    led = Ledger()
+    led.rule(title, "APPROVE")
+    report = approvals.apply(today=TUE, led=led)
+    assert report[0].startswith("OWED") and "pinned by racked C2" in report[0], report
+    assert "FIX-H" not in {r.get("id") for r in pb.load_queue()}
+
+
+def test_a_second_racked_patch_on_the_same_path_is_refused_at_rack(glossary_live):
+    root, g1, old_furn, old_page = glossary_live
+    fix_h(root)
+    draft(root, {"id": "FIX-K", "kind": "patch", "order": 91, "title": "Other case", "stage": "DRAFTED",
+                 "page": GLOSS_PAGE, "branch": "draft/fix-k2", "patch_scope": "case-only"},
+          {GLOSS_PAGE: "<h1>THE twenty</h1>\n"})
+    t1 = approvals.offer("FIX-H", "draft/fix-h", PROOF, today=TUE)
+    t2 = approvals.offer("FIX-K", "draft/fix-k2", PROOF, today=TUE)
+    led = Ledger()
+    led.rule(t1, "APPROVE")
+    assert approvals.apply(today=TUE, led=led)[0].startswith("APPLIED  APPROVE  FIX-H")
+    led.rule(t2, "APPROVE")
+    report = approvals.apply(today=TUE, led=led)
+    assert report[0].startswith("OWED") and "pinned by racked FIX-H" in report[0], report
+
+
+def test_content_drafted_before_a_patch_and_tapped_after_it_is_refused_at_rack(glossary_live):
+    root, g1, old_furn, old_page = glossary_live
+    # C3 is drafted now, on the pre-patch furniture
+    entry = {**G1_ENTRY, "numeral": "III", "href": "/lessons/three/", "title": "Three"}
+    draft(root, {"id": "C3", "order": 3, "title": "Three", "stage": "DRAFTED", "page": "lessons/three/index.html",
+                 "branch": "draft/c3", "track": "n8n", "index_entry": entry, "reviewed": STAGE2},
+          {"lessons/three/index.html": "<h1>Three</h1>\n"})
+    fix_h(root)
+    t = approvals.offer("FIX-H", "draft/fix-h", PROOF, today=TUE)
+    led = Ledger()
+    led.rule(t, "APPROVE")
+    approvals.apply(today=TUE, led=led)
+    release.run(SCHEDULED, WED, {"date": WED.isoformat(), "mode": "apply"})
+    assert qrow("FIX-H")["stage"] == "PUBLISHED"
+    t3 = approvals.offer("C3", "draft/c3", PROOF, today=dt.date(2026, 10, 22))
+    led.rule(t3, "APPROVE")
+    report = approvals.apply(today=dt.date(2026, 10, 22), led=led)
+    assert report[0].startswith("OWED") and "Redraft on current main" in report[0], report
 
 
 def test_production_plan_names_the_two_lines_in_daniels_words():

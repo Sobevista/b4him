@@ -166,14 +166,18 @@ def published_owners(rows: list[dict]) -> dict[str, tuple[str, str]]:
 
 
 def superseding_patch(row: dict, rel: str, rows: list[dict]) -> tuple[str, str] | None:
-    """(patch id, blob) when a PUBLISHED patch re-pinned `rel` after `row`'s pin was approved, else None.
+    """(patch id, blob) when a PUBLISHED patch re-pinned `rel` over `row`'s pin, else None. Patch rows return None:
+    among patches the latest published owns (published_owners' order), and a racked patch must find exactly the
+    bytes it replaces or it does not publish.
 
-    production-line-v2: a tapped patch re-pins the exact paths it changes (approvals.rack records them as
-    supersedes_pins). From its publish day, any older approval's pin on those paths is superseded for those paths
-    only: the release keeps the patch's bytes there instead of writing the older pin back, and drift is judged
-    against the patch. A piece approved AFTER the patch published holds a newer pin and is not superseded."""
-    mine = str(row.get("published", ""))[:10] if (is_patch(row) and
-                                                  stage_index(row) >= STAGES.index("PUBLISHED")) else None
+    production-line-v2: a tapped patch re-pins the exact paths it changes (recorded as supersedes_pins). A content
+    piece's pin on such a path is superseded when it is a pre-patch pin, judged on the BYTES first: it pins exactly
+    what the patch replaced; or, failing that, it was approved on or before the patch's publish day (it cannot have
+    been drafted on the patched bytes). What release does with a superseded pin: shared track furniture keeps the
+    patch's bytes (recorded in the commit); a page refuses the piece, "redraft on current main"."""
+    if is_patch(row):
+        return None
+    mine = (row.get("approved_blobs") or {}).get(rel)
     approved_on = ready_date(row)
     best = None
     for p in rows:
@@ -181,11 +185,13 @@ def superseding_patch(row: dict, rel: str, rows: list[dict]) -> tuple[str, str] 
             continue
         if stage_index(p) < STAGES.index("PUBLISHED") or rel not in (p.get("approved_blobs") or {}):
             continue
+        if p["approved_blobs"][rel] == mine:
+            continue                              # the piece pins the patched bytes themselves
         pub = str(p.get("published", ""))[:10]
-        if mine is not None and pub <= mine:
-            continue                              # an older patch never supersedes a newer one
-        if mine is None and approved_on is not None and approved_on.isoformat() > pub:
-            continue                              # approved after the patch went live: a newer pin, kept
+        pre_patch_bytes = (p.get("replaces_blobs") or {}).get(rel) == mine
+        approved_before = approved_on is None or approved_on.isoformat() <= pub
+        if not (pre_patch_bytes or approved_before):
+            continue                              # approved after the patch, on other bytes: a newer pin, kept
         if best is None or pub > best[0]:
             best = (pub, p.get("id"), p["approved_blobs"][rel])
     return (best[1], best[2]) if best else None
@@ -210,10 +216,12 @@ def approval_drift(row: dict, owners: dict | None = None, approved: dict | None 
         if not published and blob_in_store(want):
             if have is None:
                 continue
-            if replaceable(row, rel) and have in (approved or {}).get(rel, set()):
-                continue
-            # a racked patch: the tree still holds exactly the bytes it was approved to replace
-            if is_patch(row) and have == (row.get("replaces_blobs") or {}).get(rel):
+            if is_patch(row):
+                # a racked patch: the tree must hold exactly the bytes it was approved to replace. "Some approval
+                # pinned these bytes" is not enough: a second patch would erase the first one's fix.
+                if have == (row.get("replaces_blobs") or {}).get(rel):
+                    continue
+            elif replaceable(row, rel) and have in (approved or {}).get(rel, set()):
                 continue
         out.append(f"{rel} (approved {want[:12]}, now {have[:12] if have else 'missing'})")
     return out
