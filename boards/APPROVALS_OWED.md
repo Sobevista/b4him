@@ -166,3 +166,15 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** _pending_
+
+### APPROVE SITE-PATCH-HEADINGS-1 at 4338857 — Site patch - Title Case every published heading (D21)
+
+- **What this is to the build.** Site patch - Title Case every published heading (D21) (? track), drafted 2026-10-20 on `patch/title-case-headings`. The invariant it teaches: *NOT NAMED*. **The rendered proof: https://claude.ai/artifact/CB1BNZ67JUM4Lj8LciU53Q**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `about/index.html` = blob `1c4884c5179c`; `blog/index.html` = blob `939c262b2a49`; `games/index.html` = blob `8ddbe59fd5e9`; `index.html` = blob `b489b1a75ac2`; `lessons/anti-false-positive/index.html` = blob `a525d858a823`; `lessons/backup-is-a-check/index.html` = blob `85c28214478a`; `lessons/depth-chart/index.html` = blob `e9f0d407c86c`; `lessons/find-your-door/index.html` = blob `5d2661cd2435`; `lessons/first-lap/index.html` = blob `ac1ff13bfbee`; `lessons/flagged-not-scored/index.html` = blob `451057f613ed`; `lessons/four-layers/index.html` = blob `c47a5910eb21`; `lessons/fuse-box/index.html` = blob `753e77bf8ddb`; `lessons/git-chassis/index.html` = blob `7fe225403cdb`; `lessons/index.html` = blob `0b478c9a58de`; `lessons/kill-test/index.html` = blob `b84c9b4e5673`; `lessons/law-you-cant-feel/index.html` = blob `c08df7677086`; `lessons/mail-slot/index.html` = blob `26d6e5b1e523`; `lessons/reflection-queue/index.html` = blob `ed499975d641`; `lessons/the-witness/index.html` = blob `e1dad4bd064c`; `videos/index.html` = blob `2e10ea4d4bc0`; `writing/index.html` = blob `863eb5d550e8`. No index entry is on the row, so the page will not be listed in the lessons index. This is a PATCH (the patch line, outside the content cadence): it publishes on the next daily release run after your tap, any day of the week, and takes no content slot.
+- **What it does to the aggregate, measured.** Runway is unchanged: a patch is on the patch line, not the content line.
+- **Cross-checked by, including where it is weak.** EXEMPT from stage 2 as a case-only patch: proved by tools/approvals.py on the full bytes (every file equals main's except ASCII letter case)
+- **Open label on this row (blocked_on).** PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line) — marked pre-tap: your approval clears it.
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
