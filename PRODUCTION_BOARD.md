@@ -2,10 +2,10 @@
 
 *Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 5.0 weeks** — below target, above floor - keep building  
-*(target 6w · floor 3w · 5 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 6.0 weeks** — healthy  
+*(target 6w · floor 3w · 6 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-19 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
+20 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
 
 ## Waiting on Daniel
 
@@ -22,7 +22,7 @@
 | **2026-11-10** Tue | A Convention Without Enforcement Is a Preference | 2026-11-03 |  |
 | **2026-11-17** Tue | The Tripod - three kinds of checking | 2026-11-10 |  |
 | **2026-11-24** Tue | The Second Oracle - green proves you met your criteria | 2026-11-17 |  |
-| **2026-12-01** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2026-12-01** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-11-24 |  |
 | **2026-12-08** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-12-15** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 | **2026-12-22** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
@@ -54,12 +54,13 @@
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 5
+**PREVIEWED** (DANIEL) — 6
   - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js`
   - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - The Tripod - three kinds of checking · source: `Knowledge_Base/Teaching/Module_11_The_Tripod.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - The Second Oracle - green proves you met your criteria · source: `Knowledge_Base/Teaching/Module_13_The_Second_Oracle.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
+  - Ask What It Optimised For - archaeology before inheritance · source: `Knowledge_Base/Teaching/Module_14_Ask_What_It_Optimised_For.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
 
 **SCHEDULED** (the board) — 0
 
