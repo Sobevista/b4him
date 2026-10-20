@@ -5,9 +5,15 @@
 **RUNWAY: 12.0 weeks** — healthy  
 *(target 6w · floor 3w · 12 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-25 in the pipeline · 3 published · cadence Tuesday only, hard cap 1 per 7 days
+25 in the pipeline · 4 published · cadence Tuesday only, hard cap 1 per 7 days
 
-*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (2 open, 2 racked) runs outside that cadence — see its own section.*
+*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (1 open, 1 racked) runs outside that cadence — see its own section.*
+
+## ⚠ CHANGED SINCE DANIEL'S APPROVAL
+
+*RULED and PREVIEWED cover the bytes he saw (`approved_blobs`). These files changed after that, so the piece holds no slot until he rules and previews it again (`PRODUCTION_PLAN` §2: never inherited from a previous yes). A **live** piece listed here means the site no longer serves what he approved.*
+
+- **live** Site patch - Title Case every published heading (D21): lessons/index.html (approved 0b478c9a58de, now c949e035d96d)
 
 ## Redraft owed — Daniel sent these back
 
@@ -44,10 +50,10 @@
 
 *Fixes to published pages and site furniture (`kind: patch`). Outside the content cadence: no Tuesday rule, no 7-day cap, no content slot, no runway. A tapped patch publishes on the next release run (the daily 08:30 job), exact pinned bytes only, logged with lane `patch`.*
 
-- Site patch - Title Case the n8n track heading (D21) (`SITE-PATCH-HEADINGS-2`) — racked: publishes on the next release run · re-pins `tools/tracks/n8n.html` (was GC-GLOSS-1's pin)
 - Site patch - honour reduced motion site-wide (no animated jump scroll) (`SITE-PATCH-MOTION-1`) — racked: publishes on the next release run
 - Glossary I revision - fold each word's four rows so the page is shorter (`GC-GLOSS-1-R1`) — published 2026-10-20
 - Site patch - Title Case every published heading (D21) (`SITE-PATCH-HEADINGS-1`) — published 2026-10-20
+- Site patch - Title Case the n8n track heading (D21) (`SITE-PATCH-HEADINGS-2`) — published 2026-10-20
 
 ## The pipeline, by stage
 
