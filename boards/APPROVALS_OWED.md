@@ -11,7 +11,7 @@
 - **Cross-checked by, including where it is weak.** 2026-10-13 - stage 2 by a seat that neither wrote nor rendered the page (own scanner, 26/26 planted tokens caught; 0 forbidden names; 9 terms source-checked): FAIL on one technical error (Error Trigger is attached per workflow, not instance-wide; n8n docs). Fixed in 8c5bdf0 by the orchestrating seat, with 4 advisories on this page; the reviewer's own scanner re-run on the fixed bytes: 0 hits (3 advisory CSS-comment hits shared with Glossary I's template). The fix itself has NOT had a second independent read.
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-10-20 REJECT · ledger E00615 · applied by tools/approvals.py]
 
 ### APPROVE GC-GLOSS-3 at bb19ba5 — Glossary III - Advanced terms
 
