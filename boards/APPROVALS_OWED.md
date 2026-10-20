@@ -155,3 +155,14 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** [RULED 2026-10-20 APPROVE · ledger E00628 · applied by tools/approvals.py]
+
+### APPROVE GC-GLOSS-1-R1 at bfca25a — Glossary I revision - fold each word's four rows so the page is shorter
+
+- **What this is to the build.** Glossary I revision - fold each word's four rows so the page is shorter (n8n track), drafted ? on `draft/gc-gloss-1-r1`. The invariant it teaches: *NOT NAMED*. **The rendered proof: https://claude.ai/artifact/CB1BNZ67JUM4Lj8LciU53Q**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `lessons/glossary-beginner/index.html` = blob `86c86404773b`. No index entry is on the row, so the page will not be listed in the lessons index. This is a PATCH (the patch line, outside the content cadence): it publishes on the next daily release run after your tap, any day of the week, and takes no content slot.
+- **What it does to the aggregate, measured.** Runway is unchanged: a patch is on the patch line, not the content line.
+- **Cross-checked by, including where it is weak.** stage 2 PASS on 2026-10-20 by stage-2 reviewer agent a7a71f25 (b4him session 33569fa0) (proof: Own scanner 180/180 planted caught (15 categories x 9 surfaces incl. attrs/title/meta/CSS content/script strings), 0 forbidden tokens on the real bytes (only allowed Maria/Austin/Chicago/Miami; pre-existing source-only CSS comments INV-W1/D18 advisory); people_registry second engine: 12 heuristic false positives only, known-names half UNKNOWN (people_names.local.json absent).)
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
