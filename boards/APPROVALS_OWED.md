@@ -165,7 +165,7 @@
 - **Cross-checked by, including where it is weak.** stage 2 PASS on 2026-10-20 by stage-2 reviewer agent a7a71f25 (b4him session 33569fa0) (proof: Own scanner 180/180 planted caught (15 categories x 9 surfaces incl. attrs/title/meta/CSS content/script strings), 0 forbidden tokens on the real bytes (only allowed Maria/Austin/Chicago/Miami; pre-existing source-only CSS comments INV-W1/D18 advisory); people_registry second engine: 12 heuristic false positives only, known-names half UNKNOWN (people_names.local.json absent).)
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-10-20 APPROVE · ledger E00729 · applied by tools/approvals.py]
 
 ### APPROVE SITE-PATCH-HEADINGS-1 at 4338857 — Site patch - Title Case every published heading (D21)
 
