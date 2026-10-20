@@ -16,8 +16,17 @@ title, so an approval can only ever mean the bytes at that commit — the ones t
 APPLY reads the ledger for rulings on those titles. An APPROVE pins every file of the piece at that commit
 (approved_blobs), copies the piece's row from that commit onto main's queue at PREVIEWED, tags approved/<id> so the
 bytes stay reachable, commits on main, marks the board line ruled, and records the application in the ledger
-(applied: true + SUPERSEDE, the same two events a session writes by hand). A REJECT marks the line and moves
-nothing. A ruling it cannot apply is reported and left owed: never applied half-way, never dropped.
+(applied: true + SUPERSEDE, the same two events a session writes by hand). A ruling it cannot apply is reported and
+left owed: never applied half-way, never dropped.
+
+production-line-v2 (Daniel, 2026-10-20: "The change needs to be in the production program"):
+  * REJECT puts the piece back at DRAFTED on main's queue (the row as tiled, branch kept, nothing racked) with
+    blocked_on = "REDRAFT owed: <ledger id> <his note verbatim>" ("no note given" when there was none), carries the
+    note into the application ledger event and the tile marker, and the board lists it under "Redraft owed".
+    Until this, a REJECT marked the tile and moved nothing, and the note was written as null (E00660).
+  * APPROVE clears a pre-tap blocked_on (kept as cleared_blocked_on), except one starting "POST-APPROVAL:", which
+    names a gate only meetable after the tap; release.py refuses any row whose blocked_on is not empty.
+  * A patch (kind "patch") also records replaces_blobs, and its tile says it is on the patch line.
 """
 from __future__ import annotations
 
@@ -136,9 +145,14 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
         + "; ".join(f"`{f}` = blob `{b[:12]}`" for f, b in blobs.items())
         + (f". The lessons index gains: **{entry.get('title')}** — {entry.get('blurb')}" if entry else
            ". No index entry is on the row, so the page will not be listed in the lessons index")
-        + f". It takes the first open slot on or after {today + dt.timedelta(days=pb.REVIEW_LEAD_DAYS)}.",
-        f"- **What it does to the aggregate, measured.** Runway rises by {1 / pb.PER_WEEK_CAP:.1f} weeks "
-        f"(one piece ÷ {pb.PER_WEEK_CAP} a week).",
+        + (". This is a PATCH (the patch line, outside the content cadence): it publishes on the next daily "
+           "release run after your tap, any day of the week, and takes no content slot."
+           if pb.is_patch(row) else
+           f". It takes the first open slot on or after {today + dt.timedelta(days=pb.REVIEW_LEAD_DAYS)}."),
+        (f"- **What it does to the aggregate, measured.** Runway is unchanged: a patch is on the patch line, "
+         f"not the content line." if pb.is_patch(row) else
+         f"- **What it does to the aggregate, measured.** Runway rises by {1 / pb.PER_WEEK_CAP:.1f} weeks "
+         f"(one piece ÷ {pb.PER_WEEK_CAP} a week)."),
         f"- **Cross-checked by, including where it is weak.** {review}",
         f"- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; "
         f"a rejected piece goes back to drafting and returns here as a new commit.",
@@ -170,7 +184,7 @@ def owed_rulings(led) -> list[dict]:
     return list(latest.values())
 
 
-def mark_board(title: str, verdict: str, event: str, today: dt.date) -> None:
+def mark_board(title: str, verdict: str, event: str, today: dt.date, note: str | None = None) -> None:
     path = board_path()
     lines = path.read_text(encoding="utf-8").split("\n")
     try:
@@ -181,22 +195,21 @@ def mark_board(title: str, verdict: str, event: str, today: dt.date) -> None:
         if lines[j].startswith("### "):
             break
         if lines[j] == PENDING:
-            lines[j] = f"**DANIEL:** [RULED {today} {verdict} · ledger {event} · applied by tools/approvals.py]"
+            lines[j] = (f"**DANIEL:** [RULED {today} {verdict} · ledger {event} · applied by tools/approvals.py]"
+                        + (f" — his note: {' '.join(note.splitlines())}" if note else ""))
             path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
             return
     raise ApprovalError(f"no pending marker under: {title}")
 
 
-def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
-    """Copy the approved row onto main's queue at PREVIEWED with its pinned blobs. One line changes (or one is added)."""
-    row = row_at(commit, pid)
-    blobs = pinned(commit, row)
-    stamp = f"{today} - Daniel, one tap in the app on the rendered proof (ledger {event['id']})"
-    row.update(stage="PREVIEWED", ruled=stamp, previewed=stamp, approved_blobs=blobs,
-               approved_commit=commit, approved_tag=f"approved/{pid}", since=today.isoformat())
-    if row.get("index_entry"):
-        row["approved_index_entry"] = pb.entry_sha(row["index_entry"])
-    row["binding"] = binding.make(row)        # v3 (production-boundary-v1): release re-derives the approval from this
+def ruling_note(event: dict) -> str | None:
+    """His note on a ruling, verbatim (the harness app writes it to body.note). None only when he gave none."""
+    note = event.get("body", {}).get("note")
+    return note if isinstance(note, str) and note.strip() else None
+
+
+def put_row(pid: str, row: dict) -> None:
+    """Replace the piece's one line on main's queue (or add it). Every other byte stays."""
     text = pb.QUEUE.read_text(encoding="utf-8")
     out, hits = [], 0
     for line in text.split("\n"):
@@ -210,6 +223,76 @@ def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
             out.pop()
         out += [json.dumps(row, ensure_ascii=False), ""]
     pb.QUEUE.write_text("\n".join(out), encoding="utf-8", newline="\n")
+
+
+def main_row(pid: str) -> dict | None:
+    hits = [r for r in pb.load_queue() if r.get("id") == pid]
+    return hits[0] if hits else None
+
+
+#: Fields that only an approval writes. A rejected piece carries none of them back to drafting.
+APPROVAL_FIELDS = ("ruled", "previewed", "approved_blobs", "approved_commit", "approved_tag", "approved_index_entry",
+                   "binding", "replaces_blobs", "cleared_blocked_on")
+
+
+def requeue(pid: str, commit: str, event: dict, today: dt.date) -> dict:
+    """A REJECT (production-line-v2, Daniel 2026-10-20: "The change needs to be in the production program"). The
+    piece goes back to DRAFTED on main's queue with his note verbatim in blocked_on, its branch kept, and nothing
+    racked. The row is the one at the tiled commit (what he was shown), so a piece main has no row for yet
+    (GC-GLOSS-3's case) gets one. Refused, and left owed, when main's row is already live or racked at another
+    commit: a rejection of one commit never unpublishes or unracks different bytes."""
+    have = main_row(pid)
+    if have is not None:
+        if pb.stage_index(have) >= pb.STAGES.index("PUBLISHED"):
+            raise ApprovalError(f"{pid} is already {have.get('stage')} on main: a rejection never unpublishes; "
+                                f"a fix to a live page is a patch (a human looks)")
+        if pb.stage_index(have) >= pb.ELIGIBLE_STAGE and have.get("approved_commit") not in (None, commit):
+            raise ApprovalError(f"{pid} is racked on main at {str(have['approved_commit'])[:7]}, not the rejected "
+                                f"{commit[:7]}: a human looks")
+    try:
+        row = row_at(commit, pid)
+    except ApprovalError:
+        if have is None:
+            raise
+        row = dict(have)
+    for k in APPROVAL_FIELDS:
+        row.pop(k, None)
+    note = ruling_note(event)
+    row.update(stage="DRAFTED", since=today.isoformat(),
+               blocked_on=f"{pb.REDRAFT_PREFIX} {event['id']} {note if note else 'no note given'}",
+               rejected=f"{today} - Daniel, one tap: REJECT of {commit[:7]} (ledger {event['id']})")
+    if not row.get("branch") and have and have.get("branch"):
+        row["branch"] = have["branch"]
+    put_row(pid, row)
+    return row
+
+
+def rack(pid: str, commit: str, event: dict, today: dt.date) -> dict:
+    """Copy the approved row onto main's queue at PREVIEWED with its pinned blobs. One line changes (or one is added).
+
+    blocked_on (production-line-v2): his tap supersedes every pre-tap label, so it is cleared and its text kept in
+    cleared_blocked_on. The one exception is a label that starts with "POST-APPROVAL:", which names a gate that can
+    only be met after the tap; it stays, and release.py refuses the row until a session clears it.
+
+    A patch also records replaces_blobs: the bytes main holds at each pinned path at the tap, so the release may
+    replace exactly those and never an edit made after he looked."""
+    row = row_at(commit, pid)
+    blobs = pinned(commit, row)
+    stamp = f"{today} - Daniel, one tap in the app on the rendered proof (ledger {event['id']})"
+    row.update(stage="PREVIEWED", ruled=stamp, previewed=stamp, approved_blobs=blobs,
+               approved_commit=commit, approved_tag=f"approved/{pid}", since=today.isoformat())
+    label = str(row.get("blocked_on") or "").strip()
+    if label and not label.startswith(pb.POST_APPROVAL_PREFIX):
+        row["cleared_blocked_on"] = f"{label} (cleared by Daniel's tap, ledger {event['id']})"
+        row.pop("blocked_on", None)
+    elif not label:
+        row.pop("blocked_on", None)
+    if pb.is_patch(row):
+        row["replaces_blobs"] = {rel: pb.blob_sha(repo() / rel) for rel in blobs}
+    if row.get("index_entry"):
+        row["approved_index_entry"] = pb.entry_sha(row["index_entry"])
+    row["binding"] = binding.make(row)        # v3 (production-boundary-v1): release re-derives the approval from this
+    put_row(pid, row)
     return row
 
 
@@ -228,10 +311,15 @@ def apply(today: dt.date | None = None, led=None) -> list[str]:
                 raise ApprovalError("main's tree is not clean")
             commit = git("rev-parse", "--verify", f"{short}^{{commit}}").strip()
             touched = [board_path()]
+            note = ruling_note(ev)
+            said = f'his note, verbatim: "{note}"' if note else "no note given"
             if verdict == "APPROVE":
                 rack(pid, commit, ev, today)
                 touched.append(pb.QUEUE)
-            mark_board(title, verdict, ev["id"], today)
+            elif verdict == "REJECT":
+                requeue(pid, commit, ev, today)
+                touched.append(pb.QUEUE)
+            mark_board(title, verdict, ev["id"], today, note)
             if verdict == "APPROVE":      # the tag moves only after every check that can refuse
                 git("tag", "-f", f"approved/{pid}", commit)
             pb.BOARD.write_text(pb.build(today), encoding="utf-8", newline="\n")
@@ -241,14 +329,18 @@ def apply(today: dt.date | None = None, led=None) -> list[str]:
                 fh.write(f"{'APPROVED' if verdict == 'APPROVE' else verdict} {pid} at {commit[:7]}: "
                          f"Daniel's tap, ledger {ev['id']}\n\nApplied by tools/approvals.py. "
                          + ("Pinned to approved_blobs and racked; tools/release.py publishes it on its slot.\n"
-                            if verdict == "APPROVE" else "Nothing moved on the rack.\n"))
+                            if verdict == "APPROVE" else
+                            f"Back to DRAFTED on main's queue, redraft owed; {said}.\n" if verdict == "REJECT" else
+                            "Nothing moved on the rack.\n"))
                 msg = fh.name
             git("commit", "-q", "-F", msg)
             Path(msg).unlink(missing_ok=True)
             done = led.append("RULING", ACTOR, {
-                "decision": title, "verdict": verdict, "by": "daniel", "applied": True, "note": None,
+                "decision": title, "verdict": verdict, "by": "daniel", "applied": True, "note": note,
                 "binds": f"APPLIED {today} to b4him by tools/approvals.py: commit {git('rev-parse', 'HEAD').strip()[:7]}"
-                         + (f"; {pid} racked at PREVIEWED, pinned to {commit[:7]}" if verdict == "APPROVE" else "")})
+                         + (f"; {pid} racked at PREVIEWED, pinned to {commit[:7]}" if verdict == "APPROVE" else
+                            f"; {pid} back to DRAFTED on main, blocked_on REDRAFT owed; {said}"
+                            if verdict == "REJECT" else "")})
             led.append("SUPERSEDE", ACTOR, {"target": ev["id"], "replacement": done["id"],
                                             "reason": "application recorded; the original stays in the log forever"})
             report.append(f"APPLIED  {verdict}  {pid} at {commit[:7]}  ({ev['id']} -> {done['id']})")

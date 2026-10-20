@@ -50,6 +50,10 @@ def digest(row: dict) -> str:
     body = {"id": row.get("id"), "approved_blobs": row.get("approved_blobs") or {},
             "approved_index_entry": row.get("approved_index_entry"), "approved_commit": row.get("approved_commit"),
             "version": BINDING_VERSION}
+    # production-line-v2: the line is part of what he approved. Only a patch adds the key, so every content row's
+    # digest is byte-for-byte what it was, while flipping a racked row onto or off the patch line breaks its binding.
+    if row.get("kind") == pb.PATCH:
+        body["lane"] = pb.PATCH
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 

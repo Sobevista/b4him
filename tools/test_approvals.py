@@ -154,7 +154,13 @@ def test_a_reject_marks_the_tile_and_racks_nothing(site):
     led = FakeLedger()
     led.rule(title, "REJECT")
     assert approvals.apply(today=MON, led=led)[0].startswith("APPLIED  REJECT")
-    assert next(r for r in pb.load_queue() if r["id"] == "G2")["stage"] == "SOURCE"
+    # production-line-v2 (Daniel, 2026-10-20): a reject goes back to DRAFTED with a redraft owed (it used to stay at
+    # SOURCE, which is how his GC-GLOSS-2/3 notes were lost). It still racks nothing: no pins, no tag.
+    row = next(r for r in pb.load_queue() if r["id"] == "G2")
+    assert row["stage"] == "DRAFTED" and row["blocked_on"].startswith("REDRAFT owed:")
+    assert "approved_blobs" not in row and "binding" not in row
+    assert subprocess.run([GIT, "-C", str(site), "rev-parse", "-q", "--verify", "refs/tags/approved/G2"],
+                          capture_output=True).returncode != 0
     assert "[RULED 2026-10-12 REJECT" in (site / "boards" / "APPROVALS_OWED.md").read_text(encoding="utf-8")
 
 

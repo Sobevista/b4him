@@ -107,6 +107,25 @@ def blob_in_store(blob: str) -> bool:
 
 REVISION = "revision of a published page"
 
+# The two lines (Daniel, 2026-10-20, PRODUCTION_PLAN section 3 "Two lines"). A row with kind "patch" is a change to an
+# already-published page or to site furniture (layout, fixes, typos). It is outside the content cadence: no Tuesday
+# rule, no 7-day cap, no content slot, no runway. It publishes on the next release run after his tap, and only the
+# exact bytes the tap pinned. Every other row is on the content line, unchanged (E00568).
+PATCH = "patch"
+LANES = ("content", "patch")
+#: approvals.apply writes this on a rejected piece's row, followed by the ledger id and his note verbatim.
+REDRAFT_PREFIX = "REDRAFT owed:"
+#: The one kind of blocked_on a tap does NOT clear: a gate that can only be met after the approval (approvals.rack).
+POST_APPROVAL_PREFIX = "POST-APPROVAL:"
+
+
+def is_patch(row: dict) -> bool:
+    return row.get("kind") == PATCH
+
+
+def lane(row: dict) -> str:
+    return "patch" if is_patch(row) else "content"
+
 
 def entry_sha(entry: dict) -> str:
     """The pin on a piece's lessons-index entry: its text is site content Daniel approves like the page."""
@@ -165,6 +184,9 @@ def approval_drift(row: dict, owners: dict | None = None, approved: dict | None 
                 continue
             if replaceable(row, rel) and have in (approved or {}).get(rel, set()):
                 continue
+            # a racked patch: the tree still holds exactly the bytes it was approved to replace
+            if is_patch(row) and have == (row.get("replaces_blobs") or {}).get(rel):
+                continue
         out.append(f"{rel} (approved {want[:12]}, now {have[:12] if have else 'missing'})")
     return out
 
@@ -177,10 +199,11 @@ def ready_date(row: dict) -> dt.date | None:
         return None
 
 
-def eligible_pieces(rows: list[dict]) -> tuple[list[dict], dict]:
-    """(pieces that may hold a slot, {id: drift}). A piece whose approved bytes changed holds no slot until
-    Daniel rules and previews it again."""
-    pipeline = [r for r in rows if not r.get("_broken") and stage_index(r) < STAGES.index("PUBLISHED")]
+def eligible_pieces(rows: list[dict], line: str = "content") -> tuple[list[dict], dict]:
+    """(pieces that may hold a slot, {id: drift}) on one line. A piece whose approved bytes changed holds no slot
+    until Daniel rules and previews it again. The content line is the default: a patch never holds a content slot."""
+    pipeline = [r for r in rows if not r.get("_broken") and stage_index(r) < STAGES.index("PUBLISHED")
+                and lane(r) == line]
     owners, approved = published_owners(rows), approved_bytes(rows)
     drifted = {r.get("id"): d for r in pipeline if stage_index(r) >= STAGES.index("RULED")
                for d in [approval_drift(r, owners, approved)] if d}
@@ -210,8 +233,12 @@ def build(today: dt.date) -> str:
     live = [r for r in rows if not r.get("_broken")]
 
     published = [r for r in live if stage_index(r) >= STAGES.index("PUBLISHED")]
-    pipeline = [r for r in live if stage_index(r) < STAGES.index("PUBLISHED")]
+    everything = [r for r in live if stage_index(r) < STAGES.index("PUBLISHED")]
+    pipeline = [r for r in everything if not is_patch(r)]          # the content line
+    patches = [r for r in everything if is_patch(r)]               # the patch line
     eligible, drifted = eligible_pieces(live)
+    patch_ready, patch_drifted = eligible_pieces(live, "patch")
+    drifted = {**drifted, **patch_drifted}
     owners = published_owners(live)
     live_drift = {r.get("id"): d for r in published for d in [approval_drift(r, owners)] if d}
 
@@ -254,6 +281,9 @@ def build(today: dt.date) -> str:
     A(f"{len(pipeline)} in the pipeline · {len(published)} published · "
       f"cadence Tuesday only, hard cap {PER_WEEK_CAP} per 7 days")
     A("")
+    A(f"*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** "
+      f"({len(patches)} open, {len(patch_ready)} racked) runs outside that cadence — see its own section.*")
+    A("")
 
     if broken:
         A("## ⚠ UNPARSEABLE QUEUE ROWS")
@@ -272,7 +302,7 @@ def build(today: dt.date) -> str:
           "the piece holds no slot until he rules and previews it again (`PRODUCTION_PLAN` §2: never inherited "
           "from a previous yes). A **live** piece listed here means the site no longer serves what he approved.*")
         A("")
-        for r in pipeline:
+        for r in everything:
             if r.get("id") in drifted:
                 A(f"- {r.get('title','?')}: " + "; ".join(drifted[r.get("id")]))
         for r in published:
@@ -280,8 +310,23 @@ def build(today: dt.date) -> str:
                 A(f"- **live** {r.get('title','?')}: " + "; ".join(live_drift[r.get("id")]))
         A("")
 
+    # ---- what Daniel sent back ---------------------------------------------
+    redraft = [r for r in everything if str(r.get("blocked_on", "")).startswith(REDRAFT_PREFIX)]
+    if redraft:
+        A("## Redraft owed — Daniel sent these back")
+        A("")
+        A("*A REJECT tap (`tools/approvals.py apply`) puts the piece back at DRAFTED with his note verbatim. "
+          "The redraft is a new commit and comes back to him as a new tile.*")
+        A("")
+        A("| piece | line | branch | his ruling, verbatim |")
+        A("|---|---|---|---|")
+        for r in redraft:
+            said = " ".join(str(r["blocked_on"])[len(REDRAFT_PREFIX):].split()).replace("|", "\\|")
+            A(f"| {r.get('title','?')} | {lane(r)} | `{r.get('branch','?')}` | {said} |")
+        A("")
+
     # ---- what is blocked on Daniel -----------------------------------------
-    on_daniel = [r for r in pipeline if r.get("stage") in ("RULED", "REVIEWED") or r.get("id") in drifted]
+    on_daniel = [r for r in everything if r.get("stage") in ("RULED", "REVIEWED") or r.get("id") in drifted]
     A("## Waiting on Daniel")
     A("")
     if not on_daniel:
@@ -298,7 +343,7 @@ def build(today: dt.date) -> str:
     A("")
 
     # ---- the calendar -------------------------------------------------------
-    A("## The next 12 slots")
+    A("## The content line: the next 12 slots")
     A("")
     A(f"*A piece must be at **PREVIEWED** by **T-{REVIEW_LEAD_DAYS} days** to hold a slot "
       f"(`PRODUCTION_PLAN` §3). An empty slot skips and says so.*")
@@ -306,9 +351,36 @@ def build(today: dt.date) -> str:
     A("| slot | piece | review by | note |")
     A("|---|---|---|---|")
     for s, piece, note in assigned:
+        if piece is not None and piece.get("blocked_on"):
+            note = (note + "; " if note else "") + f"**RELEASE WILL REFUSE — blocked_on: {piece['blocked_on']}**"
         deadline = (s - dt.timedelta(days=REVIEW_LEAD_DAYS)).isoformat()
         title = piece.get("title", "?") if piece else "— *(skip)* —"
         A(f"| **{s.isoformat()}** {s.strftime('%a')} | {title} | {deadline if piece else '—'} | {note} |")
+    A("")
+
+    # ---- the patch line -----------------------------------------------------
+    A("## The patch line")
+    A("")
+    A("*Fixes to published pages and site furniture (`kind: patch`). Outside the content cadence: no Tuesday rule, "
+      "no 7-day cap, no content slot, no runway. A tapped patch publishes on the next release run (the daily "
+      "08:30 job), exact pinned bytes only, logged with lane `patch`.*")
+    A("")
+    ready_ids = {r.get("id") for r in patch_ready}
+    shipped = [r for r in published if is_patch(r)]
+    if not patches and not shipped:
+        A("*No patches open.*")
+    for r in sorted(patches, key=lambda x: (str(x.get("since", "")), x.get("order", 999), x.get("id", ""))):
+        if r.get("id") in drifted:
+            state = "changed since his approval: back with Daniel"
+        elif r.get("blocked_on"):
+            state = f"**BLOCKED: {r['blocked_on']}** (release will refuse)"
+        elif r.get("id") in ready_ids:
+            state = "racked: publishes on the next release run"
+        else:
+            state = f"waiting on {STAGE_OWNER.get(r.get('stage', 'SOURCE'), '?')} at {r.get('stage', 'SOURCE')}"
+        A(f"- {r.get('title','?')} (`{r.get('id')}`) — {state}")
+    for r in sorted(shipped, key=lambda x: str(x.get("published", "")), reverse=True)[:5]:
+        A(f"- {r.get('title','?')} (`{r.get('id')}`) — published {r.get('published', '?')}")
     A("")
 
     # ---- the pipeline -------------------------------------------------------
@@ -378,7 +450,7 @@ def main() -> int:
 
     BOARD.write_text(out, encoding="utf-8", newline="\n")
     rows = [r for r in load_queue() if not r.get("_broken")]
-    elig = [r for r in rows if ELIGIBLE_STAGE <= stage_index(r) < STAGES.index("PUBLISHED")]
+    elig = [r for r in rows if ELIGIBLE_STAGE <= stage_index(r) < STAGES.index("PUBLISHED") and not is_patch(r)]
     print(f"wrote {BOARD}")
     print(f"  runway {len(elig)/PER_WEEK_CAP:.1f} weeks "
           f"({len(elig)} eligible / {PER_WEEK_CAP} per week)")

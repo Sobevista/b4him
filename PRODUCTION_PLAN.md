@@ -95,6 +95,29 @@ pinned (`approved_blobs`, plus the lessons-index furniture and entry text). Any 
 tap pulls the piece back to him. Every run writes a line to `release_log.jsonl`; a release day
 with no line is a job that did not run, never a quiet success.
 
+### Two lines: content and patches (ruled 2026-10-20)
+
+Daniel, on a site fix that had been queued like a lesson: *"it moves outside the queue. Then we will
+need to establish two different schedules. One is content and one is patches to the site."* And:
+*"This is a website fix it shouldnt take a week."*
+
+| | **Content line** | **Patch line** |
+|---|---|---|
+| What | a new page: lesson, exercise, write-up | `kind: "patch"` — a change to an already-published page or site furniture (layout, fixes, typos) |
+| When | Tuesdays, 1 per rolling 7 days, T-7 review (E00568, above) | the **next release run after his tap** (the daily 08:30 job), any day |
+| Slots, cap, runway | holds a slot, counts toward the cap, is runway | none: never takes or moves a content slot, never counts toward the cap |
+| Gate | his one tap (E00472) | the same tap, on a tile that says PATCH |
+| Bytes | only the pinned `approved_blobs` (binding, pins, re-hash) | the same checks, plus `replaces_blobs`: it may overwrite only the bytes main held at the tap |
+| Log | `release_log.jsonl`, lane `content` | its own line per patch, lane `patch` |
+
+The v3 binding covers the line, so a racked content row relabelled `patch` cannot jump the cadence.
+§5's "corrections publish immediately and outside the cadence" is now this line.
+
+**Two more rules from the same day.** A **REJECT** tap puts the piece back at DRAFTED on main with
+his note verbatim in `blocked_on` ("REDRAFT owed: <ledger id> <note>"), in the ledger, and on the
+board. **Release refuses any row whose `blocked_on` is not empty**; an APPROVE tap clears pre-tap
+labels (kept in `cleared_blocked_on`) except one starting `POST-APPROVAL:`.
+
 ## 4. Preview — what "seeing it" means
 
 A preview is the **rendered page on the local machine**, not a diff and not a description.
