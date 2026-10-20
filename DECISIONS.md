@@ -329,3 +329,27 @@ The advanced tier ships **Builder and Architect only**. The site offers four doo
   brought with it, and it is the cheapest possible link between the tool track and Tier 1.
 - **Drafting is approved and starts now.** The glossary is the first piece into the pipeline
   because it is self-contained and gives every other lesson something to link to.
+
+## D21 — Headings are Title Case. LOCKED 2026-10-20
+
+Daniel, rejecting Glossary II (ledger E00615): *"The titles need Sentence Structure or whatever it
+is for instance the heading 'The twenty' should read 'The Twenty'."* And on 2026-10-20: *"The
+redraft needs to look at all the headings ... headings as a whole"*; *"change the headings."* So
+the rule is site-wide, not a Glossary fix.
+
+**Headings use Title Case (Chicago):**
+
+- Capitalise the **first and last word**, the **first word after a colon, dash or "·"**, and
+  **every major word** — pronouns, verbs, *Is*, *That*, and both parts of a hyphenated word
+  (*Bottom-Up*, *Hands-On*).
+- Lowercase **articles** (a, an, the), **coordinating conjunctions** (and, but, or, nor, for, so,
+  yet), **"to"**, and **prepositions of four letters or fewer** (at, by, for, from, in, into, of,
+  off, on, over, per, up, via, with) — unless first or last.
+- **Code terms and acronyms as written**: n8n, JSON, AI, Run_ID.
+- **Covers** `<title>`, h1–h6, track and section labels, table headers, nav and pager link titles.
+- **Does not cover** body sentences and blurbs: they stay sentence case. A heading that is a
+  **full sentence ending in a period** stays sentence case (the Writing page's laws).
+
+The word-level list is the working spec Claude applied to his instruction, standing unless he
+vetoes it. First applied by SITE-PATCH-HEADINGS-1 to every published page except Glossary I
+(patched separately) and pages racked for release (patching those would void their approvals).
