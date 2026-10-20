@@ -708,3 +708,88 @@ def test_production_plan_names_the_two_lines_in_daniels_words():
     assert "it moves outside the queue" in text and "two different schedules" in text
     assert "shouldnt take a week" in text or "shouldn't take a week" in text
     assert "patch line" in text.lower() and "content line" in text.lower()
+
+
+# ================================================================ release guard: a patch that pins the index
+INDEX = "lessons/index.html"
+FURN = "tools/tracks/n8n.html"
+A_ENTRY = {"track": "n8n", "numeral": "I", "href": "/lessons/a/", "title": "A", "blurb": "Words."}
+
+
+@pytest.fixture
+def pinned_index(tmp_path, monkeypatch):
+    """Live 2026-10-20: SITE-PATCH-HEADINGS-1 pinned lessons/index.html (static headings), SITE-PATCH-HEADINGS-2
+    re-pinned track furniture. One run, --push. A published content row lists one entry on the n8n track."""
+    root = init_repo(tmp_path, monkeypatch)
+    furn_old = pb.blob_sha(root / FURN)
+    c0 = {"id": "C0", "order": 1, "title": "A", "stage": "PUBLISHED", "published": "2026-10-06",
+          "index_entry": A_ENTRY, "approved_index_entry": pb.entry_sha(A_ENTRY),
+          "approved_blobs": {"lessons/a/index.html": pb.blob_sha(root / "lessons/a/index.html"), FURN: furn_old}}
+    shell = "<nav></nav>\n<h1>the lessons</h1>\n\n<!-- b4him:track n8n (generated) -->\n<!-- /b4him:track n8n -->\n"
+    (root / INDEX).write_text(release.render_tracks(shell, [c0]), encoding="utf-8", newline="\n")
+    write_queue(root, c0, msg="base")
+    idx_old = pb.blob_sha(root / INDEX)
+
+    def store(text):
+        src = tmp_path / "src.bin"
+        src.write_bytes(text.encode("utf-8"))
+        return g(root, "hash-object", "-w", str(src))
+    idx_new = store((root / INDEX).read_text(encoding="utf-8").replace("the lessons", "The Lessons"))
+    furn_new = store((root / FURN).read_text(encoding="utf-8").replace("The n8n track", "The n8n Track"))
+    base = {"kind": "patch", "stage": "PREVIEWED", "previewed": "2026-10-19", "since": "2026-10-19"}
+    h1 = v3_testkit.bind(dict(base, id="H1", order=90, title="Index headings",
+                              approved_blobs={INDEX: idx_new}, replaces_blobs={INDEX: idx_old}))
+    h2 = v3_testkit.bind(dict(base, id="H2", order=91, title="Track headings",
+                              approved_blobs={FURN: furn_new}, replaces_blobs={FURN: furn_old}))
+    write_queue(root, c0, h1, h2, msg="racked")
+    bare = tmp_path / "origin.git"
+    g(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    g(root, "remote", "add", "origin", str(bare))
+    g(root, "push", "-q", "origin", "main")
+    return root, bare, idx_new, furn_new
+
+
+def test_a_patch_pinning_the_index_then_a_furniture_patch_both_push_in_one_run(pinned_index):
+    root, bare, idx_new, furn_new = pinned_index
+    args = argparse.Namespace(push=True, verify_live=False, live_minutes=0)
+    entry = {"date": TUE.isoformat(), "mode": "apply"}
+    with release.scheduled_entry(TUE):
+        assert release.run(args, TUE, entry) == 0, entry
+    assert [(p["piece"], p["outcome"]) for p in entry["patch_outcomes"]] == \
+        [("H1", "PUSHED-UNVERIFIED"), ("H2", "PUSHED-UNVERIFIED")], entry
+    assert g(bare, "rev-parse", "main") == g(root, "rev-parse", "HEAD")
+    subjects = g(root, "log", "-2", "--format=%s").splitlines()
+    assert subjects[0].startswith("PATCHED H2") and subjects[1].startswith("PATCHED H1"), subjects
+    h1_commit = g(root, "rev-parse", "HEAD~1")
+    assert g(root, "rev-parse", f"{h1_commit}:{INDEX}") == idx_new          # H1 shipped exactly its pinned index
+    # H2's index is generated on top of H1's: H1's static heading kept, H2's furniture rendered in
+    index = (root / INDEX).read_text(encoding="utf-8")
+    assert "The Lessons" in index and "The n8n Track" in index and "the lessons" not in index
+    assert pb.blob_sha(root / FURN) == furn_new
+
+
+def test_a_pinned_index_commit_carrying_other_index_text_is_not_a_release(pinned_index):
+    root, bare, idx_new, furn_new = pinned_index
+    with release.scheduled_entry(TUE):
+        release.run(SCHEDULED, TUE, {"date": TUE.isoformat(), "mode": "apply"})
+    h1_commit = g(root, "rev-parse", "HEAD~1")
+    h1 = qrow("H1")
+    assert release.is_release_of(h1_commit, release.commit_paths(h1_commit), h1)
+    # the same row, but the commit's index is not the pinned blob: refused
+    g(root, "checkout", "-q", "-b", "smuggle", h1_commit)
+    (root / INDEX).write_text((root / INDEX).read_text(encoding="utf-8") + "<p>unapproved</p>\n",
+                              encoding="utf-8", newline="\n")
+    g(root, "commit", "-q", "-a", "--amend", "--no-edit")
+    forged = g(root, "rev-parse", "HEAD")
+    assert not release.is_release_of(forged, release.commit_paths(forged), h1)
+    # H2 does not pin the index: its release still faces the re-render check, so extra index text is refused there
+    g(root, "checkout", "-q", "main")
+    h2_commit = g(root, "rev-parse", "HEAD")
+    h2 = qrow("H2")
+    assert release.is_release_of(h2_commit, release.commit_paths(h2_commit), h2)
+    g(root, "checkout", "-q", "-b", "smuggle2", h2_commit)
+    (root / INDEX).write_text((root / INDEX).read_text(encoding="utf-8") + "<p>unapproved</p>\n",
+                              encoding="utf-8", newline="\n")
+    g(root, "commit", "-q", "-a", "--amend", "--no-edit")
+    forged2 = g(root, "rev-parse", "HEAD")
+    assert not release.is_release_of(forged2, release.commit_paths(forged2), h2)

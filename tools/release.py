@@ -495,6 +495,11 @@ def is_release_of(h: str, paths: set[str], row: dict) -> bool:
         if "lessons/index.html" not in paths:
             return git("rev-parse", f"{h}:lessons/index.html", check=False) == \
                 git("rev-parse", f"{parent}:lessons/index.html", check=False)
+        if "lessons/index.html" in hit:
+            # the row PINS the index (a patch to its static text, 2026-10-20 SITE-PATCH-HEADINGS-1): the blob check
+            # above already bound the committed index to the exact bytes Daniel approved, so nothing else can ride in
+            # it; re-rendering the parent's index would wrongly demand the parent's static text back
+            return True
         # the index is generated: render the PARENT's index (so nav, head and footer are the parent's, not the
         # commit's own) with this commit's queue and furniture; it must equal the committed index exactly
         lines = git("show", f"{h}:production_queue.jsonl").splitlines()
