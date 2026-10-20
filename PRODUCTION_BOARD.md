@@ -2,10 +2,10 @@
 
 *Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 10.0 weeks** — healthy  
-*(target 6w · floor 3w · 10 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 11.0 weeks** — healthy  
+*(target 6w · floor 3w · 11 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-24 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
+25 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
 
 ## Waiting on Daniel
 
@@ -27,7 +27,7 @@
 | **2026-12-15** Tue | Success for Doing Nothing | 2026-12-08 |  |
 | **2026-12-22** Tue | Ruled Is Not Applied | 2026-12-15 |  |
 | **2026-12-29** Tue | A Null Result Is Only as Strong as the Search Behind It | 2026-12-22 |  |
-| **2027-01-05** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
+| **2027-01-05** Tue | The Instrument Measures You First | 2026-12-29 |  |
 | **2027-01-12** Tue | — *(skip)* — | — | no eligible piece - SLOT SKIPS (recorded, not backfilled) |
 
 ## The pipeline, by stage
@@ -54,7 +54,7 @@
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 10
+**PREVIEWED** (DANIEL) — 11
   - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js`
   - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
@@ -65,6 +65,7 @@
   - Success for Doing Nothing · source: `Knowledge_Base/Teaching/Module_21_Success_For_Doing_Nothing.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
   - Ruled Is Not Applied · source: `Knowledge_Base/Teaching/Module_20_Ruled_Is_Not_Applied.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
   - A Null Result Is Only as Strong as the Search Behind It · source: `Knowledge_Base/Teaching/Module_18_A_Null_Result_Is_Only_As_Strong_As_The_Search.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
+  - The Instrument Measures You First · source: `Knowledge_Base/Teaching/Module_17_The_Instrument_Measures_You_First.md` · **BLOCKED: stage 2: independent name check by a seat that did not write the page**
 
 **SCHEDULED** (the board) — 0
 
