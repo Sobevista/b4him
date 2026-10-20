@@ -2,10 +2,10 @@
 
 *Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 13.0 weeks** — healthy  
-*(target 6w · floor 3w · 13 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 12.0 weeks** — healthy  
+*(target 6w · floor 3w · 12 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-27 in the pipeline · 0 published · cadence Tuesday only, hard cap 1 per 7 days
+26 in the pipeline · 1 published · cadence Tuesday only, hard cap 1 per 7 days
 
 ## Waiting on Daniel
 
@@ -17,18 +17,18 @@
 
 | slot | piece | review by | note |
 |---|---|---|---|
-| **2026-10-27** Tue | Glossary I - Beginner terms | 2026-10-20 |  |
-| **2026-11-03** Tue | Silence Is Not a Grade - the gate that fails open | 2026-10-27 |  |
-| **2026-11-10** Tue | A Convention Without Enforcement Is a Preference | 2026-11-03 |  |
-| **2026-11-17** Tue | The Tripod - three kinds of checking | 2026-11-10 |  |
-| **2026-11-24** Tue | The Second Oracle - green proves you met your criteria | 2026-11-17 |  |
-| **2026-12-01** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-11-24 |  |
-| **2026-12-08** Tue | Math on the Table - locking parameters before the machine runs | 2026-12-01 |  |
-| **2026-12-15** Tue | Success for Doing Nothing | 2026-12-08 |  |
-| **2026-12-22** Tue | Ruled Is Not Applied | 2026-12-15 |  |
-| **2026-12-29** Tue | A Null Result Is Only as Strong as the Search Behind It | 2026-12-22 |  |
-| **2027-01-05** Tue | The Instrument Measures You First | 2026-12-29 |  |
-| **2027-01-12** Tue | Grade Each Leg Only on the Axis It Can Carry | 2027-01-05 |  |
+| **2026-10-27** Tue | Silence Is Not a Grade - the gate that fails open | 2026-10-20 |  |
+| **2026-11-03** Tue | A Convention Without Enforcement Is a Preference | 2026-10-27 |  |
+| **2026-11-10** Tue | The Tripod - three kinds of checking | 2026-11-03 |  |
+| **2026-11-17** Tue | The Second Oracle - green proves you met your criteria | 2026-11-10 |  |
+| **2026-11-24** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-11-17 |  |
+| **2026-12-01** Tue | Math on the Table - locking parameters before the machine runs | 2026-11-24 |  |
+| **2026-12-08** Tue | Success for Doing Nothing | 2026-12-01 |  |
+| **2026-12-15** Tue | Ruled Is Not Applied | 2026-12-08 |  |
+| **2026-12-22** Tue | A Null Result Is Only as Strong as the Search Behind It | 2026-12-15 |  |
+| **2026-12-29** Tue | The Instrument Measures You First | 2026-12-22 |  |
+| **2027-01-05** Tue | Grade Each Leg Only on the Axis It Can Carry | 2026-12-29 |  |
+| **2027-01-12** Tue | The Law Writer's Own Laws | 2027-01-05 |  |
 
 ## The pipeline, by stage
 
@@ -54,8 +54,7 @@
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 13
-  - Glossary I - Beginner terms · source: `Knowledge_Base/Teaching/_laptop_recovered/generators/build_glossary.js`
+**PREVIEWED** (DANIEL) — 12
   - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
   - The Tripod - three kinds of checking · source: `Knowledge_Base/Teaching/Module_11_The_Tripod.md` · **BLOCKED: Daniel's one tap on the rendered proof (E00472)**
@@ -75,7 +74,7 @@
 
 *Published pages are re-checked every 90 days (`PRODUCTION_PLAN` §5). Corrections publish immediately and outside the cadence.*
 
-*Nothing published yet, so nothing to maintain.*
+*Nothing due.*
 
 ---
 
