@@ -523,3 +523,41 @@ def test_break_own_queue_with_a_hidden_foreign_line_is_restored_as_found(site, m
     assert pb.QUEUE.read_bytes() == found
     assert state(site, flags=False) == before
     assert tag_target(site, "approved/G2") is None
+
+
+@pytest.mark.parametrize("verdict", ["APPROVE", "REJECT"])
+def test_break_own_staging_is_undone_or_the_refusal_is_loud_when_the_index_is_locked(site, monkeypatch, verdict):
+    """Round 2 (0a540ec). Another git process takes .git/index.lock right after approvals' `git add` and holds it
+    through the attempt: `git commit` fails on the lock, and so does the restore's `git reset -q -- <path>`, which is
+    check=False. approvals' own staged entries are its own writes: either they are undone (the index as before the
+    attempt once the lock is gone) or the refusal is LOUD (RuntimeError, as round 2 promises for a restore that could
+    not put something back). A clean OWED report over an index still holding approvals' staging is neither."""
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    before = state(site)
+    lock = site / ".git" / "index.lock"
+    real = approvals.git
+
+    def spy(*args, **kw):
+        out = real(*args, **kw)
+        if args and args[0] == "add":
+            lock.write_bytes(b"")
+        return out
+    monkeypatch.setattr(approvals, "git", spy)
+    led = FakeLedger()
+    led.rule(title, verdict)
+    raised = None
+    try:
+        report = approvals.apply(today=MON, led=led)
+    except RuntimeError as e:
+        raised = e
+    assert lock.exists()
+    lock.unlink()                                   # the other process let go: what did the attempt leave behind?
+    assert len(led.rulings_owed()) == 1
+    assert tag_target(site, "approved/G2") is None
+    if raised is None:
+        assert report and report[0].startswith("OWED"), report
+        assert state(site) == before                # a clean OWED must mean a clean restore, index included
+    else:
+        for rel in OWN:                             # loud, and everything it COULD put back is back
+            p = site / rel
+            assert (p.read_bytes() if p.exists() else None) == before["files"].get(rel)
