@@ -243,6 +243,30 @@ def test_a_refusal_never_touches_work_that_is_not_its_own(site, monkeypatch, kin
                                                                                    "?? scratch.txt"}
 
 
+def test_a_restore_that_cannot_put_a_file_back_still_restores_the_tag_and_fails_loudly(site, monkeypatch):
+    # breaker round 1, outside the gated file: a fault inside the restore used to abort it before the tag went back
+    import os
+    import stat
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    led = FakeLedger()
+    led.rule(title, "APPROVE")
+    board = site / "boards" / "APPROVALS_OWED.md"
+
+    def boom(*a, **k):
+        os.chmod(pb.QUEUE, stat.S_IREAD)        # approvals already rewrote the queue; now it cannot be put back
+        raise approvals.ApprovalError("injected")
+    monkeypatch.setattr(pb, "build", boom)
+    board_before = board.read_bytes()
+    try:
+        with pytest.raises(RuntimeError, match="could NOT undo its own writes: production_queue.jsonl"):
+            approvals.apply(today=MON, led=led)
+    finally:
+        os.chmod(pb.QUEUE, stat.S_IREAD | stat.S_IWRITE)
+    assert g(site, "tag", "--list", "approved/G2") == ""             # the tag came back first
+    assert board.read_bytes() == board_before                      # the other paths were still restored
+    assert len(led.rulings_owed()) == 1
+
+
 @pytest.mark.parametrize("verdict", ["APPROVE", "REJECT"])
 def test_a_refusal_undoes_its_own_partial_work_and_the_ruling_stays_owed(site, monkeypatch, verdict):
     title = approvals.offer("G2", "draft/g2", PROOF, today=MON)

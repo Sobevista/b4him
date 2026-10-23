@@ -580,7 +580,11 @@ def apply(today: dt.date | None = None, led=None) -> list[str]:
             # never a tree-wide reset/checkout, which discarded uncommitted work that was not approvals' own
             # (approvals-refusal-safe; the proving ground's first catch, 2026-10-15).
             if not committed[0]:
-                _restore(snap, tag_before)
+                failed = _restore(snap, tag_before)
+                if failed:
+                    # Never report a clean OWED over a tree it could not put back: loud, and the run exits non-zero.
+                    raise RuntimeError(f"{pid}: apply refused ({type(e).__name__}: {e}) and could NOT undo its own "
+                                       f"writes: {'; '.join(failed)}. A human looks before the next run.") from e
             if not isinstance(e, ApprovalError):
                 raise
             report.append(f"OWED     {verdict}  {pid} at {short}  could not apply: {e}")
@@ -593,20 +597,30 @@ def _snapshot() -> dict:
     return {p: (p.read_bytes() if p.exists() else None) for p in (board_path(), pb.QUEUE, pb.BOARD)}
 
 
-def _restore(snap: dict, tag_before: dict) -> None:
-    """Put back exactly the snapshot paths (index entry and bytes) and the one tag apply() may move. One git call
-    per path, so a path git does not know cannot stop the others being restored."""
-    for p, old in snap.items():
-        git("reset", "-q", "--", p.relative_to(repo()).as_posix(), check=False)
-        if old is None:
-            p.unlink(missing_ok=True)
-        else:
-            p.write_bytes(old)
+def _restore(snap: dict, tag_before: dict) -> list[str]:
+    """Put back exactly the one tag apply() may move and the snapshot paths (index entry and bytes). The tag goes
+    first and every step is isolated, so one step that fails (a read-only file, a locked index) cannot stop the
+    others. Returns what could not be put back; empty means everything was."""
+    failed = []
     for name, sha in tag_before.items():
-        if sha is None:
-            git("tag", "-d", name, check=False)
-        else:
-            git("tag", "-f", name, sha, check=False)
+        now = git("rev-parse", "--verify", "-q", f"refs/tags/{name}", check=False).strip() or None
+        if now == sha:
+            continue
+        try:
+            git("tag", "-d", name) if sha is None else git("tag", "-f", name, sha)
+        except ApprovalError as x:
+            failed.append(f"tag {name}: {x}")
+    for p, old in snap.items():
+        rel = p.relative_to(repo()).as_posix()
+        git("reset", "-q", "--", rel, check=False)      # a path git does not know is not an error here
+        try:
+            if old is None:
+                p.unlink(missing_ok=True)
+            elif not p.exists() or p.read_bytes() != old:
+                p.write_bytes(old)
+        except OSError as x:
+            failed.append(f"{rel}: {type(x).__name__}: {x}")
+    return failed
 
 
 def main(argv=None) -> int:
