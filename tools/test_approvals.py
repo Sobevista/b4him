@@ -179,3 +179,90 @@ def test_rulings_on_other_titles_are_ignored(site):
     led = FakeLedger()
     led.rule("MEM-5 something else entirely", "APPROVE")
     assert approvals.apply(today=MON, led=led) == []
+
+
+# ---- a refusal never discards work that is not approvals' own (build approvals-refusal-safe; ported from b4him
+# cb88137 onto main 3d08c51, where apply() also has the production-line-v2 REJECT path)
+def _snapshot_tree(root):
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*")
+            if p.is_file() and ".git" not in p.relative_to(root).parts}
+
+
+def _dirty_after_status_check(monkeypatch, root):
+    """Simulate work landing in the checkout right after approvals' clean-tree check passes."""
+    real = approvals.git
+    state = {"done": False}
+
+    def spy(*args, **kw):
+        out = real(*args, **kw)
+        if args[:2] == ("status", "--porcelain") and not state["done"]:
+            state["done"] = True
+            (root / "lessons" / "index.html").write_text("<nav>my unsaved edit</nav>\n", encoding="utf-8")
+            (root / "scratch.txt").write_text("untracked notes\n", encoding="utf-8")
+        return out
+    monkeypatch.setattr(approvals, "git", spy)
+
+
+@pytest.mark.parametrize("kind", ["dirty_tree", "not_on_main", "missing_commit", "bad_tile", "crash_mid_apply",
+                                  "unexpected_crash_mid_apply"])
+def test_a_refusal_never_touches_work_that_is_not_its_own(site, monkeypatch, kind):
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    led = FakeLedger()
+    if kind == "missing_commit":
+        title = title.replace(title.split(" at ")[1].split(" ")[0], "deadbee")
+    elif kind == "bad_tile":
+        title = title.replace("APPROVE G2", "APPROVE ZZ")
+    led.rule(title, "APPROVE")
+    if kind == "not_on_main":
+        g(site, "checkout", "-q", "-b", "other")
+    if kind in ("dirty_tree", "not_on_main"):
+        (site / "lessons" / "index.html").write_text("<nav>my unsaved edit</nav>\n", encoding="utf-8")
+        (site / "scratch.txt").write_text("untracked notes\n", encoding="utf-8")
+    else:
+        _dirty_after_status_check(monkeypatch, site)
+    if kind in ("crash_mid_apply", "unexpected_crash_mid_apply"):
+        exc = approvals.ApprovalError if kind == "crash_mid_apply" else KeyError
+
+        def boom(*a, **k):
+            raise exc("injected")
+        monkeypatch.setattr(pb, "build", boom)
+    before = None if kind not in ("dirty_tree", "not_on_main") else _snapshot_tree(site)
+    if kind == "unexpected_crash_mid_apply":
+        with pytest.raises(KeyError):
+            approvals.apply(today=MON, led=led)
+    else:
+        report = approvals.apply(today=MON, led=led)
+        assert report[0].startswith("OWED")
+        assert len(led.rulings_owed()) == 1
+    assert (site / "scratch.txt").read_text(encoding="utf-8") == "untracked notes\n"
+    assert (site / "lessons" / "index.html").read_text(encoding="utf-8") == "<nav>my unsaved edit</nav>\n"
+    if before is not None:
+        assert _snapshot_tree(site) == before
+    assert g(site, "diff", "--cached", "--name-only") == ""
+    assert {l.strip() for l in g(site, "status", "--porcelain").splitlines()} == {"M lessons/index.html",
+                                                                                   "?? scratch.txt"}
+
+
+@pytest.mark.parametrize("verdict", ["APPROVE", "REJECT"])
+def test_a_refusal_undoes_its_own_partial_work_and_the_ruling_stays_owed(site, monkeypatch, verdict):
+    title = approvals.offer("G2", "draft/g2", PROOF, today=MON)
+    before = _snapshot_tree(site)
+    led = FakeLedger()
+    led.rule(title, verdict)
+    seen = {}
+
+    def boom(*a, **k):
+        # by now approvals has itself written the queue and the board (and, for APPROVE, moved the tag)
+        seen["queue"] = pb.QUEUE.read_bytes() != before["production_queue.jsonl"]
+        seen["board"] = (site / "boards" / "APPROVALS_OWED.md").read_bytes() != before["boards/APPROVALS_OWED.md"]
+        seen["tag"] = bool(g(site, "tag", "--list", "approved/G2"))
+        raise approvals.ApprovalError("injected")
+    monkeypatch.setattr(pb, "build", boom)
+    report = approvals.apply(today=MON, led=led)
+    assert seen == {"queue": True, "board": True, "tag": verdict == "APPROVE"}   # it really had written first
+    assert report[0].startswith("OWED") and "injected" in report[0]
+    assert _snapshot_tree(site) == before                           # its own writes undone, nothing else touched
+    assert g(site, "status", "--porcelain") == ""
+    assert g(site, "tag", "--list", "approved/G2") == ""
+    assert len(led.rulings_owed()) == 1
+    assert next(r for r in pb.load_queue() if r["id"] == "G2")["stage"] == "SOURCE"

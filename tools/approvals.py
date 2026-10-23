@@ -528,12 +528,16 @@ def apply(today: dt.date | None = None, led=None) -> list[str]:
         title, verdict = ev["body"]["decision"], ev["body"]["verdict"]
         m = TITLE_RE.match(title)
         pid, short = m["id"], m["commit"]
+        snap, tag_before, committed = {}, {}, [False]     # empty until the checks pass: an early refusal touches nothing
         try:
             if git("rev-parse", "--abbrev-ref", "HEAD").strip() != "main":
                 raise ApprovalError("not on main")
             if git("status", "--porcelain").strip():
                 raise ApprovalError("main's tree is not clean")
             commit = git("rev-parse", "--verify", f"{short}^{{commit}}").strip()
+            snap = _snapshot()
+            prior = git("rev-parse", "--verify", "-q", f"refs/tags/approved/{pid}", check=False).strip()
+            tag_before = {f"approved/{pid}": prior or None}
             touched = [board_path()]
             note = ruling_note(ev)
             said = f'his note, verbatim: "{note}"' if note else "no note given"
@@ -557,8 +561,11 @@ def apply(today: dt.date | None = None, led=None) -> list[str]:
                             f"Back to DRAFTED on main's queue, redraft owed; {said}.\n" if verdict == "REJECT" else
                             "Nothing moved on the rack.\n"))
                 msg = fh.name
-            git("commit", "-q", "-F", msg)
-            Path(msg).unlink(missing_ok=True)
+            try:
+                git("commit", "-q", "-F", msg)
+                committed[0] = True
+            finally:
+                Path(msg).unlink(missing_ok=True)
             done = led.append("RULING", ACTOR, {
                 "decision": title, "verdict": verdict, "by": "daniel", "applied": True, "note": note,
                 "binds": f"APPLIED {today} to b4him by tools/approvals.py: commit {git('rev-parse', 'HEAD').strip()[:7]}"
@@ -568,11 +575,38 @@ def apply(today: dt.date | None = None, led=None) -> list[str]:
             led.append("SUPERSEDE", ACTOR, {"target": ev["id"], "replacement": done["id"],
                                             "reason": "application recorded; the original stays in the log forever"})
             report.append(f"APPLIED  {verdict}  {pid} at {commit[:7]}  ({ev['id']} -> {done['id']})")
-        except ApprovalError as e:
-            git("reset", "-q", "--", ".", check=False)
-            git("checkout", "--", ".", check=False)
+        except BaseException as e:
+            # A refusal undoes ONLY what this attempt wrote (the snapshot paths and the one tag), and nothing else:
+            # never a tree-wide reset/checkout, which discarded uncommitted work that was not approvals' own
+            # (approvals-refusal-safe; the proving ground's first catch, 2026-10-15).
+            if not committed[0]:
+                _restore(snap, tag_before)
+            if not isinstance(e, ApprovalError):
+                raise
             report.append(f"OWED     {verdict}  {pid} at {short}  could not apply: {e}")
     return report
+
+
+def _snapshot() -> dict:
+    """Prior bytes (None = absent) of every path apply() may write. Taken only once the tree is known clean, so
+    each path's index entry then equals HEAD's."""
+    return {p: (p.read_bytes() if p.exists() else None) for p in (board_path(), pb.QUEUE, pb.BOARD)}
+
+
+def _restore(snap: dict, tag_before: dict) -> None:
+    """Put back exactly the snapshot paths (index entry and bytes) and the one tag apply() may move. One git call
+    per path, so a path git does not know cannot stop the others being restored."""
+    for p, old in snap.items():
+        git("reset", "-q", "--", p.relative_to(repo()).as_posix(), check=False)
+        if old is None:
+            p.unlink(missing_ok=True)
+        else:
+            p.write_bytes(old)
+    for name, sha in tag_before.items():
+        if sha is None:
+            git("tag", "-d", name, check=False)
+        else:
+            git("tag", "-f", name, sha, check=False)
 
 
 def main(argv=None) -> int:
