@@ -612,7 +612,13 @@ def _restore(snap: dict, tag_before: dict) -> list[str]:
             failed.append(f"tag {name}: {x}")
     for p, old in snap.items():
         rel = p.relative_to(repo()).as_posix()
-        git("reset", "-q", "--", rel, check=False)      # a path git does not know is not an error here
+        try:
+            git("reset", "-q", "--", rel)
+        except ApprovalError as x:
+            # a path git does not know (in neither HEAD nor the index) is not a failure; a locked index is
+            # (breaker round 2: it left approvals' own staging behind under a quiet OWED)
+            if "did not match" not in str(x):
+                failed.append(f"index entry {rel}: {x}")
         try:
             if old is None:
                 p.unlink(missing_ok=True)
