@@ -936,12 +936,13 @@ def cmd_walk(repo: Path, today: dt.date, lesson: str | None = None) -> list[dict
     for b in broken:
         finding(repo, "M4", "S2", f"reader path broken: {b}", "no link route between the waypoints",
                 "site-maintainer (nav)")
-    if n:
-        return [receipt(repo, "M4", "FINDINGS", n, f"{jargon_total} unglossed jargon term(s), {len(broken)} broken "
-                                                   f"path segment(s); the four questions await the seat", evr)]
+    # ASSIST: the scanner's result is evidence (the findings above + the walkthrough file); the row's outcome is the
+    # seat's judgement, recorded with `maint_watch.py judge M4 ...`. The scanner never writes M4 FINDINGS itself, so a
+    # re-run cannot reset the cadence clock while the judgement is owed.
+    scan = (f"scanner found {jargon_total} unglossed jargon term(s) and {len(broken)} broken path segment(s), filed "
+            f"as M4 findings" if n else "evidence assembled, no mechanical finding")
     return [receipt(repo, "M4", "SKIP", None, mr.awaiting_why(
-        "M4", "managing-editor", "evidence assembled, no mechanical finding; the four walkthrough questions are the "
-        "seat's to answer"), evr)]
+        "M4", "managing-editor", f"{scan}; the four walkthrough questions are the seat's to answer"), evr)]
 
 
 # ---------------------------------------------------------------------------------------------------- A2 inventory
@@ -1012,11 +1013,10 @@ def cmd_inventory(repo: Path, today: dt.date) -> list[dict]:
     for d in dups:
         finding(repo, "A2", "S3", "duplicate visible text: " + " = ".join(d), "true-duplicate candidate; a merge or "
                 "removal is Daniel's ruling", "managing-editor (Editor); removal -> publisher (Daniel)")
-    if dups:
-        return [receipt(repo, "A2", "FINDINGS", len(dups), f"{len(inv)} pages inventoried; {len(dups)} duplicate "
-                                                           f"group(s); ROT judgement awaits the Editor", evr)]
+    # ASSIST: duplicates are scanner evidence (filed above); A2's outcome is the Editor's ROT judgement (`judge A2`)
+    scan = (f"{len(dups)} duplicate group(s), filed as A2 findings" if dups else "no duplicate")
     return [receipt(repo, "A2", "SKIP", None, mr.awaiting_why(
-        "A2", "managing-editor", f"{len(inv)} pages inventoried, no duplicate; the ROT (redundant / outdated / "
+        "A2", "managing-editor", f"{len(inv)} pages inventoried, {scan}; the ROT (redundant / outdated / "
         "trivial) judgement is the Editor's"), evr)]
 
 

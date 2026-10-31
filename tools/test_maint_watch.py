@@ -308,9 +308,33 @@ def test_m5_board_receipt_pass_unknown_findings(env):
     assert mw.run_check("M5", now(env), repo=env.tmp, table=t)["outcome"] == "UNKNOWN"
 
 
-def note(e, row, day):
+FULL_NOTE = ("# H review\nDate: {day}\nReviewer: reviewer\nReviewed: the publication gate since the last review\n"
+             "Verdict: no change\nFindings: none\n")
+TEMPLATE_NOTE = "Date: YYYY-MM-DD\nReviewer: <seat>\nReviewed: <what>\nVerdict: <verdict>\nFinding: <one per line>\n"
+
+
+def note(e, row, day, text=None):
     (e.md / "notes").mkdir(parents=True, exist_ok=True)
-    (e.md / "notes" / f"{row}_{day}.md").write_text("no change\n", encoding="utf-8")
+    (e.md / "notes" / f"{row}_{day}.md").write_text(FULL_NOTE.format(day=day) if text is None else text,
+                                                   encoding="utf-8")
+
+
+def test_a_note_is_read_not_just_its_filename(env):
+    """The GPT review: H2/H3 passed on a dated FILENAME. Empty or template-only is UNKNOWN, naming what is missing."""
+    t = mw.load_rows()
+    env.clock.set(2027, 1, 6, 9)
+    note(env, "H2", "2027-01-05", "")
+    r = mw.run_check("H2", now(env), table=t)
+    assert r["outcome"] == "UNKNOWN" and "Date: YYYY-MM-DD" in r["why"] and "Verdict" in r["why"]
+    assert r["evidence"] == ".maint/notes/H2_2027-01-05.md"
+    note(env, "H2", "2027-01-05", TEMPLATE_NOTE)
+    r = mw.run_check("H2", now(env), table=t)
+    assert r["outcome"] == "UNKNOWN" and all(x in r["why"] for x in ("Reviewer", "Reviewed", "Verdict", "Finding"))
+    note(env, "H2", "2027-01-05", FULL_NOTE.format(day="2027-01-05").replace("Reviewer: reviewer", "Reviewer: bob"))
+    assert "Reviewer: <a seat>" in mw.run_check("H2", now(env), table=t)["why"]        # not a seat
+    note(env, "H2", "2027-01-05", FULL_NOTE.format(day="2027-01-05").replace("Findings: none",
+                                                                             "Finding: section 5 cites a dead path"))
+    assert mw.run_check("H2", now(env), table=t)["outcome"] == "PASS"
 
 
 def test_h2_note_skip_unknown_findings_pass(env):

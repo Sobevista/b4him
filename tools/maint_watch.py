@@ -34,6 +34,17 @@ M5. The Editor's cadence-and-runway review. Its receipt is the production board'
 H2. The Independent Reviewer's publication-gate review note: `.maint/notes/H2_<YYYY-MM-DD>[_*].md`.
 H3. The 6-monthly re-read of the calendar and PRODUCTION_PLAN: `.maint/notes/H3_<YYYY-MM-DD>[_*].md` (an amendment
     proposal or "no change"). When due, the digest carries a reminder and the evidence-pack paths.
+NOTE FORMAT (H2, H3: .maint/notes/<row>_<YYYY-MM-DD>[_*].md). A dated filename is not a review; the note is read and
+    must carry these lines, each with a real value (a placeholder such as <...>, TODO or ___ does not count):
+        Date: 2027-01-12
+        Reviewer: reviewer                       (a seat id)
+        Reviewed: what was reviewed
+        Verdict: the verdict (e.g. "no change", "amend section 5")
+        Finding: one line per finding            (or the single line "Findings: none")
+    A note missing any part is UNKNOWN naming what is missing.
+ASSIST ROWS (M1b, M4, A2, Q1, Q2). The scanner's result is evidence (findings filed, the evidence file); the row's
+    receipt is `SKIP awaiting <seat> judgement` until the seat judges. The cadence + grace clock runs from the FIRST
+    awaiting line and no re-run or new scanner output resets it; only a close does (a judgement or a PASS).
 JUDGE. `judge <row> PASS|FINDINGS [n] --seat S --note T` closes an ASSIST row only when its latest receipt is an
     `awaiting ... judgement` SKIP written by that row's own runner (tools/maint_run.py RUNNERS) whose evidence file
     exists under .maint/; the judgement carries that evidence. D1-D3 and AUTOMATE rows are refused; `judge` and
@@ -246,15 +257,20 @@ def run_d1(release_log: Path, day: dt.date, now: dt.datetime) -> dict:
 
 # ------------------------------------------------------------------ D2: the calendar watch
 def last_done(mine: list[tuple[dt.datetime, dict]]) -> tuple[dt.datetime | None, dict | None]:
-    """The moment a row's clock restarts from. Every receipt counts, except that a run of `awaiting <seat> judgement`
-    SKIPs counts from its FIRST line: the seat has one cadence + grace from then to judge, and a weekly re-run that is
-    still waiting does not buy it more time."""
-    last, entry, prev_await = None, None, False
+    """The moment a row's clock restarts from. Every receipt counts, except while a judgement is owed: from the FIRST
+    `awaiting <seat> judgement` line the seat has one cadence + grace to judge, and nothing but a close restarts the
+    clock - not a re-run that is still waiting, not new scanner output (FINDINGS, SKIP), not an UNKNOWN. A close is
+    a PASS (a judgement, a note found, a witness) or a judgement's FINDINGS (`judged by <seat>: ...`)."""
+    last, entry, owed = None, None, False
     for t, e in mine:
-        aw = mr.is_awaiting(e)
-        if not (aw and prev_await):
-            last, entry = t, e
-        prev_await = aw
+        if owed:
+            closes = e.get("outcome") == "PASS" or (e.get("outcome") == "FINDINGS"
+                                                     and str(e.get("why") or "").startswith("judged by "))
+            if mr.is_awaiting(e) or not closes:
+                continue
+            last, entry, owed = t, e, False
+            continue
+        last, entry, owed = t, e, mr.is_awaiting(e)
     return last, entry
 
 
@@ -303,7 +319,9 @@ def overdue_rows(table: dict, receipts: list[dict], now: dt.datetime, skip=("D2"
             if o:
                 over.append(o)
             continue
-        if row.get("check") == "human":
+        if row.get("check") in ("human", "note", "board"):
+            # closed only by a PASS: Daniel's E-number, or a complete note / a board run found. The check's own
+            # awaiting, UNKNOWN (an incomplete note) and FINDINGS (note overdue) lines never restart the clock.
             mine = receipts_of(receipts, rid, {"PASS"})
             last, entry = (mine[-1] if mine else (None, None))
         else:
@@ -685,6 +703,40 @@ def newest_note(rid: str) -> tuple[dt.date, str] | None:
     return (best[0], f".maint/notes/{best[1]}") if best else None
 
 
+NOTE_FIELD = re.compile(r"^\s*[-*]?\s*(?P<k>date|reviewer|reviewed|verdict|findings?)\s*:\s*(?P<v>.*)$", re.I)
+PLACEHOLDER = re.compile(r"^(?:<.*>|\.\.\.|_+|tbd|todo|-|\[\s*\])?$", re.I)
+
+
+def note_problems(path: Path) -> list[str]:
+    """What a review note lacks (NOTE FORMAT in the module docstring); [] means complete. An empty file, or the
+    template with its placeholders left in, names every part it is missing."""
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        return [f"a readable file ({type(e).__name__})"]
+    import maint_pages as mp
+    got: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        m = NOTE_FIELD.match(line)
+        if m and not PLACEHOLDER.match(m["v"].strip()):
+            got.setdefault(m["k"].lower().rstrip("s"), []).append(m["v"].strip())
+    missing = []
+    try:
+        dt.date.fromisoformat((got.get("date") or [""])[0][:10])
+    except ValueError:
+        missing.append("Date: YYYY-MM-DD")
+    seat = (got.get("reviewer") or [""])[0].lower()
+    if seat not in mp.SEATS:
+        missing.append("Reviewer: <a seat>")
+    if not got.get("reviewed"):
+        missing.append("Reviewed: <what was reviewed>")
+    if not got.get("verdict"):
+        missing.append("Verdict: <the verdict>")
+    if not got.get("finding"):
+        missing.append("at least one 'Finding: ...' line, or 'Findings: none'")
+    return missing
+
+
 def run_check(rid: str, now: dt.datetime, repo: Path | None = None, table: dict | None = None) -> dict:
     try:
         table = table or load_rows()
@@ -696,6 +748,12 @@ def run_check(rid: str, now: dt.datetime, repo: Path | None = None, table: dict 
             n = newest_note(rid)
             last_day, evidence = (n if n else (None, None))
             what = "review note" if rid == "H2" else "re-read note"
+            if n:                              # a dated filename is not a review: read it
+                missing = note_problems(mr.maint_dir() / n[1][len(".maint/"):])
+                if missing:
+                    return mr.write_receipt(rid, "UNKNOWN", why=f"{what} {n[1]} is not a complete note: missing "
+                                            f"{', '.join(missing)} (see maint_watch.py NOTE FORMAT)",
+                                            evidence=n[1], tool=TOOL)
     except (Unknown, KeyError, ValueError) as e:
         return mr.write_receipt(rid, "UNKNOWN", why=f"cannot check: {e}", tool=TOOL)
     last = midnight(last_day, now.tzinfo) if last_day else None

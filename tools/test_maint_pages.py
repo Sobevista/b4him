@@ -432,14 +432,16 @@ def test_m4_findings_for_unglossed_jargon(tmp_path):
     repo = make_repo(tmp_path, {"lessons/alpha/index.html": page("Alpha", "<p>then i open the harness again later "
                                                                  "today and go home to rest for a while now.</p>")})
     r = mp.cmd_walk(repo, TODAY)[0]
-    assert r["outcome"] == "FINDINGS" and r["n"] == 1
+    # ASSIST: the scanner's result is evidence; the row waits on the seat's judgement (the GPT review: a scanner
+    # FINDINGS receipt left no way to record the judgement and reset the cadence clock on every run)
+    assert mr.is_awaiting(r) and "scanner found 1 unglossed jargon term(s)" in r["why"]
     assert findings(repo, "M4")[0]["route_to"].startswith("managing-editor")
 
 
 def test_m4_findings_for_a_broken_path(tmp_path):
     repo = make_repo(tmp_path, {"lessons/index.html": page("Lessons", "<p>no links</p>")})
     r = mp.cmd_walk(repo, TODAY)[0]
-    assert r["outcome"] == "FINDINGS" and "1 broken" in r["why"]
+    assert mr.is_awaiting(r) and "1 broken path segment(s)" in r["why"]
     assert findings(repo, "M4")[0]["severity"] == "S2"
 
 
@@ -465,7 +467,7 @@ def test_a2_findings_for_true_duplicates(tmp_path):
     repo = make_repo(tmp_path, {"blog/index.html": page("Same", "<p>coming soon</p>"),
                                 "videos/index.html": page("Same", "<p>coming soon</p>")})
     r = mp.cmd_inventory(repo, TODAY)[0]
-    assert r["outcome"] == "FINDINGS" and r["n"] == 1
+    assert mr.is_awaiting(r) and "1 duplicate group(s), filed as A2 findings" in r["why"]
     assert "Daniel" in findings(repo, "A2")[0]["route_to"]
 
 
