@@ -167,9 +167,9 @@ def write(p: Path, text: str) -> None:
     p.write_text(text, encoding="utf-8", newline="\n")
 
 
-def receipt(repo: Path, row: str, outcome: str, n=None, why="", evidence=None) -> dict:
+def receipt(repo: Path, row: str, outcome: str, n=None, why="", evidence=None, tool: str = TOOL) -> dict:
     with _maint_at(repo):
-        return mr.write_receipt(row, outcome, n, why, evidence, tool=TOOL)
+        return mr.write_receipt(row, outcome, n, why, evidence, tool=tool)
 
 
 def finding(repo: Path, row: str, sev: str, subject: str, detail: str, route: str) -> dict:
@@ -613,7 +613,10 @@ def cmd_genericize(repo: Path, today: dt.date) -> list[dict]:
     return [receipt(repo, "Q2", o, n if o == "FINDINGS" else None, why, evr)]
 
 
-def cmd_witness(repo: Path, today: dt.date, seat: str, date: str | None = None) -> list[dict]:
+def cmd_witness(repo: Path, today: dt.date, seat: str, date: str | None = None, tool: str = TOOL,
+                evidence: str | None = None) -> list[dict]:
+    """Record the witness. The close is written by its closer: `maint_watch.py witness <seat>` passes its own tool
+    and the awaiting line's evidence (the HAND CLOSE rule); this module's CLI routes there."""
     d = audits(repo)
     files = sorted(d.glob(f"{date}_genericize.json" if date else "*_genericize.json"))
     if not files:
@@ -630,7 +633,7 @@ def cmd_witness(repo: Path, today: dt.date, seat: str, date: str | None = None) 
     state["witness"] = {"seat": seat, "at": mr.now_utc().isoformat(timespec="seconds"), "head": head}
     evr, _ = _save_genericize(repo, state)
     o, n, why = genericize_outcome(state)
-    return [receipt(repo, "Q2", o, n if o == "FINDINGS" else None, why, evr)]
+    return [receipt(repo, "Q2", o, n if o == "FINDINGS" else None, why, evidence or evr, tool=tool)]
 
 
 # ------------------------------------------------------------------------------------------------------- Q1 reread
@@ -1048,8 +1051,10 @@ def main(argv=None) -> int:
             recs = cmd_people(repo, today)
         elif a.cmd == "genericize":
             recs = cmd_genericize(repo, today)
-        elif a.cmd == "witness":
-            recs = cmd_witness(repo, today, a.seat, a.date)
+        elif a.cmd == "witness":                    # the close is the closer's: routed through maint_watch.py
+            import maint_watch as mw
+            code = mw.main(["witness", a.seat, "--repo", str(repo)] + (["--date", a.date] if a.date else []))
+            return 2 if code == 1 else code
         elif a.cmd == "reread":
             recs = cmd_reread(repo, today)
         elif a.cmd == "hygiene":

@@ -626,25 +626,9 @@ def cmd_judge(a, now: dt.datetime) -> int:
     if rid in ("D1", "D2", "D3") or str(row.get("mode", "")).startswith("AUTOMATE"):
         print(f"REFUSED: {rid} is an AUTOMATE row; its own tool judges it, a person does not")
         return 1
-    try:
-        mine = receipts_of(mr.read_receipts(), rid)
-    except ValueError as e:
-        print(f"REFUSED: cannot read the receipts: {e}")
-        return 1
-    if not mine or not mr.is_awaiting(mine[-1][1]):
-        print(f"REFUSED: {rid}'s latest receipt is not `awaiting ... judgement` "
-              f"({(mine[-1][1]['outcome'] + ' ' + mine[-1][1]['why'][:60]) if mine else 'no receipt'}); run its "
-              f"tool first so there is an evidence pack to judge")
-        return 1
-    awaiting = mine[-1][1]
-    import maint_run
-    runner = maint_run.RUNNERS.get(rid, (None,))[0]
-    if Path(str(awaiting.get("tool") or "")).name != runner:
-        print(f"REFUSED: {rid}'s awaiting line was written by {awaiting.get('tool')!r}, not by its runner {runner}")
-        return 1
-    ev = awaiting.get("evidence")
-    if not ev or not str(ev).startswith(".maint/") or not (mr.maint_dir() / str(ev)[len(".maint/"):]).is_file():
-        print(f"REFUSED: {rid}'s awaiting line names no evidence on disk ({ev!r}); there is nothing to judge")
+    awaiting, why = awaiting_line(rid)
+    if awaiting is None:
+        print(f"REFUSED: {why}")
         return 1
     if seat not in mp.SEATS:
         print(f"REFUSED: {seat!r} is not a seat ({', '.join(mp.SEATS)})")
@@ -829,8 +813,54 @@ def cmd_human(a, now: dt.datetime) -> int:
     if not E_NUMBER.match(e):
         print(f"REFUSED: {a.e_number!r} is not a ledger E-number (E followed by digits, e.g. E00571)")
         return 1
+    aw, why = awaiting_line(rid)
+    if aw is None:
+        print(f"REFUSED: {why}")
+        return 1
     return show([mr.write_receipt(rid, "PASS", why=f"closed by Daniel's ledger {e} (recorded here; the ledger itself "
-                                  "is not read by this tool)", tool=TOOL)])
+                                  "is not read by this tool)", evidence=aw["evidence"], tool=TOOL)])
+
+
+def cmd_witness(a, now: dt.datetime) -> int:
+    """Q2's close: a seat that did not write the pages witnesses the sweep. Written HERE (the closer), carrying the
+    awaiting line's evidence; the rules of a valid witness are maint_pages.cmd_witness's."""
+    import maint_pages as mp
+    repo = Path(a.repo) if a.repo else mp.REPO
+    with mp._maint_at(repo):                   # the sweep's receipts live beside the tree it swept
+        aw, why = awaiting_line("Q2")
+        if aw is None:
+            print(f"REFUSED: {why}")
+            return 1
+        try:
+            recs = mp.cmd_witness(repo, now.date(), a.seat, a.date, tool=TOOL, evidence=aw["evidence"])
+        except mp.CouldNotRun as e:
+            print(f"REFUSED: {e}")
+            return 1
+    return show(recs)
+
+
+def awaiting_line(rid: str) -> tuple[dict | None, str]:
+    """The HAND CLOSE rule's precondition: (the row's latest receipt, "") when it is an `awaiting ...` SKIP written
+    by that row's own runner (tools/maint_run.py RUNNERS) whose evidence file exists under .maint/; else (None, why).
+    Every close (judge, human, confirm, witness) copies that evidence onto its own line, written by this tool."""
+    import maint_run
+    try:
+        mine = receipts_of(mr.read_receipts(), rid)
+    except ValueError as e:
+        return None, f"cannot read the receipts: {e}"
+    if not mine or not mr.is_awaiting(mine[-1][1]):
+        last = mine[-1][1] if mine else None
+        return None, (f"{rid}'s latest receipt is not `awaiting ...` "
+                      f"({(last['outcome'] + ' ' + last['why'][:60]) if last else 'no receipt'}); run its tool first "
+                      f"so there is an evidence pack to close")
+    aw = mine[-1][1]
+    runner = maint_run.RUNNERS.get(rid, (None,))[0]
+    if Path(str(aw.get("tool") or "")).name != runner:
+        return None, f"{rid}'s awaiting line was written by {aw.get('tool')!r}, not by its runner {runner}"
+    ev = aw.get("evidence")
+    if not ev or not str(ev).startswith(".maint/") or not (mr.maint_dir() / str(ev)[len(".maint/"):]).is_file():
+        return None, f"{rid}'s awaiting line names no evidence on disk ({ev!r}); there is nothing to close"
+    return aw, ""
 
 
 # ------------------------------------------------------------------ W2: the weekly digest
@@ -918,7 +948,9 @@ def cmd_digest(a, now: dt.datetime) -> int:
         return show([mr.write_receipt("W2", "UNKNOWN", why=str(e), tool=TOOL)])
     pre = [c1_monitor_line(now)]
     checks = [run_check(r, now, table=table) for r in CHECK_ROWS]
-    pre += checks + fire_reminders(table, now)
+    # HUMAN reminders are written by their packs (tools/maint_human.py, the H1/A1/A3 runner), with the evidence a
+    # close must carry; the digest only lists what is due (DUE FOR DANIEL below).
+    pre += checks
     try:
         receipts, findings = mr.read_receipts(), mr.read_findings()
     except ValueError as e:
@@ -1064,6 +1096,11 @@ def cmd_confirm(a, now: dt.datetime) -> int:
     if not d:
         print("REFUSED: no drill is awaiting confirmation (run `maint_watch.py drill` first)")
         return 1
+    aw, why = awaiting_line("Q6")
+    if aw is None:
+        print(f"REFUSED: {why}")
+        return 1
+    ev = aw["evidence"]                        # the HAND CLOSE carries the drill's evidence
     skip = dt.date.fromisoformat(d["skip_date"])
     if a.at.lower() in ("never", "none", "fail"):
         _drill_append({"event": "confirmed", "at": now.isoformat(timespec="seconds"), "skip_date": d["skip_date"],
@@ -1071,7 +1108,7 @@ def cmd_confirm(a, now: dt.datetime) -> int:
         mr.write_finding("Q6", "S1", "alarm fire drill FAILED", f"the {skip} heartbeat was withheld and no alarm "
                          "arrived: the out-of-band alarm path is broken", "Release Manager + Daniel")
         return show([mr.write_receipt("Q6", "FINDINGS", n=1, why=f"drill FAIL: no alarm after the {skip} heartbeat "
-                                      "was withheld", tool=TOOL)])
+                                      "was withheld", evidence=ev, tool=TOOL)])
     try:
         if re.fullmatch(r"\d{1,2}:\d{2}", a.at):
             h, m = map(int, a.at.split(":"))
@@ -1088,7 +1125,7 @@ def cmd_confirm(a, now: dt.datetime) -> int:
     _drill_append({"event": "confirmed", "at": now.isoformat(timespec="seconds"), "skip_date": d["skip_date"],
                    "alarm": at.isoformat(timespec="minutes")})
     return show([mr.write_receipt("Q6", "PASS", why=f"alarm fired at {at:%H:%M} on {at:%Y-%m-%d} (drill withheld "
-                                  f"the {skip} heartbeat)", tool=TOOL)])
+                                  f"the {skip} heartbeat)", evidence=ev, tool=TOOL)])
 
 
 # ------------------------------------------------------------------ CLI
@@ -1109,6 +1146,10 @@ def main(argv=None) -> int:
     s = sub.add_parser("human", help="close a HUMAN row")
     s.add_argument("row")
     s.add_argument("e_number")
+    s = sub.add_parser("witness", help="close Q2: a seat that did not write the pages witnesses the sweep")
+    s.add_argument("seat")
+    s.add_argument("--date", help="which sweep (default: the newest)")
+    s.add_argument("--repo", help="the b4him checkout the sweep ran on (default: maint_pages' own)")
     s = sub.add_parser("judge", help="close an ASSIST row: the seat's judgement")
     s.add_argument("row")
     s.add_argument("outcome", choices=["PASS", "FINDINGS", "pass", "findings"])
@@ -1122,7 +1163,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    if a.now and a.cmd in ("judge", "human"):
+    if a.now and a.cmd in ("judge", "human", "witness"):
         print(f"REFUSED: `{a.cmd}` records a person's act; its receipt is stamped with the real clock only (no --now)")
         return 1
     if a.now:                                    # a fixed clock for the receipts too (tests, replays)
@@ -1144,6 +1185,8 @@ def main(argv=None) -> int:
         return cmd_one(a, now)
     if a.cmd == "judge":
         return cmd_judge(a, now)
+    if a.cmd == "witness":
+        return cmd_witness(a, now)
     return cmd_human(a, now)
 
 

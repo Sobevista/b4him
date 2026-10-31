@@ -10,8 +10,9 @@ row's receipt; it never rules. A HUMAN row closes only with his ledger E-number 
 
 RECEIPTS. A pack row (H1, A1) that is due: SKIP "awaiting Daniel's ruling" with the pack as evidence (the
 reminder; UNKNOWN is kept for "could not run"). Not due: SKIP with its next due date (the pack is still assembled, as a preview). A pack that cannot be
-assembled: UNKNOWN with why. A3: FINDINGS when the registration expires within 60 days (the calendar's "60 days
-before renewal") or carries a hold / redemption / pending-delete status; SKIP with the expiry date otherwise; UNKNOWN
+assembled: UNKNOWN with why. A3: `SKIP awaiting Daniel's ruling` with the RDAP evidence (and an S2 finding) when the
+registration expires within 60 days (the calendar's "60 days before renewal"); FINDINGS (S1) when it carries a hold /
+redemption / pending-delete status; SKIP with the expiry date otherwise; UNKNOWN
 when RDAP cannot be read. A3's renewal date is known only to RDAP, so tools/maint_run.py polls it every Monday.
 
 H1 SCREENSHOTS (harness LESSONS L-012, "A full-page screenshot of a tall page"). Each page is captured at 1280 and
@@ -321,9 +322,10 @@ def cmd_a3(repo: Path, now: dt.datetime) -> dict:
     if days <= WINDOW_DAYS and not closed:
         mr.write_finding("A3", "S2", f"{DOMAIN} expires in {days} days", f"expires {expires:%Y-%m-%d}; confirm "
                          "auto-renew and that the registrar's contact email reaches Daniel", "Daniel")
-        return mr.write_receipt("A3", "FINDINGS", n=1, why=f"expires {expires:%Y-%m-%d} ({days} days): the 60-day "
-                                f"window is open; confirm auto-renew and the registrar contact, then close with "
-                                f"maint_watch.py human A3 <E-number>", evidence=evr, tool=TOOL)
+        # the finding is filed (S2, above); the row waits on Daniel's ruling, which closes it (the HAND CLOSE rule)
+        return mr.write_receipt("A3", "SKIP", why=f"awaiting Daniel's ruling: expires {expires:%Y-%m-%d} ({days} "
+                                f"days), the 60-day window is open; confirm auto-renew and the registrar contact, then "
+                                f"close with maint_watch.py human A3 <E-number>", evidence=evr, tool=TOOL)
     tail = f"closed for this window ({fmt_t(closed[-1])})" if closed else f"the 60-day window opens {opens}"
     return mr.write_receipt("A3", "SKIP", why=f"not due: expires {expires:%Y-%m-%d} ({days} days); {tail}; status "
                             f"{', '.join(status) or 'none'}", evidence=evr, tool=TOOL)

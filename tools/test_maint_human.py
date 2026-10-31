@@ -129,7 +129,8 @@ def test_a3_rdap_alarms_60_days_ahead(md, monkeypatch):
     assert urls == [mh.BOOTSTRAP, "https://rdap.verisign.example/com/v1/domain/b4him.com"]   # https, via IANA
     rdap(monkeypatch, "2026-12-20T00:00:00Z")
     r = mh.cmd_a3(REPO, NOT_DUE)
-    assert r["outcome"] == "FINDINGS" and "the 60-day window is open" in r["why"]
+    assert mr.is_awaiting(r) and "the 60-day window is open" in r["why"] and r["evidence"].endswith("_rdap.json")
+    assert mr.read_findings()[-1]["severity"] == "S2"                    # the finding is still filed
     mr.write_receipt("A3", "PASS", why="closed by E01234", tool="maint_watch.py")
     assert mh.cmd_a3(REPO, NOT_DUE)["outcome"] == "SKIP"                  # closed for this window
 

@@ -1,0 +1,122 @@
+{
+ "total": 23,
+ "passes": 19,
+ "errors": 7,
+ "results": {
+  "http://127.0.0.1:50579/about/": [],
+  "http://127.0.0.1:50579/blog/": [],
+  "http://127.0.0.1:50579/games/": [
+   {
+    "code": "WCAG2AA.Principle2.Guideline2_4.2_4_1.H64.1",
+    "type": "error",
+    "typeCode": 1,
+    "message": "Iframe element requires a non-empty title attribute that identifies the frame.",
+    "context": "<iframe id=\"player-frame\" title=\"\" allow=\"fullscreen; gamepad; autoplay\"></iframe>",
+    "selector": "#player-frame",
+    "runner": "htmlcs",
+    "runnerExtras": {}
+   }
+  ],
+  "http://127.0.0.1:50579/": [],
+  "http://127.0.0.1:50579/lessons/anti-false-positive/": [],
+  "http://127.0.0.1:50579/lessons/backup-is-a-check/": [],
+  "http://127.0.0.1:50579/lessons/depth-chart/": [],
+  "http://127.0.0.1:50579/lessons/find-your-door/": [
+   {
+    "code": "WCAG2AA.Principle3.Guideline3_2.3_2_2.H32.2",
+    "type": "error",
+    "typeCode": 1,
+    "message": "This form does not contain a submit button, which creates issues for those who cannot submit the form using the keyboard. Submit buttons are INPUT elements with type attribute \"submit\" or \"image\", or BUTTON elements with type \"submit\" or omitted/invalid.",
+    "context": "<form class=\"lesson\" id=\"quiz\" aria-label=\"Find your door quiz\"><fieldset class=\"q\"><legend><sp...</form>",
+    "selector": "#quiz",
+    "runner": "htmlcs",
+    "runnerExtras": {}
+   }
+  ],
+  "http://127.0.0.1:50579/lessons/first-lap/": [],
+  "http://127.0.0.1:50579/lessons/flagged-not-scored/": [],
+  "http://127.0.0.1:50579/lessons/four-layers/": [],
+  "http://127.0.0.1:50579/lessons/fuse-box/": [],
+  "http://127.0.0.1:50579/lessons/git-chassis/": [],
+  "http://127.0.0.1:50579/lessons/glossary-beginner/": [],
+  "http://127.0.0.1:50579/lessons/": [
+   {
+    "code": "color-contrast",
+    "type": "error",
+    "typeCode": 1,
+    "message": "Elements must meet minimum color contrast ratio thresholds (https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=axeAPI)",
+    "context": "<span class=\"n\">★</span>",
+    "selector": "html > body > div > nav:nth-child(9) > a:nth-child(5) > span:nth-child(1)",
+    "runner": "axe",
+    "runnerExtras": {
+     "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+     "impact": "serious",
+     "needsFurtherReview": true,
+     "help": "Elements must meet minimum color contrast ratio thresholds",
+     "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=axeAPI"
+    }
+   }
+  ],
+  "http://127.0.0.1:50579/lessons/kill-test/": [],
+  "http://127.0.0.1:50579/lessons/law-you-cant-feel/": [],
+  "http://127.0.0.1:50579/lessons/mail-slot/": [],
+  "http://127.0.0.1:50579/lessons/reflection-queue/": [],
+  "http://127.0.0.1:50579/lessons/the-witness/": [],
+  "http://127.0.0.1:50579/tools/tracks/n8n.html": [
+   {
+    "code": "document-title",
+    "type": "error",
+    "typeCode": 1,
+    "message": "Documents must have <title> element to aid in navigation (https://dequeuniversity.com/rules/axe/4.13/document-title?application=axeAPI)",
+    "context": "<html><head></head><body><h2 class=\"l...</html>",
+    "selector": "html",
+    "runner": "axe",
+    "runnerExtras": {
+     "description": "Ensure each HTML document contains a non-empty <title> element",
+     "impact": "serious",
+     "needsFurtherReview": false,
+     "help": "Documents must have <title> element to aid in navigation",
+     "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/document-title?application=axeAPI"
+    }
+   },
+   {
+    "code": "html-has-lang",
+    "type": "error",
+    "typeCode": 1,
+    "message": "<html> element must have a lang attribute (https://dequeuniversity.com/rules/axe/4.13/html-has-lang?application=axeAPI)",
+    "context": "<html><head></head><body><h2 class=\"l...</html>",
+    "selector": "html",
+    "runner": "axe",
+    "runnerExtras": {
+     "description": "Ensure every HTML document has a lang attribute",
+     "impact": "serious",
+     "needsFurtherReview": false,
+     "help": "<html> element must have a lang attribute",
+     "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/html-has-lang?application=axeAPI"
+    }
+   },
+   {
+    "code": "WCAG2AA.Principle2.Guideline2_4.2_4_2.H25.1.NoTitleEl",
+    "type": "error",
+    "typeCode": 1,
+    "message": "A title should be provided for the document, using a non-empty title element in the head section.",
+    "context": "<head></head>",
+    "selector": "html > head",
+    "runner": "htmlcs",
+    "runnerExtras": {}
+   },
+   {
+    "code": "WCAG2AA.Principle3.Guideline3_1.3_1_1.H57.2",
+    "type": "error",
+    "typeCode": 1,
+    "message": "The html element should have a lang or xml:lang attribute which describes the language of the document.",
+    "context": "<html><head></head><body><h2 class=\"l...</html>",
+    "selector": "html",
+    "runner": "htmlcs",
+    "runnerExtras": {}
+   }
+  ],
+  "http://127.0.0.1:50579/videos/": [],
+  "http://127.0.0.1:50579/writing/": []
+ }
+}

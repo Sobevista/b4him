@@ -640,19 +640,23 @@ def test_digest_h3_reminder_with_evidence_pack_and_due_for_daniel(env, monkeypat
     assert "REMINDER: the re-read is due" in text and "seat/CALENDAR.md" in text and "PRODUCTION_PLAN.md" in text
     assert "**H1** due 2027-01-04" in text and "**A1** due 2027-01-04" in text and "**A3**" in text
     assert "screenshots" in text                         # H1's "what to look at" comes from the row table
-    h1 = last("H1")
-    assert mr.is_awaiting(h1) and "(on time)" in h1["why"]
+    # the digest lists what is due; the reminder with its evidence pack is the H1/A1/A3 runner's (maint_human.py)
+    assert not [r for r in mr.read_receipts() if r["row"] in ("H1", "A1", "A3")]
 
 
 # ------------------------------------------------------------------ HUMAN rows
-def test_human_reminder_fires_once_late_is_recorded_and_e_number_closes(env, capsys):
-    mw.main(["--now", "2027-01-06T09:00:00-05:00", "digest"])
-    mw.main(["--now", "2027-01-07T09:00:00-05:00", "digest"])
-    fired = [r for r in mr.read_receipts() if r["row"] == "A3"]
-    assert len(fired) == 1 and "late by 2 day(s)" in fired[0]["why"]
+def test_human_close_needs_the_packs_awaiting_line_and_carries_its_evidence(env, capsys):
+    env.clock.set(2027, 1, 7, 9)
+    assert mw.main(["human", "A3", "E00999"]) == 1                          # nothing awaits Daniel yet
+    (env.md / "audits").mkdir(parents=True, exist_ok=True)
+    (env.md / "audits" / "2027-01-07_rdap.json").write_text("{}", encoding="utf-8")
+    mr.write_receipt("A3", "SKIP", why="awaiting Daniel's ruling: expires 2027-03-01 (53 days)",
+                     evidence=".maint/audits/2027-01-07_rdap.json", tool="maint_human.py")
     assert mw.main(["--now", "2027-01-07T10:00:00-05:00", "human", "A3", "E00999"]) == 1    # never back-dated
     assert mw.main(["human", "A3", "E00999"]) == 0                                           # the clock's own time
-    assert last("A3")["outcome"] == "PASS" and "E00999" in last("A3")["why"]
+    close = last("A3")
+    assert close["outcome"] == "PASS" and "E00999" in close["why"]
+    assert close["evidence"] == ".maint/audits/2027-01-07_rdap.json" and close["tool"] == "tools/maint_watch.py"
     mw.main(["--now", "2027-01-11T09:00:00-05:00", "digest"])
     text = (env.md / "audits" / "2027-01-11_weekly.md").read_text(encoding="utf-8")
     assert "A3: not due; next 2028-01-03" in text
