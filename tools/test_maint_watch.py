@@ -299,6 +299,16 @@ def test_digest_empty_week_says_0_findings(env):
     assert code == 2                                     # C1 UNKNOWN is never rounded away
 
 
+def test_digest_uses_the_c1_readers_receipt_when_there_is_one(env):
+    env.clock.set(2026, 11, 2, 8)
+    mr.write_receipt("C1", "PASS", n=0, why="b4him: up, last 7 days uptime 100.000%", tool="headers_tls_check.py")
+    env.clock.set(2026, 11, 2, 9)
+    mw.main(["--now", "2026-11-02T09:00:00-04:00", "digest"])
+    text = (env.md / "audits" / "2026-11-02_weekly.md").read_text(encoding="utf-8")
+    assert "C1 uptime monitor: PASS b4him: up" in text
+    assert [r["tool"] for r in mr.read_receipts() if r["row"] == "C1"] == ["headers_tls_check.py"]
+
+
 def test_digest_lists_open_findings_and_unknowns_by_age(env):
     env.clock.set(2026, 10, 28, 9)
     mr.write_finding("D2", "S2", "OVERDUE W1", "x", "SM")

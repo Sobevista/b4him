@@ -504,13 +504,29 @@ def evidence_pack() -> list[str]:
             ".maint/audits/: " + (", ".join(audits[-26:]) if audits else "(none yet)")]
 
 
+C1_READER = "headers_tls_check.py"
+
+
+def c1_monitor_line(now: dt.datetime) -> dict:
+    """The digest's C1 line. The uptime reader (`headers_tls_check.py uptime`) writes C1's receipt; the digest uses
+    its newest one from the last 7 days. With none, the digest writes C1 UNKNOWN itself: never a silent PASS."""
+    try:
+        mine = [e for t, e in receipts_of(mr.read_receipts(), "C1")
+                if e.get("tool") == C1_READER and t > now - dt.timedelta(days=7)]
+    except ValueError:
+        mine = []
+    if mine:
+        return mine[-1]
+    return mr.write_receipt("C1", "UNKNOWN", why=f"no C1 reader receipt in the last 7 days: run `{C1_READER} "
+                            "uptime` (needs UPTIMEROBOT_API_KEY); status not read", tool=TOOL)
+
+
 def cmd_digest(a, now: dt.datetime) -> int:
     try:
         table = load_rows()
     except Unknown as e:
         return show([mr.write_receipt("W2", "UNKNOWN", why=str(e), tool=TOOL)])
-    pre = [mr.write_receipt("C1", "UNKNOWN", why="no uptime monitor reader: C1 needs Daniel's monitor account; "
-                            "status not read", tool=TOOL)]
+    pre = [c1_monitor_line(now)]
     checks = [run_check(r, now, table=table) for r in CHECK_ROWS]
     pre += checks + fire_reminders(table, now)
     try:
