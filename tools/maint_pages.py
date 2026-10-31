@@ -120,12 +120,13 @@ def site_base(repo: Path) -> str:
 
 
 def mdir(repo: Path) -> Path:
-    return Path(repo) / ".maint"
+    """MAINT_DIR when it is set (maint_receipt's own override), else <repo>/.maint."""
+    return Path(os.environ["MAINT_DIR"]) if os.environ.get("MAINT_DIR") else Path(repo) / ".maint"
 
 
 @contextlib.contextmanager
 def _maint_at(repo: Path):
-    """maint_receipt writes to MAINT_DIR or its own repo's .maint/; point it at `repo`'s for this one call."""
+    """maint_receipt writes to MAINT_DIR or its own repo's .maint/; pin it to mdir(repo) for this one call."""
     saved = os.environ.get("MAINT_DIR")
     os.environ["MAINT_DIR"] = str(mdir(repo))
     try:
@@ -158,7 +159,8 @@ def audits(repo: Path) -> Path:
 
 
 def rel(repo: Path, p: Path) -> str:
-    return p.relative_to(repo).as_posix()
+    """Evidence path as maint_receipt wants it: `.maint/<path inside the maintenance dir>`."""
+    return ".maint/" + p.resolve().relative_to(mdir(repo).resolve()).as_posix()
 
 
 def write(p: Path, text: str) -> None:
@@ -231,6 +233,8 @@ BLOCK = re.compile(r"(?i)</?(?:p|div|li|ul|ol|h[1-6]|section|article|main|aside|
                    r"pre|form|fieldset|legend|caption)\b[^>]*>")
 BLOCK_SEP = "\n.\n"
 SITE_CHROME = "(site chrome)"
+#: The per-page lines' row id. W3's own receipt is the SUMMARY line only.
+PAGE_ROW = "W3.page"
 
 
 def _blocks(html_text: str) -> str:
@@ -269,17 +273,41 @@ def tuned_registry(reg, repo: Path):
     return r2
 
 
-def exempt(res: dict, vocab: list[str]) -> dict:
-    """Drop a heuristic unknown-name hit only when it is the site's own title vocabulary; record what was dropped.
-    A known-person or age hit is never exempted. The outcome is recomputed with the CLI's mapping."""
+def in_vocab(w: str, vocab: list[str]) -> bool:
+    return bool(w) and any(f" {w} " in f" {v} " for v in vocab)
+
+
+def names_file_words(repo: Path) -> tuple[set[str], set[str]]:
+    """(full names, single name words), lower-case, from the git-ignored data/people_names.local.json when it exists.
+    Read only to REFUSE an exemption; nothing from it is written anywhere."""
+    p = Path(repo) / "data" / "people_names.local.json"
+    full: set[str] = set()
+    if p.exists():
+        try:
+            for person in json.loads(p.read_text(encoding="utf-8")).get("people", []):
+                full |= {" ".join(pr.WORD.findall(n)).lower() for n in person.get("names", []) if n}
+        except (OSError, ValueError, AttributeError):
+            pass
+    return full, {w for n in full for w in n.split()}
+
+
+CAP_PAIR = re.compile(r"^[A-Z][\w'’-]*\s+[A-Z][\w'’-]*$")
+
+
+def exempt(res: dict, is_vocab, names: tuple[set[str], set[str]] = (set(), set())) -> dict:
+    """Drop a heuristic unknown-name hit only when it is the title vocabulary of THIS page (is_vocab(words) is the
+    page's own <title>/<h1>, never another page's); record what was dropped. Never exempted: a known-person or age
+    hit, and a two-word Capitalised pair whose pair or either word is in the names file. The outcome is recomputed
+    with the CLI's mapping."""
     if res["exit"] == 2 and not res["findings"] and res["status"].startswith("COULD NOT RUN"):
         return res
+    full, single = names
     keep, dropped = [], []
-    padded = [f" {v} " for v in vocab]
     for f in res["findings"]:
         w = _words(f["text"])
-        if f["kind"] == "unknown-name" and w and any(f" {w} " in v for v in padded):
-            dropped.append({"text": f["text"], "why": "site title vocabulary (<title>/<h1>)"})
+        named = bool(CAP_PAIR.match(f["text"].strip())) and (w in full or any(x in single for x in w.split()))
+        if f["kind"] == "unknown-name" and not named and is_vocab(w):
+            dropped.append({"text": f["text"], "why": "this page's own title vocabulary (<title>/<h1>)"})
         else:
             keep.append(f)
     code = 1 if keep else (0 if res["known_names_loaded"] else 2)
@@ -302,20 +330,26 @@ def people_scan(repo: Path) -> dict:
     except pr.RegistryError as e:
         reg, reg_err = None, str(e)
     texts = {p: page_text(repo, p) for p in pages}
-    vocab = site_vocabulary(texts)
-    per, chrome = {}, []
+    vocab = {p: site_vocabulary({p: t}) for p, t in texts.items()}       # per page: never another page's titles
+    names = names_file_words(repo)
+    per, chrome, chrome_pages = {}, [], []
     for p in pages:
         body, ch = scan_html(texts[p])
         chrome += [c for c in ch if c not in chrome]
+        if ch:
+            chrome_pages.append(p)
         if reg is None:
             per[p] = {"exit": 2, "outcome": "UNKNOWN", "status": f"COULD NOT RUN: {reg_err}", "findings": [],
                       "known_names_loaded": False}
         else:
-            per[p] = exempt(people_page(body, reg), vocab)
+            per[p] = exempt(people_page(body, reg), lambda w, v=vocab[p]: in_vocab(w, v), names)
     if chrome and reg is not None:
-        # furniture is a list of separate items (menu links, a wordmark, footer spans): every tag edge separates
+        # furniture is a list of separate items (menu links, a wordmark, footer spans): every tag edge separates.
+        # The chrome is shared, so only words in the title of EVERY page that carries chrome (the site's own name)
+        # are its vocabulary: never one page's title lent to the whole site.
         items = BLOCK_SEP.join(re.sub(r"<[^>]+>", lambda m: BLOCK_SEP + m.group(0) + BLOCK_SEP, c) for c in chrome)
-        per[SITE_CHROME] = exempt(people_page(items, reg), vocab)
+        per[SITE_CHROME] = exempt(people_page(items, reg),
+                                  lambda w: all(in_vocab(w, vocab[p]) for p in chrome_pages), names)
         per[SITE_CHROME]["distinct_blocks"] = len(chrome)
     n = sum(len(v["findings"]) for v in per.values())
     unknown = [p for p, v in per.items() if not v["known_names_loaded"] or v["outcome"] == "UNKNOWN"]
@@ -336,14 +370,16 @@ def people_scan(repo: Path) -> dict:
     ex = sum(len(v.get("exempted", [])) for v in per.values())
     if pages:
         why += (f"; scan layer: body text per page + site chrome once ({per.get(SITE_CHROME, {}).get('distinct_blocks', 0)}"
-                f" distinct blocks); {ex} heuristic hit(s) exempted as site title vocabulary (listed in evidence)")
+                f" distinct blocks); {ex} heuristic hit(s) exempted as their own page's title vocabulary (listed in "
+                f"evidence)")
     return {"pages": per, "count": len(pages), "n": n, "outcome": outcome, "why": why, "head": head_sha(repo),
             "exempted": ex}
 
 
 def _classify(f: dict) -> tuple[str, str]:
-    """(severity, route) for a people finding: every hit is S1; a heuristic hit goes to the reviewer to confirm."""
-    return ("S1", HEURISTIC_ROUTE) if f["kind"] == "unknown-name" else ("S1", S1_ROUTE)
+    """(severity, route): a heuristic-only hit (unknown-name) is S3 "needs review", to the reviewer to confirm; a
+    known-name hit or any other rule break stays S1, to the Release Manager and Daniel at once."""
+    return ("S3", HEURISTIC_ROUTE) if f["kind"] == "unknown-name" else ("S1", S1_ROUTE)
 
 
 def cmd_people(repo: Path, today: dt.date) -> list[dict]:
@@ -358,9 +394,11 @@ def cmd_people(repo: Path, today: dt.date) -> list[dict]:
         for f in v["findings"]:
             groups.setdefault(_classify(f) + (f["kind"],), []).append(f["text"])
         for (sev, route, kind), texts in groups.items():
-            finding(repo, "W3", sev, f"{page}: {kind}", f"{len(texts)} hit(s); texts in {evr}", route)
+            subj = f"{page}: {kind}" + (" (needs review)" if sev == "S3" else "")
+            finding(repo, "W3", sev, subj, f"{len(texts)} hit(s); texts in {evr}", route)
         n = len(v["findings"]) if v["outcome"] == "FINDINGS" else None
-        out.append(receipt(repo, "W3", v["outcome"], n, f"{page}: {v['status']}", evr))
+        # the calendar's "log line per page", under its own row id so nothing mistakes it for W3's receipt
+        out.append(receipt(repo, PAGE_ROW, v["outcome"], n, f"{page}: {v['status']}", evr))
     out.append(receipt(repo, "W3", res["outcome"], res["n"] if res["outcome"] == "FINDINGS" else None,
                        f"SUMMARY {res['count']} pages: {res['why']}", evr))
     return out
@@ -413,12 +451,18 @@ def local_tokens(repo: Path) -> tuple[list[str], bool]:
     return toks, loaded
 
 
-def grep_tokens(repo: Path, tokens: list[str]) -> list[dict]:
-    """An independent `git grep` over the served text surface at HEAD (not people_registry, not the author's report)."""
+#: The one line that must name the tokens: D11's own rule, in DECISIONS.md. Recorded as exempt, never counted.
+D11_RULE_LINE = "Genericization is a hard rule"
+
+
+def grep_tokens(repo: Path, tokens: list[str], exempted: list | None = None) -> list[dict]:
+    """An independent `git grep` over EVERY served text file at HEAD, whatever its type (html, css, js, svg, md, json,
+    txt, xml...: Pages serves them all; `-I` skips binaries, which a grep cannot read). Not people_registry, not the
+    author's report. D11's own rule line is the one exemption, appended to `exempted`."""
     args = ["grep", "-n", "-I", "-i", "-F", "-w", "--full-name"]
     for t in tokens:
         args += ["-e", t]
-    args += ["HEAD", "--"] + [f"*{e}" for e in SERVED_ASSET_EXT]
+    args += ["HEAD", "--"]
     code, out = git(repo, *args, ok=(0, 1))
     hits = []
     for line in out.splitlines():
@@ -427,6 +471,10 @@ def grep_tokens(repo: Path, tokens: list[str]) -> list[dict]:
             continue
         _, path, ln, text = parts
         which = [t for t in tokens if re.search(rf"(?<!\w){re.escape(t)}(?!\w)", text, re.I)]
+        if path == "DECISIONS.md" and D11_RULE_LINE in text:
+            if exempted is not None:
+                exempted.append({"path": path, "line": int(ln), "why": "D11's own rule line names the tokens"})
+            continue
         hits.append({"path": path, "line": int(ln), "tokens": which, "text": text.strip()[:200]})
     return hits
 
@@ -483,8 +531,9 @@ def render_genericize(state: dict) -> str:
          "## 1. Independent git grep (D11)", "",
          f"- tokens from D11 (DECISIONS.md at HEAD): {state.get('d11_count', 0)}; local git-ignored tokens: "
          f"{state.get('local_count', 0)} (not echoed); client-name list loaded: {state['client_list_loaded']}",
-         f"- surface: tracked {', '.join(SERVED_ASSET_EXT)} at HEAD outside `.`/`_` paths. Not scanned: {NOT_SCANNED}",
-         ""]
+         f"- surface: every tracked text file at HEAD outside `.`/`_` paths, whatever its type (Pages serves them "
+         f"all). Not scanned: binary files (images, fonts), which a grep cannot read.",
+         f"- exempt: {len(state.get('exempted') or [])} line(s), D11's own rule line in DECISIONS.md", ""]
     if state.get("error"):
         L.append(f"**COULD NOT RUN:** {state['error']}")
     elif not state["hits"]:
@@ -510,7 +559,8 @@ def genericize_sweep(repo: Path, today: dt.date) -> dict:
         d11 = d11_tokens(repo)
         loc, loaded = local_tokens(repo)
         state.update(d11_count=len(d11), local_count=len(loc), client_list_loaded=loaded)
-        state["hits"] = grep_tokens(repo, d11 + loc)
+        state["exempted"] = []
+        state["hits"] = grep_tokens(repo, d11 + loc, state["exempted"])
     except CouldNotRun as e:
         state["error"] = str(e)
     w3 = people_scan(repo)

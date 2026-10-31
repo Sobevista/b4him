@@ -9,21 +9,34 @@ ran has a receipt in .maint/maintenance_log.jsonl.
     py tools/maint_run.py --all         every row in the table, now
     py tools/maint_run.py --row W1      one row (repeatable)
     py tools/maint_run.py --list        print what would run, run nothing
+    py tools/maint_run.py --patch-proof <tree>   E1: M1 + M1b + W1(a) + M2 on a patched tree, one proof file
 
 WHEN A ROW IS DUE (the calendar's Days paragraph, as tools/maint_rows.json carries it): daily rows every day; weekly
 rows on Monday; monthly rows on the first Monday of the month; quarterly, 6-monthly and annual rows on the first
 Monday of their months (the table's `months`, [ASSUMED] in maint_rows_build.py). Event rows (E1, E2) are never due
 on the clock; --all and --row give them a SKIP receipt saying why. E3, the standards watch, polls its feeds weekly
-(tools/standards_watch.py), so the table makes it a weekly row.
+(tools/standards_watch.py), so the table makes it a weekly row. A3 (domain registration, "60 days before renewal")
+is polled every Monday too: its due date is the registration's expiry minus 60 days, which only RDAP knows
+(tools/maint_human.py a3).
 
 ORDER. Every other row first, in table order; then the watcher's own rows (W2 digest, M5/H2/H3 checks, the HUMAN
-reminders, Q6); then D1, D2 and D3 last, so D2's overdue list and D3's heartbeat reflect the whole run. Schedule this
-after D1's 10:30 cutoff (the schtasks line is 10:35).
+reminders, Q6); then D1, D2 and D3 last, so D2's overdue list and D3's heartbeat reflect the whole run. It must run
+after D1's 10:30 cutoff: `py tools/maint_schedule.py` PRINTS the 10:35 daily schtasks line (nothing registers it until
+Daniel pastes it), and D2 alarms while that task is missing or has not run for 26 hours.
 
-ISOLATION. Each runner is its own process with a timeout. A runner that crashes, times out or exits without writing
-its row's receipt gets `UNKNOWN <why>` written for that row here; the run goes on. One runner may write several rows
-(linkcheck.py writes W1 and W1b; the digest writes C1/M5/H2/H3/H1/A1/A3 when it has something to say); a row already
-receipted earlier in this run is not run a second time.
+ISOLATION. Each runner is its own process with a timeout. A row's outcome is taken ONLY from a receipt written by
+THAT runner in THIS run (a log line after the run started, stamped at or after its start, whose tool is the runner's
+script); an older line never stands in. A runner that crashes, times out or exits without such a receipt gets
+`UNKNOWN <why>` written here; the run goes on. A non-zero exit that its receipts do not explain (exit 1 with no
+FINDINGS, exit 2 with no UNKNOWN/SKIP, any other code, or a timeout) turns that runner's PASS or SKIP into UNKNOWN: a
+partial run never reads as a pass. One runner may write several rows (linkcheck.py writes W1 and W1b; the digest writes
+M5/H2/H3 when it has something to say); a row already receipted earlier in this run is not run a second time.
+
+E1, THE PATCH PROOF. The patch line should call `py tools/maint_run.py --patch-proof <worktree of the patch>` before a
+template / nav / CSS patch is offered, attach the printed `.maint/proofs/<date>_<sha>/patch_proof.json` to the
+stage-2 record, and offer only on exit 0 (PASS) or after the FINDINGS are reviewed. The scanners' own receipts for the
+patched tree go under that proof's folder, never into the calendar's log; only the E1 receipt does. tools/approvals.py
+is NOT changed here: enforcement there is owed, and an E1 finding says so until it lands.
 
 Exit 0 every row run has a receipt · 2 a row's runner could not start (its tool is missing, or the process would not
 launch). FINDINGS and UNKNOWN are in the receipts, not in the exit code: D2 and the W2 digest are where they alarm.
@@ -73,9 +86,9 @@ RUNNERS: dict[str, tuple[str, tuple[str, ...], int]] = {
     "M5": ("maint_watch.py", ("check", "M5"), 2 * MIN),
     "H2": ("maint_watch.py", ("check", "H2"), 2 * MIN),
     "H3": ("maint_watch.py", ("check", "H3"), 2 * MIN),
-    "H1": ("maint_watch.py", ("one", "H1"), 2 * MIN),
-    "A1": ("maint_watch.py", ("one", "A1"), 2 * MIN),
-    "A3": ("maint_watch.py", ("one", "A3"), 2 * MIN),
+    "H1": ("maint_human.py", ("h1",), 20 * MIN),        # screenshots beside the D9 reference, then the reminder
+    "A1": ("maint_human.py", ("a1",), 5 * MIN),         # the WCAG-EM evidence pack, then the reminder
+    "A3": ("maint_human.py", ("a3",), 2 * MIN),         # RDAP: expiry and status, alarm 60 days ahead
     "Q6": ("maint_watch.py", ("drill",), 2 * MIN),
     # last: D1, then D2 (judges every row's receipts), then D3 (the heartbeat, fail if D1 or D2 is not PASS)
     "D1": ("maint_watch.py", ("one", "D1"), 2 * MIN),
@@ -86,11 +99,21 @@ WATCH_ROWS = ("W2", "M5", "H2", "H3", "H1", "A1", "A3", "Q6")
 LAST_ROWS = ("D1", "D2", "D3")
 #: Event rows have no clock and no runner here. Their receipt says why.
 EVENT_RECEIPTS = {
-    "E1": ("SKIP", "event row: runs on each template/nav/CSS patch before the tap (M1 + M1b + W1(a) + M2 on the "
-                   "patched tree); a calendar run is not that event"),
+    "E1": ("SKIP", "event row: each template/nav/CSS patch runs `maint_run.py --patch-proof <tree>` (M1 + M1b + W1(a) "
+                   "+ M2 on the patched tree) before the tap; a calendar run is not that event"),
     "E2": ("SKIP", "event row: each release's --verify-live outcome is judged by D1 (a release line that is not "
                    "PUBLISHED or SKIP, PUSHED-UNVERIFIED included, is a D1 finding)"),
 }
+
+
+#: Rows polled every Monday whatever their table cadence (see the docstring).
+WEEKLY_POLL = {"A3"}
+#: E1's four checks, in the calendar's order: (row, tool, args before the tree, args after, timeout).
+PROOF_STEPS = (("M1", "maint_quality.py", ("a11y", "--root"), (), 2 * HOUR),
+               ("M1b", "maint_quality.py", ("contrast", "--root"), (), HOUR),
+               ("W1", "linkcheck.py", ("--repo",), ("--internal-only",), HOUR),
+               ("M2", "maint_quality.py", ("perf", "--root"), (), 2 * HOUR))
+OWED = "E1 enforcement owed in tools/approvals.py"
 
 
 class CouldNotStart(Exception):
@@ -107,6 +130,8 @@ def is_due(row: dict, day: dt.date) -> bool:
     """The Days paragraph: daily every day; weekly Monday; monthly the first Monday; quarterly / 6-monthly / annual the
     first Monday of their months. Event rows never."""
     k = row.get("kind")
+    if row.get("id") in WEEKLY_POLL and day.weekday() == 0:
+        return True
     if k == "daily":
         return True
     if k == "weekly":
@@ -167,8 +192,21 @@ def _log_len() -> int:
     return len([x for x in p.read_text(encoding="utf-8-sig").splitlines() if x.strip()])
 
 
-def _new_receipts(since: int) -> list[dict]:
-    return [e for e in mr.read_receipts()[since:]]
+def _new_receipts(since: int, start: dt.datetime, tool: str) -> list[dict]:
+    """Receipts of THIS run of THIS tool: after the log position the run began at, stamped at or after its start,
+    written by the runner's own script."""
+    out = []
+    for e in mr.read_receipts()[since:]:
+        try:
+            t = dt.datetime.fromisoformat(str(e.get("at")))
+        except ValueError:
+            continue
+        if t >= start and Path(str(e.get("tool") or "")).name == tool:
+            out.append(e)
+    return out
+
+
+EXPLAINS = {1: {"FINDINGS"}, 2: {"UNKNOWN", "SKIP"}}
 
 
 def _tail(text: str, n: int = 160) -> str:
@@ -181,12 +219,14 @@ def run_tool(tool: str, args: tuple[str, ...], timeout: int, rows: list[str], to
     UNKNOWN written here naming why the tool did not write one."""
     script = (tools_dir or TOOLS_DIR) / tool
     before = _log_len()
-    started, why, code = True, "", None
+    start = mr.now_utc().replace(microsecond=0)
+    started, why, code, tail = True, "", None, ""
     if not script.is_file():
         started, why = False, f"runner could not start: {tool} is not in tools/"
     else:
         try:
             code, out, err = RUN([sys.executable, str(script), *args], timeout)
+            tail = ((_tail(err) or _tail(out)) if code else (_tail(out) or _tail(err))) or "no output"
             if code is None:
                 why = f"{tool} {' '.join(args)} timed out after {timeout} s and was stopped"
             else:                           # a Python traceback exits 1, like FINDINGS: the missing receipt is the tell
@@ -195,17 +235,83 @@ def run_tool(tool: str, args: tuple[str, ...], timeout: int, rows: list[str], to
         except CouldNotStart as e:
             started, why = False, f"runner could not start: {e}"
     try:
-        new = _new_receipts(before)
+        new = _new_receipts(before, start, tool)
     except ValueError as e:                 # the log itself is unreadable: say so for every row of this runner
         new, why = [], f"receipt log unreadable after {tool}: {e}"
-    got = {e["row"]: e for e in new}
+    got = {e["row"]: e for e in new}        # the last line per row wins (W3's per-page lines are row W3.page)
+    outs = {e["outcome"] for e in new}
+    unexplained = started and code != 0 and (code not in EXPLAINS or not (outs & EXPLAINS[code]))
     out_rows = {}
     for r in rows:
-        if r in got:
-            out_rows[r] = got[r]
-        else:
+        if r not in got:
             out_rows[r] = mr.write_receipt(r, "UNKNOWN", why=why.replace("{row}", r), tool=TOOL)
+        elif unexplained and got[r]["outcome"] in ("PASS", "SKIP"):
+            how = "timed out" if code is None else f"exited {code}"
+            out_rows[r] = mr.write_receipt(r, "UNKNOWN", why=f"{tool} {' '.join(args)} {how} after writing {r} "
+                                           f"{got[r]['outcome']}: a non-zero exit is not a pass ({tail})", tool=TOOL)
+        else:
+            out_rows[r] = got[r]
     return {"started": started, "code": code, "receipts": out_rows, "also": [e for e in new if e["row"] not in rows]}
+
+
+# ------------------------------------------------------------------ E1: the patch proof
+def owed_finding() -> None:
+    """One standing finding until approvals.py enforces the proof. Written once, not every run."""
+    try:
+        if any(f.get("row") == "E1" and f.get("subject") == OWED for f in mr.read_findings()):
+            return
+    except ValueError:
+        pass
+    mr.write_finding("E1", "S2", OWED, "the patch line can offer a template/nav/CSS patch without running "
+                     "`maint_run.py --patch-proof <tree>`; the calendar says it cannot. approvals.py was not changed "
+                     "by the maintenance build: wiring the proof into the offer is owed",
+                     "Release Manager (approvals.py) + Site Maintainer")
+
+
+def patch_proof(tree: Path) -> dict:
+    """E1: run M1, M1b, W1(a) and M2 on `tree`, write one proof file, write the E1 receipt."""
+    tree = Path(tree).resolve()
+    now = mr.now_utc()
+    p = subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True, encoding="utf-8",
+                       errors="replace")
+    if not tree.is_dir() or p.returncode:
+        owed_finding()
+        return mr.write_receipt("E1", "UNKNOWN", why=f"patch proof: {tree.name} is not a git checkout", tool=TOOL)
+    head = p.stdout.strip()
+    pdir = mr.maint_dir() / "proofs" / f"{now:%Y-%m-%d}_{head[:12]}"
+    sub = pdir / "maint"
+    sub.mkdir(parents=True, exist_ok=True)
+    steps, saved = [], os.environ.get("MAINT_DIR")
+    for row, tool, pre, post, timeout in PROOF_STEPS:
+        os.environ["MAINT_DIR"] = str(sub)       # the patched tree's receipts stay in the proof, not the calendar
+        try:
+            res = run_tool(tool, (*pre, str(tree), *post), timeout, [row])
+        finally:
+            if saved is None:
+                os.environ.pop("MAINT_DIR", None)
+            else:
+                os.environ["MAINT_DIR"] = saved
+        steps.append({"row": row, "tool": tool, "exit": res["code"], "receipt": res["receipts"][row]})
+    outs = [s["receipt"]["outcome"] for s in steps]
+    if "UNKNOWN" in outs:
+        outcome, n = "UNKNOWN", None
+    elif "FINDINGS" in outs:
+        outcome, n = "FINDINGS", sum(s["receipt"]["n"] or 0 for s in steps if s["receipt"]["outcome"] == "FINDINGS")
+    else:
+        outcome, n = "PASS", 0
+    proof = pdir / "patch_proof.json"
+    proof.write_text(json.dumps({"row": "E1", "tree": tree.name, "head": head, "at": now.isoformat(timespec="seconds"),
+                                 "outcome": outcome, "steps": steps,
+                                 "attach": "attach this file to the patch's stage-2 record; offer only on PASS or "
+                                           "after the FINDINGS are reviewed"}, indent=1, ensure_ascii=False) + "\n",
+                     encoding="utf-8", newline="\n")
+    owed_finding()
+    why = "; ".join(f"{s['row']} {s['receipt']['outcome']}" + (f" {s['receipt']['n']}" if s['receipt']['outcome'] ==
+                    "FINDINGS" else "") for s in steps) + f" on {head[:12]}"
+    if outcome == "UNKNOWN":
+        why = "patch proof incomplete: " + why
+    return mr.write_receipt("E1", outcome, n=n, why=why,
+                            evidence=".maint/" + proof.relative_to(mr.maint_dir()).as_posix(), tool=TOOL)
 
 
 # ------------------------------------------------------------------ the run
@@ -219,6 +325,8 @@ def run(ids: list[str], rows_by_id: dict[str, dict], tools_dir: Path | None = No
         if rid in EVENT_RECEIPTS or (row and row.get("kind") == "event"):
             outcome, why = EVENT_RECEIPTS.get(rid, ("SKIP", "event row: no clock, no runner"))
             done[rid] = mr.write_receipt(rid, outcome, why=why, tool=TOOL)
+            if rid == "E1":
+                owed_finding()
             continue
         if rid not in RUNNERS:
             could_not_start.append(rid)
@@ -242,11 +350,16 @@ def main(argv=None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--all", action="store_true", help="every row in the table, now")
     g.add_argument("--row", action="append", help="one row id (repeatable)")
+    g.add_argument("--patch-proof", metavar="TREE", help="E1: M1 + M1b + W1(a) + M2 on a patched tree")
     ap.add_argument("--date", help="the day whose due rows run (default today, local)")
     ap.add_argument("--list", action="store_true", help="print what would run; run nothing")
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if a.patch_proof:
+        r = patch_proof(Path(a.patch_proof))
+        print(json.dumps(r, ensure_ascii=False))
+        return {"PASS": 0, "FINDINGS": 1, "UNKNOWN": 2}[r["outcome"]]
     try:
         rows = load_table()
     except (OSError, ValueError, KeyError) as e:

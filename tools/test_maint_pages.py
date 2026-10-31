@@ -102,13 +102,12 @@ def nongit(tmp_path):
 
 # ------------------------------------------------------------------------------------------------- maint_receipt
 def test_receipts_land_in_the_scanned_repo_with_the_shared_shape(tmp_path, monkeypatch):
-    monkeypatch.setenv("MAINT_DIR", str(tmp_path / "elsewhere"))         # a stray MAINT_DIR does not win
+    monkeypatch.delenv("MAINT_DIR", raising=False)
     r = mp.receipt(tmp_path, "W3", "UNKNOWN", why="no names", evidence=".maint/x")
     assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"} and r["tool"] == mp.TOOL
     assert mp.read_jsonl(tmp_path / ".maint" / "maintenance_log.jsonl") == [r]
-    assert not (tmp_path / "elsewhere").exists()
     import os
-    assert os.environ["MAINT_DIR"] == str(tmp_path / "elsewhere")       # restored after the call
+    assert "MAINT_DIR" not in os.environ                                 # restored after the call
     for bad in (("W3", "OK"), ("W3", "FINDINGS")):                       # not an outcome; FINDINGS without n
         with pytest.raises(ValueError):
             mp.receipt(tmp_path, *bad)
@@ -118,6 +117,16 @@ def test_receipts_land_in_the_scanned_repo_with_the_shared_shape(tmp_path, monke
     assert set(f) == {"at", "row", "severity", "subject", "detail", "route_to"}
     with pytest.raises(ValueError):
         mp.finding(tmp_path, "W3", "S9", "s", "d", "r")
+
+
+def test_maint_dir_is_honoured(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    monkeypatch.setenv("MAINT_DIR", str(elsewhere))                      # the review: MAINT_DIR must win
+    recs = mp.cmd_people(repo, TODAY)
+    assert mp.read_jsonl(elsewhere / mr.LOG_NAME) and not (repo / ".maint").exists()
+    assert recs[-1]["evidence"] == ".maint/audits/2026-10-31_people.json"
+    assert (elsewhere / "audits" / "2026-10-31_people.json").exists()
 
 
 def test_served_pages_skip_dot_and_underscore_paths(tmp_path):
@@ -138,7 +147,7 @@ def test_runs_leave_the_tree_clean(tmp_path):
 def test_w3_unknown_without_the_names_file(tmp_path):
     repo = make_repo(tmp_path)
     recs = mp.cmd_people(repo, TODAY)
-    assert len(recs) == 5 and all(r["row"] == "W3" for r in recs)          # one per page + the summary
+    assert len(recs) == 5 and [r["row"] for r in recs] == [mp.PAGE_ROW] * 4 + ["W3"]   # per page + THE receipt
     assert recs[-1]["outcome"] == "UNKNOWN" and "people_names.local.json absent" in recs[-1]["why"]
     assert all(r["outcome"] == "UNKNOWN" for r in recs[:-1])
     assert recs[-1]["evidence"] == ".maint/audits/2026-10-31_people.json"
@@ -159,10 +168,10 @@ def test_w3_findings_route_s1_and_heuristic(tmp_path):
     recs = mp.cmd_people(repo, TODAY)
     assert recs[-1]["outcome"] == "FINDINGS" and recs[-1]["n"] == 2
     about = next(r for r in recs if r["why"].startswith("about/index.html"))
-    assert about["outcome"] == "FINDINGS" and about["n"] == 2
+    assert about["outcome"] == "FINDINGS" and about["n"] == 2 and about["row"] == mp.PAGE_ROW
     routes = {f["subject"]: (f["severity"], f["route_to"]) for f in findings(repo, "W3")}
-    assert routes["about/index.html: known-outside-rule"] == ("S1", mp.S1_ROUTE)
-    assert routes["about/index.html: unknown-name"] == ("S1", mp.HEURISTIC_ROUTE)
+    assert routes["about/index.html: known-outside-rule"] == ("S1", mp.S1_ROUTE)          # a known name: S1
+    assert routes["about/index.html: unknown-name (needs review)"] == ("S3", mp.HEURISTIC_ROUTE)   # heuristic: S3
     assert mp.main(["--repo", str(repo), "people"]) == 1
 
 
@@ -211,11 +220,14 @@ def test_w3_tuning_drops_nav_runs_and_title_vocabulary_but_keeps_a_planted_full_
     assert len(raw["findings"]) >= 3                     # untuned: nav run, wordmark/title words, the planted name
     res = mp.people_scan(repo)
     about = res["pages"]["about/index.html"]
-    assert [f["text"] for f in about["findings"]] == ["Corvane Mistlewood"]
-    assert {e["text"] for e in about["exempted"]} == {"Quiet Lantern", "Gentle Harbor"}   # titles, read from pages
-    assert not res["pages"]["games/index.html"]["findings"]          # "son" is a role term; titles are vocabulary
-    assert not res["pages"][mp.SITE_CHROME]["findings"]              # nav items no longer run together
-    assert res["outcome"] == "FINDINGS" and res["n"] == 1
+    # only about's OWN title is exempt on about; "Gentle Harbor" is another page's title, so it is a hit here
+    assert [f["text"] for f in about["findings"]] == ["Gentle Harbor", "Corvane Mistlewood"]
+    assert {e["text"] for e in about["exempted"]} == {"Quiet Lantern"}
+    games = res["pages"]["games/index.html"]
+    assert [f["text"] for f in games["findings"]] == ["Quiet Lantern"] and {e["text"] for e in games["exempted"]} == {
+        "Gentle Harbor"}                                             # "son" is a role term
+    assert not res["pages"][mp.SITE_CHROME]["findings"]              # nav items apart; the wordmark is in every title
+    assert res["outcome"] == "FINDINGS" and res["n"] == 3
 
 
 def test_w3_planted_name_in_the_footer_is_caught_once_not_per_page(tmp_path):
@@ -224,6 +236,17 @@ def test_w3_planted_name_in_the_footer_is_caught_once_not_per_page(tmp_path):
     res = mp.people_scan(repo)
     hits = [(k, f["text"]) for k, v in res["pages"].items() for f in v["findings"] if "Mistlewood" in f["text"]]
     assert hits == [(mp.SITE_CHROME, "Corvane Mistlewood")]
+
+
+def test_w3_a_capitalised_pair_in_the_names_file_is_never_exempt(tmp_path):
+    repo = make_repo(tmp_path, {"about/index.html": chrome_page("Corvane Mistlewood", "Corvane Mistlewood",
+                                                                "<p>i met Corvane Mistlewood.</p>")})
+    before = mp.people_scan(repo)["pages"]["about/index.html"]
+    assert any(e["text"] == "Corvane Mistlewood" for e in before["exempted"])      # no names file: title vocabulary
+    local_names(repo, names=("Mistlewood",))                                      # one word of the pair is a name
+    after = mp.people_scan(repo)["pages"]["about/index.html"]
+    assert not any("Mistlewood" in e["text"] for e in after["exempted"])
+    assert any("Mistlewood" in f["text"] for f in after["findings"])
 
 
 def test_w3_vocabulary_never_exempts_a_known_person(tmp_path):
@@ -249,6 +272,16 @@ def test_q2_findings_on_a_lesson_is_s1(tmp_path):
     assert sev == {"lessons/alpha/index.html: forbidden token": "S1", "about/index.html: forbidden token": "S2"}
     md = (repo / ".maint" / "audits" / "2026-10-31_genericize.md").read_text(encoding="utf-8")
     assert "witness: (none recorded" in md and "_hidden" not in md      # an unserved path is not a hit
+
+
+def test_q2_sweeps_every_served_file_type_not_only_html(tmp_path):
+    repo = make_repo(tmp_path, {"assets/app.js": "const credit = 'zorblax';\n",
+                                "notes/plan.md": "We built it with Quendrith.\n",
+                                "data/site.json": '{"tool": "Vexmoor-rig"}\n',
+                                "_drafts/x.md": "Zorblax\n"})                   # unserved: not a hit
+    state = mp.genericize_sweep(repo, TODAY)
+    assert sorted(h["path"] for h in state["hits"]) == ["assets/app.js", "data/site.json", "notes/plan.md"]
+    assert [e["path"] for e in state["exempted"]] == ["DECISIONS.md"]            # D11's own rule line only
 
 
 def test_q2_unknown_until_witnessed_and_witness_rules(tmp_path):

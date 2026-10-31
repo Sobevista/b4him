@@ -126,6 +126,22 @@ def by_row(res):
     return {r["row"]: r for r in res["receipts"]}
 
 
+# ---------------------------------------------------------------- MAINT_DIR and the E1 internal-only pass
+def test_maint_dir_is_honoured(site, tmp_path, monkeypatch):
+    elsewhere = tmp_path / "elsewhere"
+    monkeypatch.setenv("MAINT_DIR", str(elsewhere))               # the review: MAINT_DIR must win over root/.maint
+    res = linkcheck.run(site, "live", FakeNet({("HEAD", OUT): 200}).fetcher(), NOW)
+    assert (elsewhere / "maintenance_log.jsonl").exists() and not (site / ".maint").exists()
+    assert by_row(res)["W1"]["evidence"].startswith(".maint/audits/")
+
+
+def test_internal_only_fetches_nothing(site):
+    net = FakeNet({})
+    res = linkcheck.run(site, "live", net.fetcher(), NOW, internal_only=True)
+    assert net.calls == [] and by_row(res)["W1"]["outcome"] == "PASS" and by_row(res)["W1b"]["outcome"] == "SKIP"
+    assert linkcheck.main(["--repo", str(site), "--live-ref", "live", "--internal-only"]) == 0
+
+
 # ---------------------------------------------------------------- W1 / W1b: PASS (and W1b SKIP)
 def test_pass_when_every_link_resolves(site):
     net = FakeNet({("HEAD", OUT): 200})

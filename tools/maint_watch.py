@@ -20,7 +20,10 @@ D1. Today's release_log.jsonl `apply` line must exist by 08:30 + 2 h local. A no
 D2. Every row in tools/maint_rows.json (generated from the calendar by tools/maint_rows_build.py) against its
     cadence + grace. A row with no receipt ever is overdue from its first scheduled date on/after the epoch. HUMAN
     rows count only a PASS (Daniel's E-number) as done. Overdue rows -> FINDINGS n listing them, one finding each.
-    Event rows (E1-E3) have no clock and are not scheduled. D2 does not judge itself (this run is its receipt).
+    UNKNOWN never rounds to PASS: a row whose latest receipt is UNKNOWN for longer than its own grace (the same grace
+    as its cadence: daily 2 h ... annual 14 d) is STUCK, an alarm like an overdue row; inside that grace it makes D2
+    UNKNOWN, naming it, never PASS. The schedule is checked too (tools/maint_schedule.py): a missing or stalled
+    b4him-maint-run task is a D2 finding. Event rows (E1, E2) have no clock. D2 does not judge itself.
 D3. GET MAINT_HEARTBEAT_URL (Healthchecks.io), with `/fail` appended when D1 or D2 is not PASS. Success is HTTP 2xx
     whose body is not "OK (not found)" / "OK (rate limited)": the docs say a UUID ping answers 200 with those bodies
     when the check does not exist or the ping was dropped. No env var -> UNKNOWN no MAINT_HEARTBEAT_URL. The URL is
@@ -252,16 +255,55 @@ def overdue_rows(table: dict, receipts: list[dict], now: dt.datetime, skip=("D2"
     return over, events
 
 
+def unknown_rows(table: dict, receipts: list[dict], now: dt.datetime, skip=("D2",)) -> tuple[list, list]:
+    """UNKNOWN never rounds to PASS. A row whose LATEST receipt is UNKNOWN is either
+      stuck:   the UNKNOWN streak began more than the row's own grace_hours ago (daily 2 h, weekly 24 h, monthly
+               72 h, quarterly / 6-monthly 168 h, annual 336 h): an alarm, exactly like an overdue row; or
+      pending: inside that grace. Not an alarm yet, but never silent: D2 is UNKNOWN (not PASS) and names the rows.
+    A fresh receipt is not a done one: an UNKNOWN is a row that ran and could not judge."""
+    stuck, pending = [], []
+    for rid, row in table["rows"].items():
+        if row["kind"] == "event" or rid in skip:
+            continue
+        mine = receipts_of(receipts, rid)
+        if not mine or mine[-1][1].get("outcome") != "UNKNOWN":
+            continue
+        i = len(mine) - 1
+        while i > 0 and mine[i - 1][1].get("outcome") == "UNKNOWN":
+            i -= 1
+        since = mine[i][0]
+        grace = dt.timedelta(hours=row.get("grace_hours") or 0)
+        e = {"row": rid, "since": since, "until": since + grace, "why": mine[-1][1].get("why", ""),
+             "route_to": row.get("route_to", "")}
+        (stuck if now > since + grace else pending).append(e)
+    return stuck, pending
+
+
+def _schedule_check(now: dt.datetime) -> dict:
+    import maint_schedule
+    return maint_schedule.check(now)
+
+
+#: (now) -> maint_schedule.check()'s dict. Tests replace it.
+SCHEDULE_CHECK = _schedule_check
+
+
 def run_d2(now: dt.datetime, rows_file: Path | None = None) -> dict:
     try:
         table = load_rows(rows_file)
-        over, events = overdue_rows(table, mr.read_receipts(), now)
+        receipts = mr.read_receipts()
+        over, events = overdue_rows(table, receipts, now)
+        late = {o["row"] for o in over}
+        stuck, pending = unknown_rows(table, receipts, now)
+        stuck = [s for s in stuck if s["row"] not in late]
+        pending = [s for s in pending if s["row"] not in late]
     except (Unknown, ValueError, KeyError) as e:
         return mr.write_receipt("D2", "UNKNOWN", why=f"cannot judge the calendar: {e}", tool=TOOL)
+    try:
+        sched = SCHEDULE_CHECK(now)
+    except Exception as e:  # noqa: BLE001 - a check that could not run is UNKNOWN, with its reason
+        sched = {"state": "unknown", "problems": [], "why": f"{type(e).__name__}: {e}"}
     note = f" (event rows not on the clock: {', '.join(events)})" if events else ""
-    if not over:
-        return mr.write_receipt("D2", "PASS", why=f"{len(table['rows']) - len(events) - 1} rows within cadence + grace"
-                                + note, tool=TOOL)
     parts = []
     for o in over:
         what = (f"last receipt {fmt(o['last'])}" if o["last"] else "no receipt ever") + \
@@ -269,7 +311,25 @@ def run_d2(now: dt.datetime, rows_file: Path | None = None) -> dict:
         parts.append(f"{o['row']} ({what})")
         mr.write_finding("D2", "S2", f"OVERDUE {o['row']}", f"MAINTENANCE OVERDUE: row {o['row']}: {what}",
                          f"Daniel; owning seat: {o['route_to']}")
-    return mr.write_receipt("D2", "FINDINGS", n=len(over), why="overdue: " + "; ".join(parts) + note, tool=TOOL)
+    for s in stuck:
+        what = f"UNKNOWN since {fmt(s['since'])}, past its {fmt(s['until'])} grace: {s['why'][:120]}"
+        parts.append(f"{s['row']} STUCK ({what})")
+        mr.write_finding("D2", "S2", f"STUCK UNKNOWN {s['row']}", f"MAINTENANCE STUCK UNKNOWN: row {s['row']}: {what}",
+                         f"Daniel; owning seat: {s['route_to']}")
+    for p in sched.get("problems", []) if sched.get("state") in ("missing", "stale") else []:
+        parts.append(f"SCHEDULE ({p})")
+        mr.write_finding("D2", "S2", "SCHEDULE " + sched["state"].upper(), p, "Daniel (the paste is his)")
+    if parts:
+        tail = (f"; also UNKNOWN, in grace: {', '.join(s['row'] for s in pending)}" if pending else "") + \
+               (f"; schedule UNKNOWN: {sched['why']}" if sched.get("state") == "unknown" else "")
+        return mr.write_receipt("D2", "FINDINGS", n=len(parts), why="overdue: " + "; ".join(parts) + tail + note,
+                                tool=TOOL)
+    if pending or sched.get("state") == "unknown":
+        bits = ([f"UNKNOWN inside grace: " + "; ".join(f"{s['row']} (until {fmt(s['until'])})" for s in pending)]
+                if pending else []) + ([f"schedule UNKNOWN: {sched['why']}"] if sched.get("state") == "unknown" else [])
+        return mr.write_receipt("D2", "UNKNOWN", why="; ".join(bits) + note, tool=TOOL)
+    return mr.write_receipt("D2", "PASS", why=f"{len(table['rows']) - len(events) - 1} rows within cadence + grace, "
+                            f"none UNKNOWN; schedule: {sched.get('why', 'ok')}" + note, tool=TOOL)
 
 
 # ------------------------------------------------------------------ D3: the out-of-band heartbeat

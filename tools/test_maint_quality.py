@@ -109,6 +109,7 @@ def test_cmd_a11y_receipts(tmp_path, monkeypatch, code, rep, outcome, n):
     rec = mq.cmd_a11y(tmp_path)
     assert (rec["row"], rec["outcome"], rec["n"]) == ("M1", outcome, n)
     assert (tmp_path / rec["evidence"]).exists()
+    assert "do not cover all of WCAG 2.2 AA" in rec["why"]          # the stated assumption rides on every M1 receipt
     if outcome == "FINDINGS":
         f = findings(tmp_path)
         assert {x["subject"] for x in f} == {"image-alt", "WCAG2AA.Principle1.Guideline1_1.1_1_1.H37"}

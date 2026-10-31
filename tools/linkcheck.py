@@ -335,13 +335,14 @@ def report_path(day: dt.date) -> Path:
 
 
 def run(root: Path, live_ref: str = "origin/main", fetcher: Fetcher | None = None,
-        now: dt.datetime | None = None) -> dict:
-    """Check `root`, write its receipts, findings, cache and report under root/.maint/. Module roots restored."""
+        now: dt.datetime | None = None, internal_only: bool = False) -> dict:
+    """Check `root`, write its receipts, findings, cache and report under MAINT_DIR (else root/.maint/). Module roots
+    restored. internal_only: W1(a) alone, no outbound fetch (the E1 patch proof)."""
     saved, saved_dir = pb.REPO, os.environ.get("MAINT_DIR")
     pb.REPO = root
-    os.environ["MAINT_DIR"] = str(root / ".maint")     # maint_receipt writes to MAINT_DIR or its own repo's .maint/
+    os.environ["MAINT_DIR"] = saved_dir or str(root / ".maint")      # MAINT_DIR wins; else the checked tree's .maint/
     try:
-        return _run(root, live_ref, fetcher, now)
+        return _run(root, live_ref, fetcher, now, internal_only)
     finally:
         pb.REPO = saved
         if saved_dir is None:
@@ -350,7 +351,8 @@ def run(root: Path, live_ref: str = "origin/main", fetcher: Fetcher | None = Non
             os.environ["MAINT_DIR"] = saved_dir
 
 
-def _run(root: Path, live_ref: str, fetcher: Fetcher | None, now: dt.datetime | None) -> dict:
+def _run(root: Path, live_ref: str, fetcher: Fetcher | None, now: dt.datetime | None,
+         internal_only: bool = False) -> dict:
     now = now or _now()
     f = fetcher or Fetcher()
     cache_file = maint_receipt.maint_dir() / "linkcache.json"
@@ -379,7 +381,8 @@ def _run(root: Path, live_ref: str, fetcher: Fetcher | None, now: dt.datetime | 
         rep["internal"]["error"] = internal_error
         found = {"outbound": {}}
 
-    outbound = outbound_check(found["outbound"], cache, f, now)
+    rep["internal_only"] = internal_only
+    outbound = [] if internal_only else outbound_check(found["outbound"], cache, f, now)
     dead = [o for o in outbound if o["status"] == "DEAD"]
     unknown = [o for o in outbound if o["status"] == "UNKNOWN"]
     wayback_check(dead, cache, f, now)
@@ -388,7 +391,7 @@ def _run(root: Path, live_ref: str, fetcher: Fetcher | None, now: dt.datetime | 
     save_cache(cache_file, cache)
 
     path = report_path(now.date())
-    rel_ev = path.relative_to(root).as_posix()
+    rel_ev = ".maint/" + path.resolve().relative_to(maint_receipt.maint_dir().resolve()).as_posix()
     path.write_text(json.dumps(rep, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
     # ---- findings: every broken internal link, every dead outbound link (with its W1b proposal)
@@ -431,6 +434,8 @@ def _run(root: Path, live_ref: str, fetcher: Fetcher | None, now: dt.datetime | 
                                       f"{len(dead) - proposals} with none in the archive")
     elif unknown or internal_error:
         w1b = ("UNKNOWN", None, f"{len(unknown)} outbound links UNKNOWN, so the dead set may be incomplete")
+    elif internal_only:
+        w1b = ("SKIP", None, "internal-only run (W1(a)): no outbound link was fetched")
     else:
         w1b = ("SKIP", None, "no dead outbound links this run")
     receipts = [maint_receipt.write_receipt(ROW_LINKS, w1[0], n=w1[1], why=w1[2], evidence=rel_ev, tool=TOOL),
@@ -447,8 +452,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--repo", type=Path, default=pb.REPO, help="the b4him checkout to check (default: this one)")
     ap.add_argument("--live-ref", default="origin/main", help="the ref whose tree is the live site")
+    ap.add_argument("--internal-only", action="store_true", help="W1(a) only: no outbound fetch (E1 patch proof)")
     a = ap.parse_args(argv)
-    res = run(a.repo.resolve(), a.live_ref)
+    res = run(a.repo.resolve(), a.live_ref, internal_only=a.internal_only)
     for r in res["receipts"]:
         print(json.dumps(r, ensure_ascii=False))
     print(f"report: {res['report_path']}")

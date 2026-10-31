@@ -61,6 +61,13 @@ PAGES_A = {"185.199.108.153", "185.199.109.153", "185.199.110.153", "185.199.111
 PAGES_AAAA = {"2606:50c0:8000::153", "2606:50c0:8001::153", "2606:50c0:8002::153", "2606:50c0:8003::153"}
 
 OBSERVATORY_URL = "https://observatory-api.mdn.mozilla.net/api/v2/scan"
+ANALYZE_URL = "https://observatory-api.mdn.mozilla.net/api/v2/analyze"
+#: Q5's row text: frame-ancestors "cannot be fixed that way [a meta tag]: a known limit, recorded and not re-filed every
+#: quarter". Observatory's x-frame-options test passes only on an X-Frame-Options header or a CSP frame-ancestors
+#: directive, and GitHub Pages lets the site set neither [ASSUMED: the test-name mapping].
+KNOWN_LIMIT_TESTS = {"x-frame-options": "needs an X-Frame-Options header or CSP frame-ancestors; GitHub Pages cannot "
+                                        "set response headers and frame-ancestors is ignored in a <meta> CSP"}
+KNOWN_LIMITS = "q5_known_limits.json"
 UPTIMEROBOT_URL = "https://api.uptimerobot.com/v2/getMonitors"
 UR_STATUS = {0: "paused", 1: "not checked yet", 2: "up", 8: "seems down", 9: "down"}
 
@@ -250,6 +257,15 @@ def http_post(url: str, data: bytes | None, headers: dict, timeout: float = 60) 
         return e.code, e.read()
 
 
+def http_get(url: str, timeout: float = 60) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, method="GET", headers={"User-Agent": UA, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
 # ---------------------------------------------------------------- M3 tls
 
 SUBRESOURCE = re.compile(
@@ -306,6 +322,9 @@ def run_tls(host: str = HOST, day: dt.date | None = None, now: dt.datetime | Non
     except ssl.SSLError as e:
         ev["cert"] = {"error": f"{type(e).__name__}: {e}"}
         res.find("S1", "HTTPS failing: TLS handshake did not verify", str(e)[:200], ROUTE_S1)
+    except TimeoutError as e:                  # a timeout says nothing about the site: this machine's path to it
+        ev["cert"] = {"error": f"timeout: {e}"}
+        res.unknown(f"cert: connect timed out ({e or 'no answer'})")
     except OSError as e:
         ev["cert"] = {"error": f"{type(e).__name__}: {e}"}
         res.find("S1", "HTTPS failing: cannot connect on 443", str(e)[:200], ROUTE_S1)
@@ -333,6 +352,9 @@ def run_tls(host: str = HOST, day: dt.date | None = None, now: dt.datetime | Non
             res.find("S1", f"HTTPS home page returns {r['status']}", "", ROUTE_S1)
     except LocalNetworkError as e:
         res.unknown(f"https: {e}")
+    except TimeoutError as e:
+        ev["https"] = {"error": f"timeout: {e}"}
+        res.unknown(f"https: GET / timed out ({e or 'no answer'})")
     except (ssl.SSLError, OSError) as e:
         ev["https"] = {"error": f"{type(e).__name__}: {e}"}
         if not any(f["subject"].startswith("HTTPS failing") for f in res.findings):
@@ -486,13 +508,54 @@ def run_observatory(host: str = HOST, day: dt.date | None = None) -> dict:
         res.unknown("observatory response has no tests_failed")
         return res.close(out)
     summary = f"grade {data.get('grade')} score {data.get('score')} tests_failed {failed}/{data.get('tests_quantity')}"
-    if failed:
-        res.find("S3", f"Observatory {summary}",
-                 f"{data.get('details_url')} (Pages cannot set headers; frame-ancestors is a known limit)", ROUTE_SITE)
-    return res.close(out, summary)
+    if not failed:
+        return res.close(out, summary)
+    # Name the failing tests: the v2 analyze endpoint returns the recent scan's tests keyed by name (src/api/v2/
+    # analyze + utils.hydrateTests in mdn/mdn-http-observatory). It reuses the scan just made; nothing new is public.
+    names = None
+    try:
+        st, body2 = http_get(f"{ANALYZE_URL}?{urllib.parse.urlencode({'host': host})}")
+        tests = json.loads(body2.decode("utf-8", "replace")).get("tests") if st == 200 else None
+        if isinstance(tests, dict):
+            names = sorted(k for k, v in tests.items() if isinstance(v, dict) and v.get("pass") is False)
+    except (OSError, ValueError):
+        names = None
+    _write_json(maint() / "audits" / f"{day.isoformat()}_observatory_tests.json", {"failed_tests": names})
+    if names is None:                          # cannot tell the known limit from a new failure: file it all
+        res.find("S3", f"Observatory {summary}", f"{data.get('details_url')} (failing tests could not be named, so "
+                 "the known frame-ancestors limit is not separated out)", ROUTE_SITE)
+        return res.close(out, summary)
+    known_file = maint() / KNOWN_LIMITS
+    known = json.loads(known_file.read_text(encoding="utf-8")) if known_file.is_file() else {}
+    notes = []
+    for t in names:
+        if t in KNOWN_LIMIT_TESTS:
+            if t in known:                     # filed once already: recorded, not re-filed every quarter
+                notes.append(f"{t}: known limit, filed {known[t]['filed']}, not re-filed")
+                continue
+            res.find("S3", f"Observatory {t} fails: a known GitHub Pages limit", KNOWN_LIMIT_TESTS[t], ROUTE_SITE)
+            known[t] = {"filed": day.isoformat(), "why": KNOWN_LIMIT_TESTS[t]}
+        else:
+            res.find("S3", f"Observatory test {t} fails", f"{data.get('details_url')}", ROUTE_SITE)
+    _write_json(known_file, known)
+    return res.close(out, "; ".join([summary] + notes))
 
 
 # ---------------------------------------------------------------- C1 uptime reader
+HOME_URL = f"https://{HOST}/"
+LESSON_URL = re.compile(rf"^https://{re.escape(HOST)}/lessons/[^/?#]+/?$")
+
+
+def _same_url(a: str | None, b: str) -> bool:
+    return bool(a) and a.strip().rstrip("/").lower() == b.rstrip("/").lower()
+
+
+def coverage(monitors: list[dict]) -> dict:
+    """{what the calendar names: the monitor that watches it, or None}, matched BY URL, not "any monitor up"."""
+    home = next((m for m in monitors if _same_url(m.get("url"), HOME_URL)), None)
+    lesson = next((m for m in monitors if LESSON_URL.match((m.get("url") or "").strip())), None)
+    return {HOME_URL: home, "one lesson URL (https://b4him.com/lessons/<slug>/)": lesson}
+
 
 def run_uptime(day: dt.date | None = None) -> dict:
     """Reads monitor status and 7-day uptime for the W2 digest line. Needs a READ-ONLY key in UPTIMEROBOT_API_KEY."""
@@ -522,10 +585,16 @@ def run_uptime(day: dt.date | None = None) -> dict:
         monitors.append({"name": m.get("friendly_name"), "url": m.get("url"), "status": m.get("status"),
                          "status_text": UR_STATUS.get(m.get("status"), f"unknown code {m.get('status')}"),
                          "uptime_7d": str(ratio).split("-")[0] if ratio not in (None, "") else None})
-    out = _write_json(maint() / "audits" / f"{day.isoformat()}_uptime.json", {"monitors": monitors})
+    cover = coverage(monitors)
+    out = _write_json(maint() / "audits" / f"{day.isoformat()}_uptime.json", {"monitors": monitors, "coverage": cover})
     if not monitors:
         res.unknown("no monitors on the account")
         return res.close(out)
+    for need, m in cover.items():             # the calendar names the URLs: the home page AND one lesson
+        if m is None:
+            res.find("S2", f"no monitor watches {need}", "C1 needs a monitor on the home page and one on a lesson "
+                     f"URL ({LESSON_URL.pattern}); found: " + ", ".join(str(x['url']) for x in monitors)[:300],
+                     "Release Manager + Site Maintainer")
     lines = []
     for m in monitors:
         lines.append(f"{m['name']}: {m['status_text']}, last 7 days uptime {m['uptime_7d']}%")

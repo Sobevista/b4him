@@ -77,6 +77,9 @@ INSTALL = {
                   "`py -m playwright install chromium`",
 }
 EXIT = {"PASS": 0, "FINDINGS": 1, "UNKNOWN": 2, "SKIP": 2}
+#: M1's stated limit, carried on every M1 receipt (see LIMITS above).
+M1_ASSUMPTION = ("[ASSUMED] automated rules (axe + htmlcs, WCAG 2.1-era standards) do not cover all of WCAG 2.2 AA; "
+                 "A1's manual evaluation covers the rest")
 
 
 class Unavailable(RuntimeError):
@@ -301,7 +304,8 @@ def cmd_a11y(root: Path) -> dict:
         write_json(ev_path, {"row": "M1", "outcome": "UNKNOWN", "why": str(e)})
         return receipt(root, "M1", "UNKNOWN", why=str(e), evidence=ev)
     outcome, n, why = judge_pa11y(code, rep)
-    write_json(ev_path, {"row": "M1", "pages": rels, **detail, "outcome": outcome})
+    why += f"; {M1_ASSUMPTION}"                 # a PASS here is the rules' pass, not WCAG 2.2 AA conformance
+    write_json(ev_path, {"row": "M1", "pages": rels, **detail, "outcome": outcome, "assumption": M1_ASSUMPTION})
     if outcome == "FINDINGS" and rep is not None:
         for subject, text in pa11y_findings(rep, detail["base"]):
             finding(root, "M1", "S2", subject, text, "Site Maintainer")

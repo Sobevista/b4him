@@ -49,6 +49,8 @@ def env(tmp_path, monkeypatch):
         ns.calls.append(url)
         return ns.reply(url)
     monkeypatch.setattr(mw, "HTTP_GET", fake_get)
+    ns.schedule = {"state": "ok", "problems": [], "why": "b4him-maint-run last ran recently"}
+    monkeypatch.setattr(mw, "SCHEDULE_CHECK", lambda now: ns.schedule)
     return ns
 
 
@@ -159,16 +161,51 @@ HUMAN = {"id": "H1", "kind": "semiannual", "months": [1, 7], "grace_hours": 168,
 EVENT = {"id": "E2", "kind": "event", "grace_hours": None, "check": "event"}
 
 
-def test_d2_pass_when_every_row_is_fresh(env):
+def test_d2_pass_when_every_row_is_fresh_and_judged(env):
     p = small_table(env.tmp, [DAILY, WEEKLY, MONTHLY, EVENT])
     env.clock.set(2026, 10, 30, 10, 0)
     for rid in ("D1", "W1", "M1"):
-        mr.write_receipt(rid, "UNKNOWN", why="ran")      # an UNKNOWN is still a receipt: the row ran
+        mr.write_receipt(rid, "PASS", why="ran")
     env.clock.set(2026, 10, 31, 10, 29)                 # D1 owes 10-31 08:30, grace to 10:30
     r = mw.run_d2(now(env), p)
-    assert r["outcome"] == "PASS" and "E2" in r["why"]
+    assert r["outcome"] == "PASS" and "E2" in r["why"] and "none UNKNOWN" in r["why"]
     env.clock.set(2026, 10, 31, 10, 31)
     assert mw.run_d2(now(env), p)["why"].startswith("overdue: D1 (last receipt 2026-10-30 10:00")
+
+
+def test_d2_never_rounds_unknown_to_pass(env):
+    """The review's repro: fresh UNKNOWN receipts for every row gave D2 PASS and a success heartbeat."""
+    p = small_table(env.tmp, [DAILY, WEEKLY, MONTHLY, EVENT])
+    env.clock.set(2026, 10, 31, 10, 0)
+    for rid in ("D1", "W1", "M1"):
+        mr.write_receipt(rid, "UNKNOWN", why="could not run")
+    env.clock.set(2026, 10, 31, 11, 0)                  # inside every grace: named, never PASS
+    r = mw.run_d2(now(env), p)
+    assert r["outcome"] == "UNKNOWN" and "D1 (until" in r["why"] and "W1" in r["why"] and "M1" in r["why"]
+    env.clock.set(2026, 10, 31, 12, 1)                  # D1's UNKNOWN is past its own 2 h grace: STUCK, an alarm
+    r = mw.run_d2(now(env), p)
+    assert r["outcome"] == "FINDINGS" and r["n"] == 1 and "D1 STUCK" in r["why"] and "in grace: W1, M1" in r["why"]
+    assert "STUCK UNKNOWN D1" in {f["subject"] for f in mr.read_findings()}
+    env.clock.set(2026, 11, 1, 11, 1)                   # W1 past 24 h too
+    assert mw.run_d2(now(env), p)["n"] >= 2
+    mr.write_receipt("D1", "PASS", why="ok")            # a judged receipt ends the streak
+    assert "D1 STUCK" not in mw.run_d2(now(env), p)["why"]
+
+
+def test_d2_and_d3_alarm_on_a_missing_or_stale_schedule(env, monkeypatch):
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/abc")
+    p = small_table(env.tmp, [DAILY])
+    env.clock.set(2026, 11, 3, 10, 35)
+    mr.write_receipt("D1", "PASS", why="ok")
+    assert mw.run_d2(now(env), p)["outcome"] == "PASS"
+    env.schedule = {"state": "missing", "problems": ["scheduled task b4him-maint-run is missing"], "why": "x"}
+    r = mw.run_d2(now(env), p)
+    assert r["outcome"] == "FINDINGS" and "SCHEDULE (scheduled task b4him-maint-run is missing)" in r["why"]
+    monkeypatch.setattr(mw, "ROWS_FILE", p)
+    mw.main(["--now", "2026-11-03T10:35:00-05:00", "one", "D3"])
+    assert env.calls[-1].endswith("/fail")              # the heartbeat says so out of band
+    env.schedule = {"state": "unknown", "problems": [], "why": "schtasks could not start"}
+    assert mw.run_d2(now(env), p)["outcome"] == "UNKNOWN"
 
 
 def test_d2_overdue_from_first_scheduled_date_when_no_receipt_ever(env):

@@ -126,6 +126,18 @@ def test_tls_https_failing_is_s1(sandbox, monkeypatch):
     assert any("returns 404" in s for s in subjects)
 
 
+def test_tls_connect_timeout_is_unknown_not_s1(sandbox, monkeypatch):
+    tls_fakes(monkeypatch)
+
+    def timeout(*a, **k):
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(h, "probe_cert", timeout)
+    monkeypatch.setattr(h, "probe_http", timeout)
+    r = h.run_tls(day=DAY, now=NOW)
+    assert r["outcome"] == "UNKNOWN" and "timed out" in r["why"]
+    assert not [f for f in findings(sandbox) if f["severity"] == "S1"]
+
+
 def test_tls_unknown_when_local_network_down(sandbox, monkeypatch):
     def offline(*a, **k):
         raise h.LocalNetworkError("cannot resolve b4him.com: getaddrinfo failed")
@@ -213,14 +225,21 @@ def test_observatory_refuses_without_ok(sandbox, monkeypatch):
     assert h.run_observatory(day=DAY)["outcome"] == "UNKNOWN"
 
 
-def obs(monkeypatch, status, payload):
+def obs(monkeypatch, status, payload, tests=None):
     calls = []
 
     def fake(url, data, headers, timeout=60):
         calls.append(url)
         return status, json.dumps(payload).encode()
+
+    def fake_get(url, timeout=60):
+        calls.append(url)
+        if tests is None:
+            raise OSError("analyze unreachable")
+        return 200, json.dumps({"scan": {}, "tests": tests, "history": []}).encode()
     monkeypatch.setenv("MAINT_OBSERVATORY_OK", "1")
     monkeypatch.setattr(h, "http_post", fake)
+    monkeypatch.setattr(h, "http_get", fake_get)
     return calls
 
 
@@ -238,6 +257,23 @@ def test_observatory_pass_findings_unknown(sandbox, monkeypatch):
     obs(monkeypatch, 422, {"error": "invalid-hostname-lookup", "message": "b4him.com cannot be resolved"})
     r = h.run_observatory(day=DAY)
     assert r["outcome"] == "UNKNOWN" and "invalid-hostname-lookup" in r["why"]
+
+
+def test_observatory_files_the_frame_ancestors_limit_once_then_suppresses_it(sandbox, monkeypatch):
+    base = {"details_url": "https://developer.mozilla.org/en-US/observatory/analyze?host=b4him.com", "error": None,
+            "grade": "B", "score": 70, "tests_failed": 1, "tests_passed": 9, "tests_quantity": 10}
+    xfo = {"x-frame-options": {"name": "x-frame-options", "pass": False, "result": "x-frame-options-not-implemented"},
+           "referrer-policy": {"name": "referrer-policy", "pass": True}}
+    obs(monkeypatch, 200, base, xfo)
+    r1 = h.run_observatory(day=DAY)
+    assert r1["outcome"] == "FINDINGS" and r1["n"] == 1 and "known GitHub Pages limit" in r1["why"]
+    r2 = h.run_observatory(day=DAY)                      # next quarter: recorded, not re-filed
+    assert r2["outcome"] == "PASS" and "x-frame-options: known limit, filed 2026-10-31, not re-filed" in r2["why"]
+    assert len(findings(sandbox)) == 1
+    obs(monkeypatch, 200, {**base, "tests_failed": 2},
+        {**xfo, "strict-transport-security": {"name": "strict-transport-security", "pass": False}})
+    r3 = h.run_observatory(day=DAY)                      # a NEW failure is still filed
+    assert r3["outcome"] == "FINDINGS" and r3["n"] == 1 and "strict-transport-security" in r3["why"]
 
 
 # ---------------------------------------------------------------- C1 uptime
@@ -259,21 +295,34 @@ def ur(monkeypatch, status, payload):
     return seen
 
 
-def mon(status, ratio="99.981"):
-    return {"id": 1, "friendly_name": "b4him home", "url": "https://b4him.com/", "status": status,
-            "custom_uptime_ratio": ratio}
+def mon(status, ratio="99.981", url="https://b4him.com/", name="b4him home"):
+    return {"id": 1, "friendly_name": name, "url": url, "status": status, "custom_uptime_ratio": ratio}
+
+
+LESSON = mon(2, url="https://b4him.com/lessons/first-lap/", name="b4him lesson")
+
+
+def test_uptime_checks_coverage_by_url(sandbox, monkeypatch):
+    ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(2)]})            # home only: up, but no lesson monitor
+    r = h.run_uptime(day=DAY)
+    assert r["outcome"] == "FINDINGS" and "no monitor watches one lesson URL" in r["why"]
+    ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(2, url="https://example.org/"), LESSON]})
+    r = h.run_uptime(day=DAY)                                             # any monitor up is not enough
+    assert r["outcome"] == "FINDINGS" and "no monitor watches https://b4him.com/" in r["why"]
+    ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(2, url="https://b4him.com"), LESSON]})
+    assert h.run_uptime(day=DAY)["outcome"] == "PASS"                     # a trailing slash is the same URL
 
 
 def test_uptime_pass_findings_unknown(sandbox, monkeypatch):
-    seen = ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(2)]})
+    seen = ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(2), LESSON]})
     r = h.run_uptime(day=DAY)
     assert r["outcome"] == "PASS" and "b4him home: up, last 7 days uptime 99.981%" in r["why"]
     assert seen["url"] == "https://api.uptimerobot.com/v2/getMonitors"
     assert b"custom_uptime_ratios=7" in seen["data"] and b"api_key=ur-readonly-SECRET" in seen["data"]
-    ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(9, "97.2")]})
+    ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(9, "97.2"), LESSON]})
     r = h.run_uptime(day=DAY)
     assert r["outcome"] == "FINDINGS" and findings(sandbox)[-1]["severity"] == "S1"
-    ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(0)]})
+    ur(monkeypatch, 200, {"stat": "ok", "monitors": [mon(0), LESSON]})
     assert h.run_uptime(day=DAY)["outcome"] == "UNKNOWN"  # a paused monitor is UNKNOWN, never up
     ur(monkeypatch, 200, {"stat": "fail", "error": {"type": "invalid_parameter", "message": "api_key is wrong"}})
     r = h.run_uptime(day=DAY)
