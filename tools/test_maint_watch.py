@@ -380,6 +380,7 @@ def test_d3_pings_fail_only_for_a_new_alarm(env, monkeypatch):
 
 def test_judge_closes_an_assist_row_and_refuses_an_author_where_independence_is_required(env, capsys):
     env.clock.set(2026, 11, 2, 12)
+    evidence(env, "audits/2026-11-02_reader.md", "audits/2026-11-02_genericize.md")
     mr.write_receipt("M4", "SKIP", why=mr.awaiting_why("M4", "managing-editor", "pack assembled"),
                      evidence=".maint/audits/2026-11-02_reader.md", tool="maint_pages.py")
     mr.write_receipt("Q2", "SKIP", why=mr.awaiting_why("Q2", "reviewer", "sweep"),
@@ -398,6 +399,30 @@ def test_judge_closes_an_assist_row_and_refuses_an_author_where_independence_is_
     assert last("Q2")["outcome"] == "FINDINGS" and last("Q2")["n"] == 2
     assert last("Q2")["evidence"] == ".maint/audits/2026-11-02_genericize.md"
     assert "REFUSED" in capsys.readouterr().out
+
+
+def evidence(e, *rels):
+    for r in rels:
+        f = e.md / r
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("pack\n", encoding="utf-8")
+
+
+def test_judge_refuses_a_forged_or_empty_awaiting_line(env, capsys):
+    """exp6 F1: a hand-appended awaiting line (tool "x", no evidence) was judged PASS."""
+    env.clock.set(2026, 11, 3, 10, 50)
+    aw = mr.awaiting_why("M1b", "site-maintainer", "eye")
+    mr.write_receipt("M1b", "SKIP", why=aw, tool="x")                                   # not M1b's runner
+    assert mw.main(["judge", "M1b", "PASS", "--seat", "reviewer", "--note", "ok"]) == 1
+    mr.write_receipt("M1b", "SKIP", why=aw, tool="maint_quality.py")                    # runner, no evidence
+    assert mw.main(["judge", "M1b", "PASS", "--seat", "reviewer", "--note", "ok"]) == 1
+    mr.write_receipt("M1b", "SKIP", why=aw, evidence=".maint/2026-11-03_contrast.json", tool="maint_quality.py")
+    assert mw.main(["judge", "M1b", "PASS", "--seat", "reviewer", "--note", "ok"]) == 1   # evidence not on disk
+    out = capsys.readouterr().out
+    assert "not by its runner maint_quality.py" in out and "names no evidence on disk" in out
+    evidence(env, "2026-11-03_contrast.json")
+    assert mw.main(["judge", "M1b", "PASS", "--seat", "site-maintainer", "--note", "judged by eye"]) == 0
+    assert last("M1b")["outcome"] == "PASS" and last("M1b")["evidence"] == ".maint/2026-11-03_contrast.json"
 
 
 # ------------------------------------------------------------------ round 3 (exp5): judge only what awaits a person
@@ -458,10 +483,18 @@ def test_d3_a_stuck_row_whose_cause_changes_is_a_new_alarm(env, monkeypatch):
     assert fail and "NEW W1 stuck-unknown: linkcheck crashed" in why
 
 
-def test_cause_class_blurs_numbers_and_keeps_the_first_clause():
-    assert mw.cause_class("expires 2027-09-01 (58 days): the window") == mw.cause_class("expires 2027-09-01 (57 days)")
+def test_cause_class_keeps_the_class_after_the_first_colon_and_blurs_standalone_numbers():
+    assert mw.cause_class("expires 2027-09-01 (58 days)") == mw.cause_class("expires 2027-09-01 (57 days)")
     assert mw.cause_class("no network") != mw.cause_class("linkcheck crashed: KeyError")
-    assert mw.alarm_key("W1", "stuck-unknown", "linkcheck crashed: KeyError") == "W1 stuck-unknown: linkcheck crashed"
+    # different failures of the same kind are different causes (the review: keep the class after the first ':')
+    assert mw.cause_class("linkcheck crashed: KeyError 'pages'") != mw.cause_class("linkcheck crashed: TimeoutError")
+    assert mw.cause_class("linkcheck crashed: KeyError 'pages'; trace") == "linkcheck crashed: keyerror 'pages'"
+    assert mw.cause_class("MISSING: no line from the 08:30 run by 10:30") == mw.cause_class(
+        "MISSING: no line from the 09:30 run by 11:30")                  # times blur, the cause stays
+    assert mw.cause_class("pa11y-ci exit 1: a technical fault") == "pa11y-ci exit #: a technical fault"   # not pa#y
+    assert "b4him" in mw.cause_class("scheduled task b4him-maint-run is missing (paste)")
+    assert mw.alarm_key("W1", "stuck-unknown", "linkcheck crashed: KeyError") == \
+        "W1 stuck-unknown: linkcheck crashed: keyerror"
 
 
 def test_d2_alarms_an_assist_row_only_when_no_judgement_arrives_in_cadence_plus_grace(env):

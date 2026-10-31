@@ -34,6 +34,13 @@ M5. The Editor's cadence-and-runway review. Its receipt is the production board'
 H2. The Independent Reviewer's publication-gate review note: `.maint/notes/H2_<YYYY-MM-DD>[_*].md`.
 H3. The 6-monthly re-read of the calendar and PRODUCTION_PLAN: `.maint/notes/H3_<YYYY-MM-DD>[_*].md` (an amendment
     proposal or "no change"). When due, the digest carries a reminder and the evidence-pack paths.
+JUDGE. `judge <row> PASS|FINDINGS [n] --seat S --note T` closes an ASSIST row only when its latest receipt is an
+    `awaiting ... judgement` SKIP written by that row's own runner (tools/maint_run.py RUNNERS) whose evidence file
+    exists under .maint/; the judgement carries that evidence. D1-D3 and AUTOMATE rows are refused; `judge` and
+    `human` refuse --now. SAME-ACCOUNT LIMIT: these checks stop mistakes, not a forger. Anyone who can write .maint/
+    (this Windows account, any process it runs) can append a receipt, an awaiting line or an evidence file by hand,
+    and nothing here can tell. Closing that needs the log written by a separate account (or an append-only store the
+    judging account cannot write), which this repo does not have.
 HUMAN (H1, A1, A3). When the row falls due, the digest gets a DUE FOR DANIEL section and the row gets one receipt
     `UNKNOWN awaiting Daniel ...` saying whether the reminder fired on time. `human <row> <E-number>` closes it (PASS).
 """
@@ -386,12 +393,18 @@ def run_d2(now: dt.datetime, rows_file: Path | None = None) -> dict:
 
 
 def cause_class(why: str) -> str:
-    """The short cause of an alarm: the first line of its reason, up to the first ':' or ';', at most 60 chars, with
-    dates and digits blurred so the same cause on another day is the same class. "no network" and "linkcheck
-    crashed: KeyError" are different classes; "expires 2027-09-01 (58 days)" and "(57 days)" are one."""
+    """The short cause of an alarm: the first line of its reason, its first clause (up to ':' or ';') plus, when there
+    is one, the class after that first ':' up to the next delimiter (':' ';' ',' '('), so "linkcheck crashed:
+    KeyError" and "linkcheck crashed: TimeoutError" are different causes. Standalone numbers (dates, counts, times) are
+    blurred so the same cause on another day is the same class; a number inside a word ("pa11y", "b4him") is kept."""
     first = (why or "").strip().splitlines()[0] if (why or "").strip() else ""
-    first = re.split(r"[:;]", first, maxsplit=1)[0].strip().lower()
-    return re.sub(r"\d+", "#", first)[:60]
+    head, sep, rest = re.match(r"([^:;]*)([:;]?)(.*)", first).groups()
+    cls = head.strip()
+    if sep == ":":
+        nxt = re.split(r"[:;,(]", rest, maxsplit=1)[0].strip()
+        if nxt:
+            cls += ": " + nxt
+    return re.sub(r"(?<![A-Za-z_])\d+(?![A-Za-z_])", "#", cls.lower())[:80]
 
 
 def alarm_key(row: str, kind: str, why: str = "") -> str:
@@ -604,6 +617,15 @@ def cmd_judge(a, now: dt.datetime) -> int:
               f"tool first so there is an evidence pack to judge")
         return 1
     awaiting = mine[-1][1]
+    import maint_run
+    runner = maint_run.RUNNERS.get(rid, (None,))[0]
+    if Path(str(awaiting.get("tool") or "")).name != runner:
+        print(f"REFUSED: {rid}'s awaiting line was written by {awaiting.get('tool')!r}, not by its runner {runner}")
+        return 1
+    ev = awaiting.get("evidence")
+    if not ev or not str(ev).startswith(".maint/") or not (mr.maint_dir() / str(ev)[len(".maint/"):]).is_file():
+        print(f"REFUSED: {rid}'s awaiting line names no evidence on disk ({ev!r}); there is nothing to judge")
+        return 1
     if seat not in mp.SEATS:
         print(f"REFUSED: {seat!r} is not a seat ({', '.join(mp.SEATS)})")
         return 1
