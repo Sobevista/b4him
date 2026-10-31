@@ -84,8 +84,9 @@ def world(monkeypatch, tmp_path, *when):
     return md, clock
 
 
-def receipts_any():
-    """Every readable receipt line, even when the log also holds corrupt lines a test planted on purpose."""
+def log_lines():
+    """Every readable line of the receipt log (receipts and run markers), even when the log also holds corrupt lines a
+    test planted on purpose. Read only."""
     import maint_receipt as mr
     p = mr.maint_dir() / mr.LOG_NAME
     out = []
@@ -95,9 +96,14 @@ def receipts_any():
                 e = json.loads(raw)
             except ValueError:
                 continue
-            if isinstance(e, dict) and "kind" not in e:
+            if isinstance(e, dict):
                 out.append(e)
     return out
+
+
+def receipts_any():
+    """Every readable receipt line (run markers are not receipts)."""
+    return [e for e in log_lines() if "kind" not in e]
 
 
 def snap(row):
@@ -105,10 +111,23 @@ def snap(row):
     return [e for e in receipts_any() if e.get("row") == row]
 
 
+#: row -> {"run_id", "start"} of the LAST drive of that row: receipt() accepts only that run's lines.
+DRIVES: dict = {}
+
+
 def drive(row):
-    """`maint_run.py --row <row>`. Returns maint_run's exit code; the receipt is the one the run wrote to the log."""
+    """`maint_run.py --row <row>`. Returns maint_run's exit code. Records the run this drive started (its run_start
+    marker's run_id, and the clock before it began), so receipt() reads only what THIS run wrote."""
+    import maint_receipt as mr
     import maint_run as run
-    return run.main(["--row", row])
+    start = mr.now_utc().replace(microsecond=0)
+    seen = {e.get("run_id") for e in log_lines() if e.get("kind") == "run_start"}
+    code = run.main(["--row", row])
+    new = [e.get("run_id") for e in log_lines() if e.get("kind") == "run_start" and e.get("run_id") not in seen]
+    if len(new) != 1 or not new[0]:
+        raise AssertionError(f"drive({row}): expected one new run_start marker, found {len(new)}")
+    DRIVES[row] = {"run_id": new[0], "start": start}
+    return code
 
 
 def close(row, *argv):
@@ -128,18 +147,59 @@ def hand_close_ok(prev, rec):
             and rec.get("tool") == "tools/maint_watch.py")
 
 
-def receipt(row, tool):
-    """The row's LAST receipt as the tools wrote it to the receipt log under MAINT_DIR ({} when none), after checking
-    `tool` (the module the test imported) is the script maint_run.py runs for that row: the cite imports the row's own
-    tool, and a cite whose tool is not the row's runner fails. Nothing here writes; the log is maint_receipt's, written
-    by the run."""
-    import maint_receipt as mr
+def runner_identity(row, tool):
+    """Check `tool` (the module the test imported) IS the module maint_run.py runs for `row`: the same module name and
+    the same file, resolved, as maint_run's tools/<script>, never a look-alike basename. -> the receipt `tool` field
+    that module writes (tools/<script>)."""
     import maint_run as run
     wired = run.RUNNERS[row][0]
-    if Path(tool.__file__).name != wired:
-        raise AssertionError(f"row {row} is run by {wired}, not {Path(tool.__file__).name}")
-    p = mr.maint_dir() / mr.LOG_NAME
-    mine = [e for e in receipts_any() if e.get("row") == row] if p.exists() else []
+    want = (run.TOOLS_DIR / wired).resolve()
+    got = Path(getattr(tool, "__file__", "") or "").resolve()
+    if getattr(tool, "__name__", None) != Path(wired).stem or got != want:
+        raise AssertionError(f"row {row} is run by {want}, not {getattr(tool, '__name__', tool)} at {got}")
+    return f"tools/{wired}"
+
+
+def receipt(row, tool):
+    """The row's LAST receipt of the row's LAST drive ({} when that run wrote none): a line carrying that drive's
+    run_id, stamped at or after the drive's start, and written by the row's own runner module (`tool`, checked by
+    full module identity) or by maint_run.py itself (the UNKNOWN it writes when the runner gave no usable receipt).
+    A line from another run, an older line, or a line from any other tool is never this row's answer. Nothing here
+    writes; the log is maint_receipt's, written by the run."""
+    import maint_run as run
+    own = runner_identity(row, tool)
+    d = DRIVES.get(row)
+    if d is None:
+        raise AssertionError(f"receipt({row}): the row was never driven through maint_run.py in this test")
+
+    def this_run(e):
+        try:
+            at = dt.datetime.fromisoformat(str(e.get("at")))
+        except ValueError:
+            return False
+        return (e.get("row") == row and e.get("run_id") == d["run_id"] and at.tzinfo is not None
+                and at >= d["start"] and e.get("tool") in (own, run.RUNNER))
+    mine = [e for e in receipts_any() if this_run(e)]
+    return mine[-1] if mine else {}
+
+
+def closed(row, tool):
+    """The row's LAST line after a person's close through maint_watch ({} when none): stamped at or after the row's
+    last drive, written by tools/maint_watch.py, outside any run (a hand act carries run_id null). `tool` is still
+    checked to be the row's own runner module (full identity), so the cite names the row's tool."""
+    runner_identity(row, tool)
+    d = DRIVES.get(row)
+    if d is None:
+        raise AssertionError(f"closed({row}): the row was never driven through maint_run.py in this test")
+
+    def hand(e):
+        try:
+            at = dt.datetime.fromisoformat(str(e.get("at")))
+        except ValueError:
+            return False
+        return (e.get("row") == row and e.get("run_id") is None and at.tzinfo is not None and at >= d["start"]
+                and e.get("tool") == "tools/maint_watch.py")
+    mine = [e for e in receipts_any() if hand(e)]
     return mine[-1] if mine else {}
 
 
@@ -683,7 +743,7 @@ def test_cite_M1b_a_pseudo_element_waits_for_the_eye(monkeypatch, tmp_path):
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting site-maintainer judgement")
     code, prev, close_rec = close("M1b", "judge", "M1b", "PASS", "--seat", "site-maintainer", "--note",
                                   "judged by eye on every template")
-    rec = receipt("M1b", maint_quality)
+    rec = closed("M1b", maint_quality)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
@@ -892,7 +952,7 @@ def test_cite_M4_the_editors_judgement_closes_it(monkeypatch, tmp_path):
     drive("M4")
     code, prev, _ = close("M4", "judge", "M4", "FINDINGS", "1", "--seat", "managing-editor", "--note",
                           "one term needs a gloss")
-    rec = receipt("M4", maint_pages)
+    rec = closed("M4", maint_pages)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1) and hand_close_ok(prev, rec)
 
 
@@ -974,7 +1034,7 @@ def test_cite_Q1_pages_past_90_days_await_the_editor(monkeypatch, tmp_path):
     rec = receipt("Q1", maint_pages)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting managing-editor judgement")
     code, prev, _ = close("Q1", "judge", "Q1", "PASS", "--seat", "managing-editor", "--note", "re-read; no change")
-    rec = receipt("Q1", maint_pages)
+    rec = closed("Q1", maint_pages)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
@@ -1039,7 +1099,7 @@ def test_cite_Q2_the_witness_closes_it_through_maint_watch(monkeypatch, tmp_path
     code, _, _ = close("Q2", "witness", "site-maintainer")                  # an author may not witness
     assert code == 1
     code, prev, _ = close("Q2", "witness", "privacy-safety")
-    rec = receipt("Q2", maint_pages)
+    rec = closed("Q2", maint_pages)
     assert rec["outcome"] == "PASS" and "witnessed by privacy-safety" in rec["why"] and hand_close_ok(prev, rec)
 
 
@@ -1183,7 +1243,7 @@ def test_cite_Q6_clean_world_drill_confirmed(monkeypatch, tmp_path):
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
     code, prev, _ = close("Q6", "confirm", "10:30")
-    rec = receipt("Q6", maint_watch)
+    rec = closed("Q6", maint_watch)
     assert rec["outcome"] == "PASS" and "alarm fired at 10:30" in rec["why"] and hand_close_ok(prev, rec)
 
 
@@ -1203,7 +1263,7 @@ def test_cite_Q6_no_alarm_is_an_s1_failure(monkeypatch, tmp_path):
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
     code, prev, _ = close("Q6", "confirm", "never")
-    rec = receipt("Q6", maint_watch)
+    rec = closed("Q6", maint_watch)
     assert rec["outcome"] == "FINDINGS" and [f["severity"] for f in findings("Q6")] == ["S1"]
     assert hand_close_ok(prev, rec)
 
@@ -1258,7 +1318,7 @@ def test_cite_H1_daniels_close(monkeypatch, tmp_path):
     _capture(monkeypatch)
     drive("H1")
     code, prev, _ = close("H1", "human", "H1", "E01234")
-    rec = receipt("H1", maint_human)
+    rec = closed("H1", maint_human)
     assert rec["outcome"] == "PASS" and "E01234" in rec["why"] and hand_close_ok(prev, rec)
 
 
@@ -1391,7 +1451,7 @@ def test_cite_A1_daniels_sign_off(monkeypatch, tmp_path):
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     drive("A1")
     code, prev, _ = close("A1", "human", "A1", "E04321")
-    rec = receipt("A1", maint_human)
+    rec = closed("A1", maint_human)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
@@ -1422,7 +1482,7 @@ def test_cite_A2_the_editors_rot_judgement_closes_it(monkeypatch, tmp_path):
     md, _ = world(monkeypatch, tmp_path)
     drive("A2")
     code, prev, _ = close("A2", "judge", "A2", "PASS", "--seat", "managing-editor", "--note", "nothing redundant")
-    rec = receipt("A2", maint_pages)
+    rec = closed("A2", maint_pages)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
@@ -1468,10 +1528,10 @@ def test_cite_A3_daniels_close_ends_the_window(monkeypatch, tmp_path):
     _rdap(monkeypatch, "2026-12-20T00:00:00Z")
     drive("A3")
     code, prev, _ = close("A3", "human", "A3", "E05555")
-    closed = receipt("A3", maint_human)
+    shut = closed("A3", maint_human)
     drive("A3")
     rec = receipt("A3", maint_human)
-    assert closed["outcome"] == "PASS" and hand_close_ok(prev, closed)
+    assert shut["outcome"] == "PASS" and hand_close_ok(prev, shut)
     assert rec["outcome"] == "SKIP" and "closed for this window" in rec["why"]
 
 
@@ -1949,8 +2009,9 @@ def test_cite_Q6_an_alarm_time_must_belong_to_the_drill(monkeypatch, tmp_path):
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
     code, prev, _ = close("Q6", "confirm", "23:00")                       # later than now: not this drill's alarm
-    rec = receipt("Q6", maint_watch)
-    assert code == 1 and rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting alarm confirmation")
+    rec = receipt("Q6", maint_watch)                                       # the drill's own line still stands
+    assert code == 1 and closed("Q6", maint_watch) == {}                   # and no close was written
+    assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting alarm confirmation")
 
 
 # ------------------------------------------------------------------ H1, H2, H3, A1, A2, A3, A4
@@ -2595,3 +2656,208 @@ def test_cite_A4_broken_scanners_never_pass(monkeypatch, tmp_path, kind):
     drive("A4")
     rec = receipt("A4", maint_quality)
     assert never_pass(rec), rec
+
+
+# ================================================================== round 8: a check that could not run is never PASS
+# (the reviewer's mut10 batch: the shared input layer, maint_run's receipt intake, and each tool's UNKNOWN exits)
+def test_cite_D1_a_release_time_with_no_zone_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    _release(monkeypatch, tmp_path, dict(LINE, at="2026-11-02T13:30:01"))          # no zone: which 13:30?
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "has no timezone" in rec["why"]
+
+
+def test_cite_D1_a_release_line_with_no_time_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    _release(monkeypatch, tmp_path, dict(LINE, at=None))
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "no time" in rec["why"]
+
+
+def test_cite_D1_a_missing_release_log_is_unknown_as_missing(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setattr(maint_watch, "REPO", tmp_path)                             # no release_log.jsonl at all
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "the release log is missing" in rec["why"]
+
+
+def test_cite_D1_a_line_break_inside_a_value_is_not_a_new_line(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setattr(maint_watch, "REPO", tmp_path)
+    line = json.dumps(dict(LINE, note="checked \u0085 twice"), ensure_ascii=False)    # U+0085 raw inside a value
+    (tmp_path / "release_log.jsonl").write_text(line + "\n", encoding="utf-8")
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec["outcome"] == "PASS" and rec["tool"] == "tools/maint_watch.py"     # one line, read whole
+
+
+def test_cite_D2_an_empty_row_table_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    t = tmp_path / "rows.json"
+    t.write_text(json.dumps({"epoch": "2026-10-20", "rows": []}), encoding="utf-8")
+    monkeypatch.setattr(maint_watch, "ROWS_FILE", t)
+    drive("D2")
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "zero records" in rec["why"]
+
+
+def test_cite_D2_a_schedule_that_cannot_be_read_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+    _table(monkeypatch, tmp_path, "D1", "D2", "M4")
+    mr.write_receipt("D1", "PASS", why="released", tool="maint_watch.py")
+    mr.write_receipt("M4", "PASS", why="judged by managing-editor: ok", tool="maint_watch.py")
+    monkeypatch.setattr(maint_watch, "SCHEDULE_CHECK",
+                        lambda now: {"state": "unknown", "problems": [], "why": "schtasks /Query exit 1"})
+    drive("D2")
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "schedule UNKNOWN: schtasks /Query exit 1" in rec["why"]
+
+
+def _stray_run(monkeypatch, write):
+    """maint_run's RUN replaced by one that only calls `write(row_tool_receipt)` and exits 0: the row's tool wrote no
+    receipt of its own in this run."""
+    import maint_run as run
+
+    def fake(argv, timeout):
+        write()
+        return 0, "", ""
+    monkeypatch.setattr(run, "RUN", fake)
+
+
+def test_cite_C1_a_receipt_from_another_run_is_not_this_runs(monkeypatch, tmp_path):
+    import headers_tls_check
+    import os
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+
+    def other_run():
+        saved = os.environ.get(mr.RUN_ENV)
+        os.environ[mr.RUN_ENV] = "another-run"
+        try:
+            mr.write_receipt("C1", "PASS", n=0, why="from another run", tool="headers_tls_check.py")
+        finally:
+            os.environ[mr.RUN_ENV] = saved
+    _stray_run(monkeypatch, other_run)
+    drive("C1")
+    rec = receipt("C1", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a C1 receipt" in rec["why"]
+
+
+def test_cite_C1_a_receipt_from_before_the_run_is_stale(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+
+    def stale():
+        clock.set(2026, 11, 2, 10)                                     # an hour before the run began
+        mr.write_receipt("C1", "PASS", n=0, why="stale", tool="headers_tls_check.py")
+        clock.set(2026, 11, 2, 11, 1)
+    _stray_run(monkeypatch, stale)
+    drive("C1")
+    rec = receipt("C1", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a C1 receipt" in rec["why"]
+
+
+def test_cite_C1_a_receipt_from_a_foreign_tool_is_not_the_rows(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+    _stray_run(monkeypatch, lambda: mr.write_receipt("C1", "PASS", n=0, why="not my tool", tool="maint_pages.py"))
+    drive("C1")
+    rec = receipt("C1", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a C1 receipt" in rec["why"]
+
+
+def test_cite_C1_a_pass_with_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+    _monitors(monkeypatch, MONS)
+
+    def exits_2(argv, timeout):
+        code, out, err = inproc(argv, timeout)                         # the tool writes its PASS ...
+        return 2, out, err + "\nthen died"                             # ... and the process exits 2
+    monkeypatch.setattr(run, "RUN", exits_2)
+    drive("C1")
+    rec = receipt("C1", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+
+def test_cite_W1_an_internal_check_that_could_not_run_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    _net(monkeypatch)
+
+    def no_tree(root):
+        raise OSError("the served tree is unreadable")
+    monkeypatch.setattr(linkcheck, "served_pages", no_tree)
+    drive("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec["outcome"] == "UNKNOWN" and "internal check could not run" in rec["why"]
+
+
+def test_cite_M1_exit_0_with_an_unreadable_report_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    _pa11y(monkeypatch, 0, "pa11y-ci printed no JSON at all")
+    drive("M1")
+    rec = receipt("M1", maint_quality)
+    assert rec["outcome"] == "UNKNOWN" and "pa11y-ci exit 0 but its JSON report could not be read" in rec["why"]
+
+
+def test_cite_A4_a_scanner_that_could_not_run_is_not_calibrated(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+
+    def down():
+        raise maint_quality.Unavailable("linkcheck could not start")
+    _real_scanners(monkeypatch, **{"linkcheck.py": down})   # broken-internal-link is still SEEN by release.broken_links
+    drive("A4")
+    rec = receipt("A4", maint_quality)
+    assert rec["outcome"] == "UNKNOWN" and "Scanners that could not run: linkcheck.py" in rec["why"]
+
+
+def test_cite_W3_no_served_page_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    pages_repo(monkeypatch, tmp_path, {"index.html": None, "lessons/index.html": None,
+                                       "lessons/find-your-door/index.html": None, "lessons/alpha/index.html": None},
+               names=True)
+    drive("W3")
+    rec = receipt("W3", maint_pages)
+    assert rec["outcome"] == "UNKNOWN" and "no served HTML page found at HEAD" in rec["why"]
+
+
+def test_cite_M3_a_mixed_content_grep_that_fails_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    _tls(monkeypatch)
+
+    def grep_fails(root):
+        raise RuntimeError("git grep exit 128")
+    monkeypatch.setattr(headers_tls_check, "git_grep_http", grep_fails)
+    drive("M3")
+    rec = receipt("M3", headers_tls_check)
+    assert rec["outcome"] == "UNKNOWN" and "mixed content: git grep exit 128" in rec["why"]
+
+
+def test_cite_Q4_a_dns_lookup_error_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    _dns(monkeypatch)
+    table = headers_tls_check.resolve
+    monkeypatch.setattr(headers_tls_check, "resolve", lambda name, rtype: ("error", ["LifetimeTimeout"])
+                        if rtype == "TXT" else table(name, rtype))
+    drive("Q4")
+    rec = receipt("Q4", headers_tls_check)
+    assert rec["outcome"] == "UNKNOWN" and "TXT: LifetimeTimeout" in rec["why"]
