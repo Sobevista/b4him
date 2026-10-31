@@ -299,6 +299,31 @@ def test_digest_empty_week_says_0_findings(env):
     assert code == 2                                     # C1 UNKNOWN is never rounded away
 
 
+def test_one_d3_signals_fail_unless_todays_d1_and_d2_passed(env, monkeypatch):
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/abc")
+    env.clock.set(2026, 11, 3, 10, 35)
+    mw.main(["--now", "2026-11-03T10:35:00-05:00", "one", "D3"])            # no D1/D2 today -> fail signal
+    assert env.calls[-1].endswith("/fail") and "D1 no receipt today" in last("D3")["why"]
+    mr.write_receipt("D1", "PASS", why="ok", tool="t")
+    mr.write_receipt("D2", "PASS", why="ok", tool="t")
+    mw.main(["--now", "2026-11-03T10:35:00-05:00", "one", "D3"])
+    assert not env.calls[-1].endswith("/fail") and last("D3")["outcome"] == "PASS"
+    mr.write_receipt("D2", "FINDINGS", n=1, why="overdue: W1", tool="t")
+    mw.main(["--now", "2026-11-03T10:35:00-05:00", "one", "D3"])
+    assert env.calls[-1].endswith("/fail") and "D2 FINDINGS" in last("D3")["why"]
+
+
+def test_one_human_row_is_skip_when_not_due_and_a_reminder_when_due(env):
+    env.clock.set(2026, 11, 3, 9)
+    mw.main(["--now", "2026-11-03T09:00:00-05:00", "one", "H1"])
+    assert last("H1")["outcome"] == "SKIP" and "next due 2027-01-04" in last("H1")["why"]
+    env.clock.set(2027, 1, 4, 9)
+    mw.main(["--now", "2027-01-04T09:00:00-05:00", "one", "H1"])
+    assert last("H1")["outcome"] == "UNKNOWN" and "reminder fired 2027-01-04" in last("H1")["why"]
+    mw.main(["--now", "2027-01-04T09:00:00-05:00", "one", "H1"])
+    assert last("H1")["outcome"] == "UNKNOWN" and "awaiting Daniel" in last("H1")["why"]
+
+
 def test_digest_uses_the_c1_readers_receipt_when_there_is_one(env):
     env.clock.set(2026, 11, 2, 8)
     mr.write_receipt("C1", "PASS", n=0, why="b4him: up, last 7 days uptime 100.000%", tool="headers_tls_check.py")

@@ -9,6 +9,7 @@ H1, A1, A3). Every run writes receipts through tools/maint_receipt.py into the g
     py tools/maint_watch.py confirm <at|never>                         Q6: the alarm arrived at <at> (or never)
     py tools/maint_watch.py check   M5|H2|H3                           one receipts-only check on its own
     py tools/maint_watch.py human   H1|A1|A3 <E-number>               close a HUMAN row with Daniel's ledger id
+    py tools/maint_watch.py one     D1|D2|D3|H1|A1|A3                  one row alone (tools/maint_run.py runs these)
 
 Exit 0 every receipt PASS/SKIP · 1 a FINDINGS (or a refused command) · 2 an UNKNOWN and no FINDINGS.
 
@@ -336,6 +337,48 @@ def cmd_daily(a, now: dt.datetime) -> int:
     return show([d1, d2, d3])
 
 
+ONE_ROWS = ("D1", "D2", "D3") + HUMAN_ROWS
+
+
+def cmd_one(a, now: dt.datetime) -> int:
+    """One row on its own, for tools/maint_run.py, which runs D1 then D2 then D3 as separate rows (D2 and D3 last, so
+    the heartbeat reflects the whole run). D3 signals fail when today's newest D1 or D2 receipt is not PASS or is
+    missing. A HUMAN row writes its reminder when due (UNKNOWN), or SKIP with its next due date when not."""
+    rid = a.row
+    if rid == "D1":
+        day = dt.date.fromisoformat(a.date) if a.date else now.date()
+        rlog = Path(a.release_log) if a.release_log else REPO / "release_log.jsonl"
+        return show([run_d1(rlog, day, now)])
+    if rid == "D2":
+        return show([run_d2(now)])
+    if rid == "D3":
+        try:
+            receipts = mr.read_receipts()
+        except ValueError as e:
+            return show([run_d3(True, f"cannot read today's D1/D2: {e}", now)])
+        bad = []
+        for r in ("D1", "D2"):
+            today = [e for t, e in receipts_of(receipts, r) if t.date() == now.date()]
+            if not today:
+                bad.append(f"{r} no receipt today")
+            elif today[-1]["outcome"] != "PASS":
+                bad.append(f"{r} {today[-1]['outcome']}")
+        return show([run_d3(bool(bad), ", ".join(bad), now)])
+    try:
+        table = load_rows()
+    except Unknown as e:
+        return show([mr.write_receipt(rid, "UNKNOWN", why=str(e), tool=TOOL)])
+    s = human_status(rid, table, mr.read_receipts(), now)
+    if not s["is_due"]:
+        return show([mr.write_receipt(rid, "SKIP", why=f"HUMAN row not due: next due {s['due']:%Y-%m-%d}" +
+                                      (f" (last closed: {s['last_e']})" if s["last_e"] else ""), tool=TOOL)])
+    if s["fired"] is None:
+        return show(fire_reminders(table, now, only=(rid,)))
+    return show([mr.write_receipt(rid, "UNKNOWN", why=f"awaiting Daniel's ruling: reminder fired {fmt(s['fired'])} for "
+                                  f"due {s['due']:%Y-%m-%d}; close with maint_watch.py human {rid} <E-number>",
+                                  tool=TOOL)])
+
+
 def show(receipts: list[dict]) -> int:
     for r in receipts:
         print(json.dumps(r, ensure_ascii=False))
@@ -418,9 +461,9 @@ def human_status(rid: str, table: dict, receipts: list[dict], now: dt.datetime) 
             "deadline": dl, "is_due": now >= due, "overdue": now > dl, "fired": fired[0] if fired else None}
 
 
-def fire_reminders(table: dict, now: dt.datetime) -> list[dict]:
+def fire_reminders(table: dict, now: dt.datetime, only=HUMAN_ROWS) -> list[dict]:
     out = []
-    for rid in HUMAN_ROWS:
+    for rid in only:
         s = human_status(rid, table, mr.read_receipts(), now)
         if s["is_due"] and s["fired"] is None:
             late = (now.date() - s["due"].date()).days
@@ -712,6 +755,10 @@ def main(argv=None) -> int:
     s = sub.add_parser("human", help="close a HUMAN row")
     s.add_argument("row")
     s.add_argument("e_number")
+    s = sub.add_parser("one", help="one row on its own (D1, D2, D3, or a HUMAN row's reminder); maint_run.py uses it")
+    s.add_argument("row", choices=ONE_ROWS)
+    s.add_argument("--date", help="D1: the release day it judges (default today, local)")
+    s.add_argument("--release-log", help="D1: release_log.jsonl to read (default: this checkout's)")
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -730,6 +777,8 @@ def main(argv=None) -> int:
         return cmd_confirm(a, now)
     if a.cmd == "check":
         return show([run_check(a.row, now)])
+    if a.cmd == "one":
+        return cmd_one(a, now)
     return cmd_human(a, now)
 
 
