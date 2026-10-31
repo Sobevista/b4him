@@ -26,6 +26,11 @@ LIMITS, stated so nobody reads silence as success:
     hover/focus states or non-text contrast (SC 1.4.11).
   * M2: TBT is a lab proxy for INP, not INP. The budgets are [ASSUMED, Daniel rules] (.lighthouserc.json).
   * M2b: no CrUX data for the origin is UNKNOWN-field, never good. The query is all form factors aggregated.
+  * A4: tools/maint_fixtures/ holds a clean control page and five planted faults. They are copied into a scratch git
+    repo under .maint/calib/ (outside tools/, which release.broken_links skips) and the mixed-content fault is armed
+    only there, so the tracked, served copy carries no http:// subresource for the live scans to trip on. Sibling
+    scanners (linkcheck.py, headers_tls_check.py, maint_pages.py) are called in process when they are on the branch;
+    absent, each is UNKNOWN. A scanner that runs and misses its fault, or flags the control page, is FINDINGS.
 Nothing here installs anything: a missing pa11y-ci, lhci or Playwright is an UNKNOWN that names the install.
 """
 from __future__ import annotations
@@ -564,11 +569,20 @@ def fixture_pages(root: Path) -> list[str]:
     return sorted(p.relative_to(base).as_posix() for p in base.rglob("*.html"))
 
 
+def arm(text: str) -> str:
+    """The tracked mixed-content fixture is disarmed (no http:// in the served tree, so the live M3 mixed-content grep
+    and the W1 outbound check stay clean); the scratch copy gets the real fault."""
+    return text.replace(f'data-planted-mixed="{PLANTED_HOST}/', f'src="http://{PLANTED_HOST}/')
+
+
 def scratch_site(root: Path) -> Path:
-    """A throwaway git repo holding the fixtures OUTSIDE tools/ (release.broken_links skips tools/ by design), so the
-    reused release check and the siblings can be pointed at it. Lives under .maint/ (ignored); never deleted here."""
+    """A throwaway git repo holding the fixtures OUTSIDE tools/ (release.broken_links and linkcheck's root-link pass
+    skip tools/ by design), with the mixed-content fault armed, so the reused release check and the sibling scanners
+    can be pointed at it. Lives under .maint/ (ignored); never deleted here."""
     d = maint_receipt.maint_dir(root) / "calib" / dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%f")
     shutil.copytree(root / FIXTURES, d / "maint_fixtures")
+    mc = d / "maint_fixtures" / FAULTS["mixed-content"][0]
+    mc.write_text(arm(mc.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
     for argv in (["git", "init", "-q", str(d)], ["git", "-C", str(d), "add", "-A"]):
         p = subprocess.run(argv, capture_output=True)
         if p.returncode:
@@ -578,14 +592,9 @@ def scratch_site(root: Path) -> Path:
 
 def cal_broken_links(root: Path, site: Path) -> tuple[dict[str, bool], list[str]]:
     """{fixture page: flagged?} from the reused release.broken_links over the scratch repo."""
-    import production_board as pb
     import release
-    old = pb.REPO
-    pb.REPO = site
-    try:
+    with repo_at(site):
         bad = release.broken_links([site / "maint_fixtures" / r for r in fixture_pages(root)])
-    finally:
-        pb.REPO = old
     return {r: any(b.startswith(f"maint_fixtures/{r} -> ") for b in bad) for r in fixture_pages(root)}, bad
 
 
@@ -600,17 +609,79 @@ def cal_people(root: Path) -> dict[str, list[str]]:
     return out
 
 
-def cal_sibling(root: Path, tool: str, site: Path) -> str:
-    """Run a sibling scanner at the scratch site if it is on this branch and takes --root; return its stdout."""
-    p = root / "tools" / tool
-    if not p.exists():
+def sibling_module(root: Path, tool: str):
+    """Import a sibling builder's scanner from this branch's tools/, or say it is not here. Its pure functions are
+    called in process, against the scratch site: its CLI would write W1/M3/W3 receipts for a run that is not one."""
+    if not (root / "tools" / tool).exists():
         raise Unavailable(f"{tool} is not on this branch")
-    h = run_cmd([sys.executable, str(p), "--help"], cwd=root, timeout=120)
-    if "--root" not in (h.stdout or "") + (h.stderr or ""):
-        raise Unavailable(f"{tool} is present but takes no --root, so it cannot be pointed at the fixtures "
-                          f"(calibration interface: `{tool} --root DIR` naming each fault it sees on stdout)")
-    r = run_cmd([sys.executable, str(p), "--root", str(site)], cwd=root, timeout=900)
-    return (r.stdout or "") + (r.stderr or "")
+    import importlib
+    try:
+        return importlib.import_module(tool[:-3])
+    except Exception as e:
+        raise Unavailable(f"{tool} would not import: {type(e).__name__}: {str(e)[:150]}") from None
+
+
+@contextlib.contextmanager
+def repo_at(site: Path):
+    """Point release/production_board's repo() at the scratch site for the length of the block."""
+    import production_board as pb
+    old = pb.REPO
+    pb.REPO = site
+    try:
+        yield
+    finally:
+        pb.REPO = old
+
+
+def _fixture_page(path: str) -> str | None:
+    return path.split("maint_fixtures/", 1)[1] if "maint_fixtures/" in path else None
+
+
+def cal_linkcheck(root: Path, site: Path) -> dict[str, list[str]]:
+    """linkcheck.py's W1(a) internal pass (scan + internal_check), no network: live=None, outbound not fetched."""
+    lc = sibling_module(root, "linkcheck.py")
+    try:
+        with repo_at(site):
+            pages = lc.served_pages(site)
+            bad = lc.internal_check(site, pages, lc.scan(site, pages), None)
+    except AttributeError as e:
+        raise Unavailable(f"linkcheck.py interface changed: {e}") from None
+    out = {r: [] for r in fixture_pages(root)}
+    for b in bad:
+        r = _fixture_page(b.get("page", ""))
+        if r in out:
+            out[r].append(f"linkcheck:{b.get('link')}")
+    return out
+
+
+def cal_mixed(root: Path, site: Path) -> dict[str, list[str]]:
+    """headers_tls_check.py's M3 mixed-content pass (git grep over the tracked tree), no network."""
+    htc = sibling_module(root, "headers_tls_check.py")
+    try:
+        hits = htc.mixed_content(htc.git_grep_http(site))
+    except AttributeError as e:
+        raise Unavailable(f"headers_tls_check.py interface changed: {e}") from None
+    out = {r: [] for r in fixture_pages(root)}
+    for h in hits:
+        r = _fixture_page(h.get("path", ""))
+        if r in out:
+            out[r].append(f"mixed:{h.get('match')}")
+    return out
+
+
+def cal_maint_pages(root: Path) -> dict[str, list[str]]:
+    """maint_pages.py's W3 per-page mapping (people_page), with the invented stand-in loaded."""
+    mp = sibling_module(root, "maint_pages.py")
+    import people_registry as preg
+    reg = preg.load_registry(local_path=root / FIXTURES / "stand_in_names.json")
+    out = {}
+    try:
+        for r in fixture_pages(root):
+            res = mp.people_page((root / FIXTURES / r).read_text(encoding="utf-8"), reg)
+            out[r] = [f"{f['kind']}:{f.get('label') or ''}:{f['text']}" for f in res["findings"]]
+    except (AttributeError, KeyError, TypeError) as e:
+        raise Unavailable(f"maint_pages.py interface changed: {e}") from None
+    return out
 
 
 def run_calibration(root: Path, scanners: dict | None = None) -> dict:
@@ -661,6 +732,12 @@ def fault_seen(fault: str, hits: list[str]) -> bool:
         return any(STAND_IN_LABEL in h or "Zorblax" in h for h in hits)
     if fault == "low-contrast" and any(h.startswith("contrast:") for h in hits):
         return any("planted-low-contrast" in h for h in hits)
+    if fault == "broken-internal-link" and any(h.startswith("linkcheck:") for h in hits):
+        return any(PLANTED_LINK in h for h in hits)
+    if fault == "mixed-content" and any(h.startswith("mixed:") for h in hits):
+        # headers_tls_check's match ends AT "http://" (its regex stops there), so the host is not in it: a hit on the
+        # planted page is the fault, and the control page proves the scanner is not flagging everything.
+        return any("http://" in h for h in hits)
     return True
 
 
@@ -715,20 +792,14 @@ def default_scanners(root: Path) -> dict:
             out[r] = [f"pa11y:{i.get('code', '')}" for i in issues if isinstance(i, dict)]
         return out
 
-    def sibling(tool, marker_by_page):
-        def fn():
-            text = cal_sibling(root, tool, site())
-            return {page: ([f"{tool}:{m}"] if m in text else []) for page, m in marker_by_page.items()}
-        return fn
-
     return {
         "release.broken_links": broken,
         "people_registry": people,
         "contrast-audit.js": contrast,
         "pa11y-ci": pa11y,
-        "linkcheck.py": sibling("linkcheck.py", {"broken-link/index.html": PLANTED_LINK}),
-        "headers_tls_check.py": sibling("headers_tls_check.py", {"mixed-content/index.html": PLANTED_HOST}),
-        "maint_pages.py": sibling("maint_pages.py", {"forbidden-token/index.html": "Zorblax"}),
+        "linkcheck.py": lambda: cal_linkcheck(root, site()),
+        "headers_tls_check.py": lambda: cal_mixed(root, site()),
+        "maint_pages.py": lambda: cal_maint_pages(root),
     }
 
 

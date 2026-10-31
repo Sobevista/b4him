@@ -309,6 +309,35 @@ def test_real_cheap_scanners_see_their_planted_faults(tmp_path):
     assert people["index.html"] == []
 
 
+def test_mixed_content_is_disarmed_in_the_tree_and_armed_in_the_scratch_copy(tmp_path):
+    base = REPO / mq.FIXTURES
+    assert not [p for p in base.rglob("*.html") if "http://" in p.read_text(encoding="utf-8")]   # (the svg's xmlns is not a fetch)
+    shutil.copytree(base, tmp_path / mq.FIXTURES)
+    site = mq.scratch_site(tmp_path)
+    armed = (site / "maint_fixtures" / "mixed-content" / "index.html").read_text(encoding="utf-8")
+    assert f'src="http://{mq.PLANTED_HOST}/pixel.png"' in armed and 'data-planted-mixed="' not in armed
+
+
+def test_sibling_adapters_absent_present_and_changed(tmp_path, monkeypatch):
+    import sys
+    import types
+    shutil.copytree(REPO / mq.FIXTURES, tmp_path / mq.FIXTURES)
+    with pytest.raises(mq.Unavailable, match="not on this branch"):
+        mq.cal_mixed(tmp_path, tmp_path)
+    (tmp_path / "tools" / "headers_tls_check.py").write_text("# stand-in\n", encoding="utf-8")
+    fake = types.SimpleNamespace(
+        git_grep_http=lambda site: ["maint_fixtures/mixed-content/index.html:15:<img src=\"http://x\">"],
+        mixed_content=lambda lines: [{"path": "maint_fixtures/mixed-content/index.html", "line": 15,
+                                      "match": 'src="http://'}])        # the real tool's match stops at http://
+    monkeypatch.setitem(sys.modules, "headers_tls_check", fake)
+    hits = mq.cal_mixed(tmp_path, tmp_path)
+    assert mq.fault_seen("mixed-content", hits["mixed-content/index.html"]) and hits["index.html"] == []
+    monkeypatch.setitem(sys.modules, "headers_tls_check", types.SimpleNamespace())
+    with pytest.raises(mq.Unavailable, match="interface changed"):
+        mq.cal_mixed(tmp_path, tmp_path)
+    assert not mq.fault_seen("broken-internal-link", ["linkcheck:/somewhere/else/"])
+
+
 def test_fixtures_hold_no_real_names_and_stay_quiet_on_the_live_people_scan():
     """The stand-in is seen ONLY when stand_in_names.json is loaded: the plain heuristic (what W3 runs on every served
     page) finds nothing on any fixture, so the fixtures cannot raise an S1 on the live site."""
