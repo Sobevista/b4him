@@ -3,8 +3,9 @@
 Each row has a CLEAN-WORLD fixture (everything right: the row's quiet outcome) and one cite per FACET of its calendar
 task (each thing the row must catch). Every cite names its row as a literal, drives the row through
 `maint_run.py --row <id>` (in process: run.RUN calls the row's tool's own main(); only the network and the clock are
-faked) and asserts on the receipt that run wrote to `.maint/receipts/<row>.json` under a temporary MAINT_DIR: a
-path-shaped receipt produced at run time, never a committed file. Hand closes (judge, human, confirm, witness) are
+faked) and asserts on the receipt that run wrote to the receipt log under a temporary MAINT_DIR: produced at run time
+by the tools, never written by the test and never a committed file. Each cite imports its row's tool inside the body
+and `receipt()` checks that module is the one maint_run.py runs for the row. Hand closes (judge, human, confirm, witness) are
 asserted against the counter's HAND CLOSE rule: the close follows an awaiting SKIP, carries the same evidence, and is
 written by tools/maint_watch.py.
 
@@ -100,26 +101,19 @@ def receipts_any():
 
 
 def snap(row):
-    """Write the row's latest receipt to .maint/receipts/<row>.json (the run-time receipt the asserts read)."""
-    import maint_receipt as mr
-    mine = [e for e in receipts_any() if e.get("row") == row]
-    p = mr.maint_dir() / "receipts" / f"{row}.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(mine[-1] if mine else {}), encoding="utf-8")
-    return mine
+    """The row's receipt lines, as the tools wrote them to the receipt log (read only: the test writes no receipt)."""
+    return [e for e in receipts_any() if e.get("row") == row]
 
 
 def drive(row):
-    """`maint_run.py --row <row>`, then its receipt snapshot. Returns maint_run's exit code."""
+    """`maint_run.py --row <row>`. Returns maint_run's exit code; the receipt is the one the run wrote to the log."""
     import maint_run as run
-    code = run.main(["--row", row])
-    snap(row)
-    return code
+    return run.main(["--row", row])
 
 
 def close(row, *argv):
-    """A person's act through maint_watch (judge / human / confirm / witness), then the row's receipt snapshot.
-    Returns (exit code, the line before the close, the close) for the HAND CLOSE assertions."""
+    """A person's act through maint_watch (judge / human / confirm / witness). Returns (exit code, the row's last line
+    before the close, its last line after) from the receipt log, for the HAND CLOSE assertions."""
     import maint_watch as mw
     before = snap(row)
     code = mw.main(list(argv))
@@ -134,15 +128,33 @@ def hand_close_ok(prev, rec):
             and rec.get("tool") == "tools/maint_watch.py")
 
 
-def load(md, rel, tool):
-    """The run-time receipt at `rel`, after checking `tool` (a module name) is the script maint_run.py runs for that
-    row: the cite names the row's own tool, and a cite whose tool is not the row's runner fails."""
+def receipt(row, tool):
+    """The row's LAST receipt as the tools wrote it to the receipt log under MAINT_DIR ({} when none), after checking
+    `tool` (the module the test imported) is the script maint_run.py runs for that row: the cite imports the row's own
+    tool, and a cite whose tool is not the row's runner fails. Nothing here writes; the log is maint_receipt's, written
+    by the run."""
+    import maint_receipt as mr
     import maint_run as run
-    row = rel.rsplit("/", 1)[-1].removesuffix(".json")
-    wired = run.RUNNERS[row][0].removesuffix(".py")
-    if wired != tool:
-        raise AssertionError(f"row {row} is run by {wired}.py, not {tool}.py")
-    return json.loads((md / rel).read_text(encoding="utf-8"))
+    wired = run.RUNNERS[row][0]
+    if Path(tool.__file__).name != wired:
+        raise AssertionError(f"row {row} is run by {wired}, not {Path(tool.__file__).name}")
+    p = mr.maint_dir() / mr.LOG_NAME
+    mine = [e for e in receipts_any() if e.get("row") == row] if p.exists() else []
+    return mine[-1] if mine else {}
+
+
+def evidence(rec):
+    """The evidence file a receipt names (`.maint/...`), as the tool wrote it, parsed as JSON."""
+    import maint_receipt as mr
+    rel = str(rec["evidence"])
+    return json.loads((mr.maint_dir() / rel[len(".maint/"):]).read_text(encoding="utf-8"))
+
+
+def evidence_text(rec):
+    """The evidence file a receipt names, as the tool wrote it, as text."""
+    import maint_receipt as mr
+    rel = str(rec["evidence"])
+    return (mr.maint_dir() / rel[len(".maint/"):]).read_text(encoding="utf-8")
 
 
 def findings(row):
@@ -176,41 +188,46 @@ def _monitors(monkeypatch, mons):
 
 
 def test_cite_C1_clean_world(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _monitors(monkeypatch, MONS)
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert rec["outcome"] == "PASS" and "last 7 days uptime" in rec["why"]
 
 
 def test_cite_C1_home_page_must_be_monitored(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _monitors(monkeypatch, [dict(MONS[0], url="https://example.org/"), MONS[1]])
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "no monitor watches https://b4him.com/" in rec["why"]
 
 
 def test_cite_C1_a_lesson_must_be_monitored(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _monitors(monkeypatch, [MONS[0], dict(MONS[1], url="https://b4him.com/about/")])
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "no monitor watches one lesson URL" in rec["why"]
 
 
 def test_cite_C1_a_down_monitor_is_s1(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _monitors(monkeypatch, [dict(MONS[0], status=9), MONS[1]])
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and [f["severity"] for f in findings("C1")] == ["S1"]
 
 
 def test_cite_C1_no_key_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "no UPTIMEROBOT_API_KEY")
 
 
@@ -226,34 +243,38 @@ def _release(monkeypatch, tmp_path, *lines):
 
 
 def test_cite_D1_clean_world(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     _release(monkeypatch, tmp_path, LINE)
     drive("D1")
-    rec = load(md, "receipts/D1.json", "maint_watch")
+    rec = receipt("D1", maint_watch)
     assert rec["outcome"] == "PASS" and rec["tool"] == "tools/maint_watch.py"
 
 
 def test_cite_D1_no_line_by_10_30_is_missing(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     _release(monkeypatch, tmp_path, dict(LINE, date="2026-11-01"))
     drive("D1")
-    rec = load(md, "receipts/D1.json", "maint_watch")
+    rec = receipt("D1", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "MISSING" in rec["why"]
 
 
 def test_cite_D1_a_failed_release_is_findings(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     _release(monkeypatch, tmp_path, dict(LINE, outcome="FAIL"))
     drive("D1")
-    rec = load(md, "receipts/D1.json", "maint_watch")
+    rec = receipt("D1", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "FAIL" in rec["why"]
 
 
 def test_cite_D1_before_the_cutoff_is_pending(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2026, 11, 2, 9)
     _release(monkeypatch, tmp_path, dict(LINE, date="2026-11-01"))
     drive("D1")
-    rec = load(md, "receipts/D1.json", "maint_watch")
+    rec = receipt("D1", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "10:30 has not passed" in rec["why"]
 
 
@@ -267,36 +288,40 @@ def _table(monkeypatch, tmp_path, *ids):
 
 
 def test_cite_D2_clean_world(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     import maint_receipt as mr
     _table(monkeypatch, tmp_path, "D1", "D2", "M4")
     mr.write_receipt("D1", "PASS", why="released", tool="maint_watch.py")
     mr.write_receipt("M4", "PASS", why="judged by managing-editor: ok", tool="maint_watch.py")
     drive("D2")
-    rec = load(md, "receipts/D2.json", "maint_watch")
+    rec = receipt("D2", maint_watch)
     assert rec["outcome"] == "PASS" and "none UNKNOWN" in rec["why"]
 
 
 def test_cite_D2_an_overdue_row_is_listed(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     _table(monkeypatch, tmp_path, "D1", "D2")
     drive("D2")
-    rec = load(md, "receipts/D2.json", "maint_watch")
+    rec = receipt("D2", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "D1 (no receipt ever" in rec["why"]
 
 
 def test_cite_D2_a_stuck_unknown_is_an_alarm(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path, 2026, 11, 2, 7)
     import maint_receipt as mr
     _table(monkeypatch, tmp_path, "D1", "D2")
     mr.write_receipt("D1", "UNKNOWN", why="no release log", tool="maint_watch.py")
     clock.set(2026, 11, 2, 9, 30)
     drive("D2")
-    rec = load(md, "receipts/D2.json", "maint_watch")
+    rec = receipt("D2", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "D1 STUCK" in rec["why"]
 
 
 def test_cite_D2_an_unjudged_assist_row_goes_overdue(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path)
     import maint_receipt as mr
     _table(monkeypatch, tmp_path, "D2", "M4")
@@ -305,7 +330,7 @@ def test_cite_D2_an_unjudged_assist_row_goes_overdue(monkeypatch, tmp_path):
     mr.write_receipt("M4", "SKIP", why="awaiting managing-editor judgement: pack", tool="maint_pages.py")
     clock.set(2026, 12, 11, 0, 1)
     drive("D2")
-    rec = load(md, "receipts/D2.json", "maint_watch")
+    rec = receipt("D2", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "M4 (awaiting judgement since 2026-11-02" in rec["why"]
 
 
@@ -325,24 +350,27 @@ def _d1d2(outcome2="PASS", why2="ok"):
 
 
 def test_cite_D3_clean_world(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     calls = _hb(monkeypatch)
     _d1d2()
     drive("D3")
-    rec = load(md, "receipts/D3.json", "maint_watch")
+    rec = receipt("D3", maint_watch)
     assert rec["outcome"] == "PASS" and calls == ["https://hc-ping.example.invalid/x"]
 
 
 def test_cite_D3_an_unknown_watch_pings_fail(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     calls = _hb(monkeypatch)
     _d1d2("UNKNOWN", "cannot judge")
     drive("D3")
-    rec = load(md, "receipts/D3.json", "maint_watch")
+    rec = receipt("D3", maint_watch)
     assert rec["outcome"] == "PASS" and calls[-1].endswith("/fail") and "D2 UNKNOWN" in rec["why"]
 
 
 def test_cite_D3_a_new_alarm_fails_once_then_stands(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path)
     import maint_watch as mw
     calls = _hb(monkeypatch)
@@ -354,15 +382,16 @@ def test_cite_D3_a_new_alarm_fails_once_then_stands(monkeypatch, tmp_path):
         clock.set(2026, 11, day, 10, 35)
         mw.run_d2(mw.local(clock()))
         drive("D3")
-        rec = load(md, "receipts/D3.json", "maint_watch")
+        rec = receipt("D3", maint_watch)
         assert rec["outcome"] == "PASS" and calls[-1].endswith("/fail") == (day == 2)
 
 
 def test_cite_D3_no_url_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     _d1d2()
     drive("D3")
-    rec = load(md, "receipts/D3.json", "maint_watch")
+    rec = receipt("D3", maint_watch)
     assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "no MAINT_HEARTBEAT_URL")
 
 
@@ -416,76 +445,84 @@ OUT = "https://example.org/a-page"
 
 
 def test_cite_W1_clean_world(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     _net(monkeypatch)
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     assert rec["outcome"] == "PASS" and rec["tool"] == "tools/linkcheck.py" and "23 pages" in rec["why"]
 
 
 def test_cite_W1_internal_link_case_sensitive(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": '<a href="../Lessons/alpha/">x</a>'})
     _net(monkeypatch)
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     assert rec["outcome"] == "FINDINGS" and "1 broken internal" in rec["why"]
 
 
 def test_cite_W1_every_page_not_only_touched(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"zz/deep/index.html": '<a href="../nowhere/">x</a>'})
     _net(monkeypatch)
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     assert rec["outcome"] == "FINDINGS" and "1 broken internal" in rec["why"]
 
 
 def test_cite_W1_dead_outbound_link(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": f'<a href="{OUT}">out</a>'})
     _net(monkeypatch, dead=(OUT,))
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     assert rec["outcome"] == "FINDINGS" and "1 dead" in rec["why"]
 
 
 def test_cite_W1_outbound_answers_are_cached(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": f'<a href="{OUT}">out</a>'})
     calls = _net(monkeypatch)
     drive("W1")
     first = len(calls)
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     assert rec["outcome"] == "PASS" and first >= 1 and len(calls) == first      # the second week fetched nothing
 
 
 def test_cite_W1b_clean_world(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": f'<a href="{OUT}">out</a>'})
     _net(monkeypatch)
     drive("W1b")
-    rec = load(md, "receipts/W1b.json", "linkcheck")
+    rec = receipt("W1b", linkcheck)
     assert rec["outcome"] == "SKIP" and rec["why"] == "no dead outbound links this run"
 
 
 def test_cite_W1b_dead_link_gets_a_proposed_snapshot(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": f'<a href="{OUT}">out</a>'})
     _net(monkeypatch, dead=(OUT,))
     drive("W1b")
-    rec = load(md, "receipts/W1b.json", "linkcheck")
+    rec = receipt("W1b", linkcheck)
     prop = [f.get("proposal") for f in findings("W1") if f.get("proposal")]
     assert rec["outcome"] == "FINDINGS" and prop and prop[0]["status"] == "PROPOSED, not applied"
 
 
 def test_cite_W1b_a_failed_lookup_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": f'<a href="{OUT}">out</a>'})
     _net(monkeypatch, dead=(OUT,), wayback=False)
     drive("W1b")
-    rec = load(md, "receipts/W1b.json", "linkcheck")
+    rec = receipt("W1b", linkcheck)
     assert rec["outcome"] == "UNKNOWN" and "Wayback lookups failed" in rec["why"]
 
 
@@ -495,73 +532,81 @@ def _digest(md, rec):
 
 
 def test_cite_W2_clean_world_says_0_findings(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     drive("W2")
-    rec = load(md, "receipts/W2.json", "maint_watch")
+    rec = receipt("W2", maint_watch)
     assert rec["outcome"] == "PASS" and "0 findings" in _digest(md, rec)
 
 
 def test_cite_W2_lists_open_findings_by_age(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path, 2026, 10, 28, 9)
     import maint_receipt as mr
     mr.write_finding("W1", "S2", "internal link about -> /gone/", "x", "Site Maintainer")
     mr.write_receipt("W1", "FINDINGS", n=1, why="1 broken", tool="linkcheck.py")
     clock.set(2026, 11, 2, 11)
     drive("W2")
-    rec = load(md, "receipts/W2.json", "maint_watch")
+    rec = receipt("W2", maint_watch)
     assert rec["outcome"] == "PASS" and "5 d · W1 S2 internal link about -> /gone/" in _digest(md, rec)
 
 
 def test_cite_W2_lists_unknowns_by_age(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path, 2026, 10, 30, 11)
     import maint_receipt as mr
     mr.write_receipt("M2b", "UNKNOWN", why="no CRUX_API_KEY", tool="maint_quality.py")
     clock.set(2026, 11, 2, 11)
     drive("W2")
-    rec = load(md, "receipts/W2.json", "maint_watch")
+    rec = receipt("W2", maint_watch)
     assert rec["outcome"] == "PASS" and "3 d · M2b: no CRUX_API_KEY" in _digest(md, rec)
 
 
 def test_cite_W2_carries_the_monitor_line(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     import maint_receipt as mr
     mr.write_receipt("C1", "PASS", n=0, why="home: up, last 7 days uptime 99.9%", tool="headers_tls_check.py")
     drive("W2")
-    rec = load(md, "receipts/W2.json", "maint_watch")
+    rec = receipt("W2", maint_watch)
     assert rec["outcome"] == "PASS" and "C1 uptime monitor: PASS home: up, last 7 days uptime 99.9%" in _digest(md, rec)
 
 
 # ================================================================== W3 people scan
 def test_cite_W3_clean_world(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, names=True)
     drive("W3")
-    rec = load(md, "receipts/W3.json", "maint_pages")
+    rec = receipt("W3", maint_pages)
     assert rec["outcome"] == "PASS" and "with the known-names list loaded" in rec["why"]
 
 
 def test_cite_W3_a_planted_name_is_s1(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": "<p>i met Quillon there.</p>"}, names=True)
     drive("W3")
-    rec = load(md, "receipts/W3.json", "maint_pages")
+    rec = receipt("W3", maint_pages)
     assert rec["outcome"] == "FINDINGS" and [f["severity"] for f in findings("W3")] == ["S1"]
     assert findings("W3")[0]["subject"] == "about/index.html: known-outside-rule"
 
 
 def test_cite_W3_every_published_page(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"zz/deep/index.html": "<p>i met Quillon there.</p>"}, names=True)
     drive("W3")
-    rec = load(md, "receipts/W3.json", "maint_pages")
+    rec = receipt("W3", maint_pages)
     assert rec["outcome"] == "FINDINGS" and findings("W3")[0]["subject"].startswith("zz/deep/index.html")
 
 
 def test_cite_W3_no_names_file_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path)
     drive("W3")
-    rec = load(md, "receipts/W3.json", "maint_pages")
+    rec = receipt("W3", maint_pages)
     assert rec["outcome"] == "UNKNOWN" and "people_names.local.json absent" in rec["why"]
 
 
@@ -575,27 +620,30 @@ def _pa11y(monkeypatch, code, stdout):
 
 
 def test_cite_M1_clean_world(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _pa11y(monkeypatch, 0, json.dumps({"total": 23, "passes": 23, "errors": 0, "results": {"http://h/": []}}))
     drive("M1")
-    rec = load(md, "receipts/M1.json", "maint_quality")
+    rec = receipt("M1", maint_quality)
     assert rec["outcome"] == "PASS" and "0 WCAG2AA issues" in rec["why"]
 
 
 def test_cite_M1_recorded_report_is_parsed_into_findings(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _pa11y(monkeypatch, 2, "pa11y-ci noise line\n" + PA11Y_RECORDED.read_text(encoding="utf-8"))
     drive("M1")
-    rec = load(md, "receipts/M1.json", "maint_quality")
+    rec = receipt("M1", maint_quality)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 7) and "on 4 page(s)" in rec["why"]
     assert "do not cover all of WCAG 2.2 AA" in rec["why"]
 
 
 def test_cite_M1_a_technical_fault_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _pa11y(monkeypatch, 1, "Error: browser failed to launch")
     drive("M1")
-    rec = load(md, "receipts/M1.json", "maint_quality")
+    rec = receipt("M1", maint_quality)
     assert rec["outcome"] == "UNKNOWN" and "technical fault" in rec["why"]
 
 
@@ -609,30 +657,33 @@ def _contrast(monkeypatch, failures=(), unverifiable=()):
 
 
 def test_cite_M1b_clean_world(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _contrast(monkeypatch)
     drive("M1b")
-    rec = load(md, "receipts/M1b.json", "maint_quality")
+    rec = receipt("M1b", maint_quality)
     assert rec["outcome"] == "PASS" and "nothing painted over" in rec["why"]
 
 
 def test_cite_M1b_a_failing_pair_is_findings_by_cause(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _contrast(monkeypatch, failures=[("p.a", 1.2), ("p.b", 1.3)])
     drive("M1b")
-    rec = load(md, "receipts/M1b.json", "maint_quality")
+    rec = receipt("M1b", maint_quality)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1) and "2 el" in rec["why"]
 
 
 def test_cite_M1b_a_pseudo_element_waits_for_the_eye(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _contrast(monkeypatch, unverifiable=["body::before"])
     drive("M1b")
-    rec = load(md, "receipts/M1b.json", "maint_quality")
+    rec = receipt("M1b", maint_quality)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting site-maintainer judgement")
     code, prev, close_rec = close("M1b", "judge", "M1b", "PASS", "--seat", "site-maintainer", "--note",
                                   "judged by eye on every template")
-    rec = load(md, "receipts/M1b.json", "maint_quality")
+    rec = receipt("M1b", maint_quality)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
@@ -657,34 +708,38 @@ def _lighthouse(monkeypatch, lcp, runs=3, outlier=None):
 
 
 def test_cite_M2_clean_world(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _lighthouse(monkeypatch, 1200)
     drive("M2")
-    rec = load(md, "receipts/M2.json", "maint_quality")
+    rec = receipt("M2", maint_quality)
     assert rec["outcome"] == "PASS" and "on the median of 3 runs" in rec["why"]
 
 
 def test_cite_M2_the_median_not_the_worst_run(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _lighthouse(monkeypatch, 1200, outlier=9000)
     drive("M2")
-    rec = load(md, "receipts/M2.json", "maint_quality")
+    rec = receipt("M2", maint_quality)
     assert rec["outcome"] == "PASS"
 
 
 def test_cite_M2_a_budget_miss_is_findings(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     paths = _lighthouse(monkeypatch, 3000)
     drive("M2")
-    rec = load(md, "receipts/M2.json", "maint_quality")
+    rec = receipt("M2", maint_quality)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", len(paths))
 
 
 def test_cite_M2_a_missing_run_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _lighthouse(monkeypatch, 1200, runs=2)
     drive("M2")
-    rec = load(md, "receipts/M2.json", "maint_quality")
+    rec = receipt("M2", maint_quality)
     assert rec["outcome"] == "UNKNOWN" and "2/3 runs" in rec["why"]
 
 
@@ -696,35 +751,39 @@ def _crux(monkeypatch, status, body):
 
 
 def test_cite_M2b_clean_world(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_quality import _crux as crux_body
     _crux(monkeypatch, 200, crux_body())
     drive("M2b")
-    rec = load(md, "receipts/M2b.json", "maint_quality")
+    rec = receipt("M2b", maint_quality)
     assert rec["outcome"] == "PASS" and rec["why"].startswith("p75 ")
 
 
 def test_cite_M2b_a_p75_miss_is_findings(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_quality import _crux as crux_body
     _crux(monkeypatch, 200, crux_body(lcp=3100))
     drive("M2b")
-    rec = load(md, "receipts/M2b.json", "maint_quality")
+    rec = receipt("M2b", maint_quality)
     assert rec["outcome"] == "FINDINGS" and "largest_contentful_paint p75 3100" in rec["why"]
 
 
 def test_cite_M2b_no_field_data_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _crux(monkeypatch, 404, {"error": {"code": 404, "message": "chrome ux report data not found"}})
     drive("M2b")
-    rec = load(md, "receipts/M2b.json", "maint_quality")
+    rec = receipt("M2b", maint_quality)
     assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("UNKNOWN-field")
 
 
 def test_cite_M2b_no_key_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     drive("M2b")
-    rec = load(md, "receipts/M2b.json", "maint_quality")
+    rec = receipt("M2b", maint_quality)
     assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "no CRUX_API_KEY")
 
 
@@ -742,30 +801,34 @@ def _tls(monkeypatch, days=60, redirect=301, headers=None, grep=()):
 
 
 def test_cite_M3_clean_world(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _tls(monkeypatch)
     drive("M3")
-    rec = load(md, "receipts/M3.json", "headers_tls_check")
+    rec = receipt("M3", headers_tls_check)
     assert rec["outcome"] == "PASS" and rec["tool"] == "tools/headers_tls_check.py"
 
 
 def test_cite_M3_a_certificate_near_expiry_is_s1(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _tls(monkeypatch, days=5)
     drive("M3")
-    rec = load(md, "receipts/M3.json", "headers_tls_check")
+    rec = receipt("M3", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "certificate expires in" in rec["why"]
 
 
 def test_cite_M3_http_must_redirect_to_https(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _tls(monkeypatch, redirect=200)
     drive("M3")
-    rec = load(md, "receipts/M3.json", "headers_tls_check")
+    rec = receipt("M3", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "does not redirect permanently" in rec["why"]
 
 
 def test_cite_M3_a_changed_header_is_diffed(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     import headers_tls_check as h
     _tls(monkeypatch)
@@ -774,15 +837,16 @@ def test_cite_M3_a_changed_header_is_diffed(monkeypatch, tmp_path):
     (snaps / "2026-10-01.json").write_text(json.dumps({"headers": {"server": "nginx"}}), encoding="utf-8")
     monkeypatch.setattr(h, "today", lambda: dt.date(2026, 11, 2))
     drive("M3")
-    rec = load(md, "receipts/M3.json", "headers_tls_check")
+    rec = receipt("M3", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "response header server changed" in rec["why"]
 
 
 def test_cite_M3_a_mixed_content_subresource(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _tls(monkeypatch, grep=['index.html:12:<img src="http://example.org/a.png">'])
     drive("M3")
-    rec = load(md, "receipts/M3.json", "headers_tls_check")
+    rec = receipt("M3", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "http:// subresource in index.html:12" in rec["why"]
 
 
@@ -791,40 +855,44 @@ JARGON = "<p>then i open the harness again later today and go home to rest for a
 
 
 def test_cite_M4_clean_world_awaits_the_editor(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path)
     drive("M4")
-    rec = load(md, "receipts/M4.json", "maint_pages")
+    rec = receipt("M4", maint_pages)
     assert rec["outcome"] == "SKIP" and "no mechanical finding" in rec["why"] and not findings("M4")
 
 
 def test_cite_M4_unglossed_jargon_on_the_route(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import page
     pages_repo(monkeypatch, tmp_path, {"lessons/alpha/index.html": page("Alpha", JARGON)})
     drive("M4")
-    rec = load(md, "receipts/M4.json", "maint_pages")
+    rec = receipt("M4", maint_pages)
     assert rec["outcome"] == "SKIP" and "scanner found 1 unglossed jargon" in rec["why"]
     assert findings("M4")[0]["subject"] == "lessons/alpha/index.html: unglossed jargon"
 
 
 def test_cite_M4_a_broken_reader_path(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import page
     pages_repo(monkeypatch, tmp_path, {"lessons/index.html": page("Lessons", "<p>no links</p>")})
     drive("M4")
-    rec = load(md, "receipts/M4.json", "maint_pages")
+    rec = receipt("M4", maint_pages)
     assert rec["outcome"] == "SKIP" and "1 broken path segment" in rec["why"]
     assert findings("M4")[0]["severity"] == "S2"
 
 
 def test_cite_M4_the_editors_judgement_closes_it(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path)
     drive("M4")
     code, prev, _ = close("M4", "judge", "M4", "FINDINGS", "1", "--seat", "managing-editor", "--note",
                           "one term needs a gloss")
-    rec = load(md, "receipts/M4.json", "maint_pages")
+    rec = receipt("M4", maint_pages)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1) and hand_close_ok(prev, rec)
 
 
@@ -839,34 +907,38 @@ def _board(monkeypatch, tmp_path, stamp=True):
 
 
 def test_cite_M5_clean_world_board_run_found(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2026, 10, 31, 11)
     _board(monkeypatch, tmp_path)
     drive("M5")
-    rec = load(md, "receipts/M5.json", "maint_watch")
+    rec = receipt("M5", maint_watch)
     assert rec["outcome"] == "PASS" and "board run 2026-10-20 found" in rec["why"]
 
 
 def test_m5_board_run_due_is_awaiting(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2026, 11, 3, 11)
     _board(monkeypatch, tmp_path)
     drive("M5")
-    rec = load(md, "receipts/M5.json", "maint_watch")
+    rec = receipt("M5", maint_watch)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting managing-editor")
 
 
 def test_m5_board_run_overdue_is_findings(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2026, 11, 6, 0, 1)
     _board(monkeypatch, tmp_path)
     drive("M5")
-    rec = load(md, "receipts/M5.json", "maint_watch")
+    rec = receipt("M5", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "board run overdue" in rec["why"]
 
 
 def test_m5_unreadable_board_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     _board(monkeypatch, tmp_path, stamp=False)
     drive("M5")
-    rec = load(md, "receipts/M5.json", "maint_watch")
+    rec = receipt("M5", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "carries no '*Generated" in rec["why"]
 
 
@@ -886,21 +958,23 @@ def _today(monkeypatch, day):
 
 
 def test_cite_Q1_clean_world_none_due(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     _today(monkeypatch, "2026-11-02")
     drive("Q1")
-    rec = load(md, "receipts/Q1.json", "maint_pages")
+    rec = receipt("Q1", maint_pages)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("0 of 23 pages due")
 
 
 def test_cite_Q1_pages_past_90_days_await_the_editor(monkeypatch, tmp_path):
+    import maint_pages
     md, clock = world(monkeypatch, tmp_path, 2027, 2, 1, 11)
     _today(monkeypatch, "2027-02-01")
     drive("Q1")
-    rec = load(md, "receipts/Q1.json", "maint_pages")
+    rec = receipt("Q1", maint_pages)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting managing-editor judgement")
     code, prev, _ = close("Q1", "judge", "Q1", "PASS", "--seat", "managing-editor", "--note", "re-read; no change")
-    rec = load(md, "receipts/Q1.json", "maint_pages")
+    rec = receipt("Q1", maint_pages)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
@@ -910,49 +984,54 @@ def _client(repo, tokens=("Brindlecorp",)):
 
 
 def test_cite_Q2_clean_world_awaits_a_witness(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, tmp_path, names=True)
     _client(repo)
     drive("Q2")
-    rec = load(md, "receipts/Q2.json", "maint_pages")
+    rec = receipt("Q2", maint_pages)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting reviewer judgement: 0 forbidden tokens")
 
 
 def test_cite_Q2_a_planted_token_in_a_named_lesson(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import page
     repo = pages_repo(monkeypatch, tmp_path, {"lessons/alpha/index.html": page("Alpha", "<p>i built zorblax.</p>")},
                       names=True)
     _client(repo)
     drive("Q2")
-    rec = load(md, "receipts/Q2.json", "maint_pages")
+    rec = receipt("Q2", maint_pages)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1) and "1 in lessons/ (S1)" in rec["why"]
     assert [(f["subject"], f["severity"]) for f in findings("Q2")] == [
         ("lessons/alpha/index.html: forbidden token", "S1")]
 
 
 def test_cite_Q2_every_served_file_type(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, tmp_path, {"assets/app.js": "const c = 'Quendrith';\n"}, names=True)
     _client(repo)
     drive("Q2")
-    rec = load(md, "receipts/Q2.json", "maint_pages")
+    rec = receipt("Q2", maint_pages)
     assert rec["outcome"] == "FINDINGS" and findings("Q2")[0]["subject"] == "assets/app.js: forbidden token"
 
 
 def test_cite_Q2_the_client_token_from_the_local_list(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import page
     repo = pages_repo(monkeypatch, tmp_path, {"lessons/alpha/index.html": page("Alpha", "<p>for brindlecorp.</p>")},
                       names=True)
     _client(repo)
     drive("Q2")
-    rec = load(md, "receipts/Q2.json", "maint_pages")
+    rec = receipt("Q2", maint_pages)
     assert rec["outcome"] == "FINDINGS" and "brindlecorp" not in rec["why"].lower()
     assert findings("Q2")[0]["subject"] == "lessons/alpha/index.html: forbidden token"
 
 
 def test_cite_Q2_the_witness_closes_it_through_maint_watch(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, tmp_path, names=True)
     _client(repo)
@@ -960,31 +1039,34 @@ def test_cite_Q2_the_witness_closes_it_through_maint_watch(monkeypatch, tmp_path
     code, _, _ = close("Q2", "witness", "site-maintainer")                  # an author may not witness
     assert code == 1
     code, prev, _ = close("Q2", "witness", "privacy-safety")
-    rec = load(md, "receipts/Q2.json", "maint_pages")
+    rec = receipt("Q2", maint_pages)
     assert rec["outcome"] == "PASS" and "witnessed by privacy-safety" in rec["why"] and hand_close_ok(prev, rec)
 
 
 # ================================================================== Q3 patch-queue hygiene
 def test_cite_Q3_clean_world(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, names=True)
     drive("Q3")
-    rec = load(md, "receipts/Q3.json", "maint_pages")
+    rec = receipt("Q3", maint_pages)
     assert rec["outcome"] == "PASS" and "none older than 90 days" in rec["why"]
 
 
 def test_cite_Q3_a_stale_finding_is_flagged(monkeypatch, tmp_path):
+    import maint_pages
     md, clock = world(monkeypatch, tmp_path, 2026, 1, 5, 9)
     import maint_receipt as mr
     pages_repo(monkeypatch, tmp_path, names=True)
     mr.write_finding("W1", "S3", "dead outbound link https://example.org/old", "x", "Site Maintainer")
     clock.set(2026, 11, 2, 11)
     drive("Q3")
-    rec = load(md, "receipts/Q3.json", "maint_pages")
+    rec = receipt("Q3", maint_pages)
     assert rec["outcome"] == "FINDINGS" and rec["n"] == 1 and "older than 90 days" in rec["why"]
 
 
 def test_cite_Q3_a_stale_patch_is_flagged(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import make_repo
     import maint_pages as mp
@@ -992,7 +1074,7 @@ def test_cite_Q3_a_stale_patch_is_flagged(monkeypatch, tmp_path):
                                        "drafted": "2026-01-02", "since": "2026-01-02"}])
     monkeypatch.setattr(mp, "REPO", repo)
     drive("Q3")
-    rec = load(md, "receipts/Q3.json", "maint_pages")
+    rec = receipt("Q3", maint_pages)
     assert rec["outcome"] == "FINDINGS" and rec["n"] == 1
 
 
@@ -1009,34 +1091,38 @@ def _dns(monkeypatch, drop=(), extra=None, wildcard=False):
 
 
 def test_cite_Q4_clean_world(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _dns(monkeypatch)
     drive("Q4")
-    rec = load(md, "receipts/Q4.json", "headers_tls_check")
+    rec = receipt("Q4", headers_tls_check)
     assert rec["outcome"] == "PASS" and rec["tool"] == "tools/headers_tls_check.py"
 
 
 def test_cite_Q4_an_a_record_outside_pages(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _dns(monkeypatch, extra={("b4him.com", "A"): ("ok", ["185.199.108.153", "203.0.113.9"])})
     drive("Q4")
-    rec = load(md, "receipts/Q4.json", "headers_tls_check")
+    rec = receipt("Q4", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "A points outside GitHub Pages: 203.0.113.9" in rec["why"]
 
 
 def test_cite_Q4_the_verification_txt(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _dns(monkeypatch, drop=(("_github-pages-challenge-sobevista.b4him.com", "TXT"),))
     drive("Q4")
-    rec = load(md, "receipts/Q4.json", "headers_tls_check")
+    rec = receipt("Q4", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "verification TXT" in rec["why"]
 
 
 def test_cite_Q4_a_wildcard_record(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _dns(monkeypatch, wildcard=True)
     drive("Q4")
-    rec = load(md, "receipts/Q4.json", "headers_tls_check")
+    rec = receipt("Q4", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "wildcard record" in rec["why"]
 
 
@@ -1054,71 +1140,79 @@ XFO = {"x-frame-options": {"pass": False}}
 
 
 def test_cite_Q5_clean_world(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _observatory(monkeypatch)
     drive("Q5")
-    rec = load(md, "receipts/Q5.json", "headers_tls_check")
+    rec = receipt("Q5", headers_tls_check)
     assert rec["outcome"] == "PASS" and "tests_failed 0/10" in rec["why"]
 
 
 def test_cite_Q5_needs_daniels_ok(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     drive("Q5")
-    rec = load(md, "receipts/Q5.json", "headers_tls_check")
+    rec = receipt("Q5", headers_tls_check)
     assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "awaiting Daniel's one-time OK")
 
 
 def test_cite_Q5_a_failing_test_is_findings(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _observatory(monkeypatch, 1, {"strict-transport-security": {"pass": False}})
     drive("Q5")
-    rec = load(md, "receipts/Q5.json", "headers_tls_check")
+    rec = receipt("Q5", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "strict-transport-security" in rec["why"]
 
 
 def test_cite_Q5_the_frame_ancestors_limit_is_filed_once(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _observatory(monkeypatch, 1, XFO)
     drive("Q5")
-    first = load(md, "receipts/Q5.json", "headers_tls_check")
+    first = receipt("Q5", headers_tls_check)
     drive("Q5")
-    rec = load(md, "receipts/Q5.json", "headers_tls_check")
+    rec = receipt("Q5", headers_tls_check)
     assert first["outcome"] == "FINDINGS" and rec["outcome"] == "PASS" and "not re-filed" in rec["why"]
 
 
 # ================================================================== Q6 alarm fire drill
 def test_cite_Q6_clean_world_drill_confirmed(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
     code, prev, _ = close("Q6", "confirm", "10:30")
-    rec = load(md, "receipts/Q6.json", "maint_watch")
+    rec = receipt("Q6", maint_watch)
     assert rec["outcome"] == "PASS" and "alarm fired at 10:30" in rec["why"] and hand_close_ok(prev, rec)
 
 
 def test_cite_Q6_an_armed_drill_awaits_confirmation(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
-    rec = load(md, "receipts/Q6.json", "maint_watch")
+    rec = receipt("Q6", maint_watch)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting alarm confirmation")
     assert rec["evidence"].endswith("_drill.md") and rec["tool"] == "tools/maint_watch.py"
 
 
 def test_cite_Q6_no_alarm_is_an_s1_failure(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
     code, prev, _ = close("Q6", "confirm", "never")
-    rec = load(md, "receipts/Q6.json", "maint_watch")
+    rec = receipt("Q6", maint_watch)
     assert rec["outcome"] == "FINDINGS" and [f["severity"] for f in findings("Q6")] == ["S1"]
     assert hand_close_ok(prev, rec)
 
 
 def test_cite_Q6_no_heartbeat_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     drive("Q6")
-    rec = load(md, "receipts/Q6.json", "maint_watch")
+    rec = receipt("Q6", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "no MAINT_HEARTBEAT_URL" in rec["why"]
 
 
@@ -1130,37 +1224,41 @@ def _capture(monkeypatch, problems=()):
 
 
 def test_cite_H1_clean_world_not_due(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path)
     _capture(monkeypatch)
     drive("H1")
-    rec = load(md, "receipts/H1.json", "maint_human")
+    rec = receipt("H1", maint_human)
     assert rec["outcome"] == "SKIP" and "next due 2027-01-04" in rec["why"]
 
 
 def test_cite_H1_the_pack_sits_beside_the_d9_reference(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     _capture(monkeypatch)
     drive("H1")
-    rec = load(md, "receipts/H1.json", "maint_human")
+    rec = receipt("H1", maint_human)
     pack = (md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8")
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting Daniel's ruling: H1 pack")
     assert "reference_logo.png" in pack and "`--navy-800`" in pack and pack.count("### ") == 4
 
 
 def test_cite_H1_a_failed_capture_check_is_unknown(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     _capture(monkeypatch, ["t.png: 2560x10 px, expected 2560x4000"])
     drive("H1")
-    rec = load(md, "receipts/H1.json", "maint_human")
+    rec = receipt("H1", maint_human)
     assert rec["outcome"] == "UNKNOWN" and "capture check failed" in rec["why"]
 
 
 def test_cite_H1_daniels_close(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     _capture(monkeypatch)
     drive("H1")
     code, prev, _ = close("H1", "human", "H1", "E01234")
-    rec = load(md, "receipts/H1.json", "maint_human")
+    rec = receipt("H1", maint_human)
     assert rec["outcome"] == "PASS" and "E01234" in rec["why"] and hand_close_ok(prev, rec)
 
 
@@ -1174,89 +1272,100 @@ def _note(md, row, day, text):
 
 
 def test_cite_H2_clean_world(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H2", "2027-01-05", GOOD_NOTE.format(d="2027-01-05"))
     drive("H2")
-    rec = load(md, "receipts/H2.json", "maint_watch")
+    rec = receipt("H2", maint_watch)
     assert rec["outcome"] == "PASS" and "review note 2027-01-05 found" in rec["why"]
 
 
 def test_cite_H2_due_without_a_note_awaits_the_reviewer(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     drive("H2")
-    rec = load(md, "receipts/H2.json", "maint_watch")
+    rec = receipt("H2", maint_watch)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting reviewer")
 
 
 def test_cite_H2_a_template_note_is_read_and_refused(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H2", "2027-01-05", "Date: 2027-01-05\nReviewer: <seat>\nReviewed: ...\nVerdict: ___\nFinding: n/a\n")
     drive("H2")
-    rec = load(md, "receipts/H2.json", "maint_watch")
+    rec = receipt("H2", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "Verdict" in rec["why"]
 
 
 def test_cite_H2_an_author_cannot_review(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H2", "2027-01-05", GOOD_NOTE.format(d="2027-01-05").replace("reviewer", "managing-editor"))
     drive("H2")
-    rec = load(md, "receipts/H2.json", "maint_watch")
+    rec = receipt("H2", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "independent Reviewer for H2" in rec["why"]
 
 
 def test_cite_H2_the_date_line_must_match_the_filename(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H2", "2027-01-05", GOOD_NOTE.format(d="2026-01-05"))
     drive("H2")
-    rec = load(md, "receipts/H2.json", "maint_watch")
+    rec = receipt("H2", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "equal to the filename's date" in rec["why"]
 
 
 def test_cite_H3_clean_world(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H3", "2027-01-05", GOOD_NOTE.format(d="2027-01-05"))
     drive("H3")
-    rec = load(md, "receipts/H3.json", "maint_watch")
+    rec = receipt("H3", maint_watch)
     assert rec["outcome"] == "PASS" and "re-read note 2027-01-05 found" in rec["why"]
 
 
 def test_cite_H3_due_without_a_note_awaits_daniel(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     drive("H3")
-    rec = load(md, "receipts/H3.json", "maint_watch")
+    rec = receipt("H3", maint_watch)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting publisher")
 
 
 def test_cite_H3_an_empty_note_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H3", "2027-01-05", "")
     drive("H3")
-    rec = load(md, "receipts/H3.json", "maint_watch")
+    rec = receipt("H3", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "the note is empty" in rec["why"]
 
 
 def test_cite_H3_a_future_dated_note_is_refused(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H3", "2099-01-01", GOOD_NOTE.format(d="2099-01-01"))
     drive("H3")
-    rec = load(md, "receipts/H3.json", "maint_watch")
+    rec = receipt("H3", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "not in the future" in rec["why"]
 
 
 # ================================================================== A1 WCAG-EM
 def test_cite_A1_clean_world_not_due(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path)
     drive("A1")
-    rec = load(md, "receipts/A1.json", "maint_human")
+    rec = receipt("A1", maint_human)
     assert rec["outcome"] == "SKIP" and "next due 2027-01-04" in rec["why"]
 
 
 def test_cite_A1_the_pack_has_every_page_and_the_easy_checks(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     (md).mkdir(parents=True, exist_ok=True)
     (md / "2027-01-03_a11y.json").write_text('{"results": {}}', encoding="utf-8")
     drive("A1")
-    rec = load(md, "receipts/A1.json", "maint_human")
+    rec = receipt("A1", maint_human)
     pack = (md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8")
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting Daniel's ruling: A1 WCAG-EM pack (23 pages")
     assert pack.count("| `") == 23 and "Visible Keyboard Focus" in pack and "2.5.8 Target Size (Minimum)" in pack
@@ -1265,6 +1374,7 @@ def test_cite_A1_the_pack_has_every_page_and_the_easy_checks(monkeypatch, tmp_pa
 
 
 def test_a1_without_a_page_list_is_unknown(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     import site_pages
 
@@ -1272,43 +1382,47 @@ def test_a1_without_a_page_list_is_unknown(monkeypatch, tmp_path):
         raise site_pages.GitError("git could not start")
     monkeypatch.setattr(site_pages, "served_pages", no_git)
     drive("A1")
-    rec = load(md, "receipts/A1.json", "maint_human")
+    rec = receipt("A1", maint_human)
     assert rec["outcome"] == "UNKNOWN" and "no page list" in rec["why"]
 
 
 def test_cite_A1_daniels_sign_off(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     drive("A1")
     code, prev, _ = close("A1", "human", "A1", "E04321")
-    rec = load(md, "receipts/A1.json", "maint_human")
+    rec = receipt("A1", maint_human)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
 # ================================================================== A2 content inventory
 def test_cite_A2_clean_world_awaits_the_editor(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     drive("A2")
-    rec = load(md, "receipts/A2.json", "maint_pages")
+    rec = receipt("A2", maint_pages)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting managing-editor judgement: 23 pages") \
         and "no duplicate" in rec["why"]
 
 
 def test_cite_A2_true_duplicates_are_found(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import page
     pages_repo(monkeypatch, tmp_path, {"blog/index.html": page("Same", "<p>coming soon</p>"),
                                        "videos/index.html": page("Same", "<p>coming soon</p>")})
     drive("A2")
-    rec = load(md, "receipts/A2.json", "maint_pages")
+    rec = receipt("A2", maint_pages)
     assert rec["outcome"] == "SKIP" and "1 duplicate group(s), filed as A2 findings" in rec["why"]
     assert findings("A2")[0]["subject"] == "duplicate visible text: blog/index.html = videos/index.html"
 
 
 def test_cite_A2_the_editors_rot_judgement_closes_it(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     drive("A2")
     code, prev, _ = close("A2", "judge", "A2", "PASS", "--seat", "managing-editor", "--note", "nothing redundant")
-    rec = load(md, "receipts/A2.json", "maint_pages")
+    rec = receipt("A2", maint_pages)
     assert rec["outcome"] == "PASS" and hand_close_ok(prev, rec)
 
 
@@ -1321,38 +1435,42 @@ def _rdap(monkeypatch, expires, status=("client transfer prohibited",)):
 
 
 def test_cite_A3_clean_world_far_from_expiry(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path)
     _rdap(monkeypatch, "2027-07-19T00:00:00Z")
     drive("A3")
-    rec = load(md, "receipts/A3.json", "maint_human")
+    rec = receipt("A3", maint_human)
     assert rec["outcome"] == "SKIP" and "expires 2027-07-19" in rec["why"] and "window opens 2027-05-20" in rec["why"]
 
 
 def test_cite_A3_the_60_day_window_awaits_daniel(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path)
     _rdap(monkeypatch, "2026-12-20T00:00:00Z")
     drive("A3")
-    rec = load(md, "receipts/A3.json", "maint_human")
+    rec = receipt("A3", maint_human)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting Daniel's ruling: expires 2026-12-20")
     assert rec["evidence"].endswith("_rdap.json") and [f["severity"] for f in findings("A3")] == ["S2"]
 
 
 def test_cite_A3_a_hold_status_is_s1(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path)
     _rdap(monkeypatch, "2027-07-19T00:00:00Z", status=("client hold",))
     drive("A3")
-    rec = load(md, "receipts/A3.json", "maint_human")
+    rec = receipt("A3", maint_human)
     assert rec["outcome"] == "FINDINGS" and [f["severity"] for f in findings("A3")] == ["S1"]
 
 
 def test_cite_A3_daniels_close_ends_the_window(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path)
     _rdap(monkeypatch, "2026-12-20T00:00:00Z")
     drive("A3")
     code, prev, _ = close("A3", "human", "A3", "E05555")
-    closed = load(md, "receipts/A3.json", "maint_human")
+    closed = receipt("A3", maint_human)
     drive("A3")
-    rec = load(md, "receipts/A3.json", "maint_human")
+    rec = receipt("A3", maint_human)
     assert closed["outcome"] == "PASS" and hand_close_ok(prev, closed)
     assert rec["outcome"] == "SKIP" and "closed for this window" in rec["why"]
 
@@ -1382,10 +1500,11 @@ def _matrix(md, rec):
 
 
 def test_cite_A4_clean_world_every_planted_fault_seen(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _real_scanners(monkeypatch)
     drive("A4")
-    rec = load(md, "receipts/A4.json", "maint_quality")
+    rec = receipt("A4", maint_quality)
     m = _matrix(md, rec)
     assert rec["outcome"] == "PASS" and m["broken-internal-link"] == {"release.broken_links": "SEEN",
                                                                        "linkcheck.py": "SEEN"}
@@ -1394,70 +1513,68 @@ def test_cite_A4_clean_world_every_planted_fault_seen(monkeypatch, tmp_path):
 
 
 def test_cite_A4_a_blind_scanner_is_findings(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _real_scanners(monkeypatch, **{"contrast-audit.js": lambda: {"low-contrast/index.html": [], "index.html": []}})
     drive("A4")
-    rec = load(md, "receipts/A4.json", "maint_quality")
+    rec = receipt("A4", maint_quality)
     assert rec["outcome"] == "FINDINGS" and "contrast-audit.js missed low-contrast" in rec["why"]
 
 
 def test_cite_A4_a_noisy_scanner_is_findings(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _real_scanners(monkeypatch, **{"pa11y-ci": lambda: {"missing-alt/index.html": ["pa11y:image-alt"],
                                                         "low-contrast/index.html": ["pa11y:G18"],
                                                         "index.html": ["pa11y:region"]}})
     drive("A4")
-    rec = load(md, "receipts/A4.json", "maint_quality")
+    rec = receipt("A4", maint_quality)
     assert rec["outcome"] == "FINDINGS" and "pa11y-ci flagged the clean control page" in rec["why"]
 
 
 # ================================================================== round 7: every facet the reviewer's mutants found
 # (C1, Q5, M1, M1b, D1, D2 first: a could-not-run case must never read as PASS)
-def snap_as(row, rel):
-    """The row's latest receipt, written to a run-time path under .maint/ (for a cite that reads another row's view)."""
-    import maint_receipt as mr
-    mine = [e for e in receipts_any() if e.get("row") == row]
-    p = mr.maint_dir() / rel
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(mine[-1] if mine else {}), encoding="utf-8")
-
-
 def test_cite_C1_a_missing_7_day_ratio_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _monitors(monkeypatch, [dict(MONS[0], custom_uptime_ratio=None), MONS[1]])
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert rec["outcome"] == "UNKNOWN" and "returned no 7-day ratio" in rec["why"]
 
 
 def test_cite_C1_a_paused_monitor_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _monitors(monkeypatch, [dict(MONS[0], status=0), MONS[1]])
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert rec["outcome"] == "UNKNOWN" and "is paused" in rec["why"]
 
 
 def test_cite_Q5_no_tests_failed_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     import headers_tls_check as h
     monkeypatch.setenv("MAINT_OBSERVATORY_OK", "1")
     monkeypatch.setattr(h, "http_post", lambda *a, **k: (200, json.dumps({
         "details_url": "x", "error": None, "grade": "A", "score": 90}).encode()))
     drive("Q5")
-    rec = load(md, "receipts/Q5.json", "headers_tls_check")
+    rec = receipt("Q5", headers_tls_check)
     assert rec["outcome"] == "UNKNOWN" and "has no tests_failed" in rec["why"]
 
 
 def test_cite_M1_exit_0_with_issues_in_the_report_is_findings(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _pa11y(monkeypatch, 0, PA11Y_RECORDED.read_text(encoding="utf-8"))
     drive("M1")
-    rec = load(md, "receipts/M1.json", "maint_quality")
+    rec = receipt("M1", maint_quality)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 7) and "exit 0 but its report holds 7" in rec["why"]
 
 
 def test_cite_M1_every_served_page_is_in_the_scan(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     import maint_quality as mq
     seen = []
@@ -1470,41 +1587,45 @@ def test_cite_M1_every_served_page_is_in_the_scan(monkeypatch, tmp_path):
     monkeypatch.setattr(mq, "chrome_path", lambda: None)
     monkeypatch.setattr(mq, "run_cmd", run_cmd)
     drive("M1")
-    rec = load(md, "receipts/M1.json", "maint_quality")
+    rec = receipt("M1", maint_quality)
     assert rec["outcome"] == "PASS" and len(seen[0]) == 23 and seen[0][0].endswith("/about/")
 
 
 def test_cite_M1b_a_page_that_could_not_be_audited_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     import maint_quality as mq
     monkeypatch.setattr(mq, "audit_contrast", lambda root, rels: {
         "index.html": {"checked": 5, "failures": [], "passingButUnverifiable": []},
         "about/index.html": {"error": "TimeoutError: page did not load"}})
     drive("M1b")
-    rec = load(md, "receipts/M1b.json", "maint_quality")
+    rec = receipt("M1b", maint_quality)
     assert rec["outcome"] == "UNKNOWN" and "1 page(s) could not be audited: about/index.html" in rec["why"]
 
 
 def test_cite_D1_a_failed_patch_in_the_release_is_a_finding(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     _release(monkeypatch, tmp_path, dict(LINE, patch_outcomes=[{"piece": "P-7", "outcome": "FAIL"}]))
     drive("D1")
-    rec = load(md, "receipts/D1.json", "maint_watch")
+    rec = receipt("D1", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "patch P-7 FAIL" in rec["why"]
 
 
 def test_cite_D1_the_10_30_cutoff(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path, 2026, 11, 2, 10, 29)
     _release(monkeypatch, tmp_path, dict(LINE, date="2026-11-01"))
     drive("D1")
-    before = load(md, "receipts/D1.json", "maint_watch")
+    before = receipt("D1", maint_watch)
     clock.set(2026, 11, 2, 10, 31)
     drive("D1")
-    rec = load(md, "receipts/D1.json", "maint_watch")
+    rec = receipt("D1", maint_watch)
     assert before["outcome"] == "UNKNOWN" and rec["outcome"] == "FINDINGS" and "MISSING" in rec["why"]
 
 
 def test_cite_D2_a_stale_schedule_alarms(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     import maint_receipt as mr
     import maint_watch as mw
@@ -1513,23 +1634,25 @@ def test_cite_D2_a_stale_schedule_alarms(monkeypatch, tmp_path):
     monkeypatch.setattr(mw, "SCHEDULE_CHECK", lambda now: {
         "state": "stale", "problems": ["b4him-maint-run last ran 2026-10-30 10:35, over 26 h ago"], "why": "x"})
     drive("D2")
-    rec = load(md, "receipts/D2.json", "maint_watch")
+    rec = receipt("D2", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "SCHEDULE (b4him-maint-run last ran 2026-10-30" in rec["why"]
 
 
 def test_cite_D2_a_human_row_closes_only_on_daniels_pass(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     import maint_receipt as mr
     _table(monkeypatch, tmp_path, "D2", "H1")
     mr.write_receipt("H1", "SKIP", why="awaiting Daniel's ruling: H1 pack", tool="maint_human.py")
     clock.set(2027, 1, 12, 0, 1)                         # 01-04 + 1 d + 7 d, and still no E-number
     drive("D2")
-    rec = load(md, "receipts/D2.json", "maint_watch")
+    rec = receipt("D2", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "H1 (no receipt ever, due 2027-01-04" in rec["why"]
 
 
 # ------------------------------------------------------------------ D3
 def test_cite_D3_a_changed_cause_after_the_colon_is_a_new_alarm(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path)
     import maint_receipt as mr
     import maint_watch as mw
@@ -1543,43 +1666,47 @@ def test_cite_D3_a_changed_cause_after_the_colon_is_a_new_alarm(monkeypatch, tmp
                                        encoding="utf-8")
         drive("D3")
         fails.append(calls[-1].endswith("/fail"))
-    rec = load(md, "receipts/D3.json", "maint_watch")
+    rec = receipt("D3", maint_watch)
     assert rec["outcome"] == "PASS" and fails == [True, True] and "linkcheck crashed: timeouterror" in rec["why"]
 
 
 def test_cite_D3_a_drill_withholds_the_ping(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     import maint_watch as mw
     calls = _hb(monkeypatch)
     _d1d2()
     mw.main(["drill"])
     drive("D3")
-    rec = load(md, "receipts/D3.json", "maint_watch")
+    rec = receipt("D3", maint_watch)
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("drill (Q6)") and calls == []
 
 
 def test_cite_D3_ok_not_found_is_not_a_delivered_ping(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     import maint_watch as mw
     _hb(monkeypatch)
     monkeypatch.setattr(mw, "HTTP_GET", lambda url: (200, "OK (not found)"))
     _d1d2()
     drive("D3")
-    rec = load(md, "receipts/D3.json", "maint_watch")
+    rec = receipt("D3", maint_watch)
     assert rec["outcome"] == "FINDINGS" and "not recorded by the service" in rec["why"]
 
 
 # ------------------------------------------------------------------ W1, W1b
 def test_cite_W1_a_broken_link_with_unknown_live_state_is_s2(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path, {"about/index.html": '<a href="../Lessons/alpha/">x</a>'})
     _net(monkeypatch)
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     assert rec["outcome"] == "FINDINGS" and "(1 S2)" in rec["why"] and findings("W1")[0]["severity"] == "S2"
 
 
 def test_cite_W1_an_unknown_answer_is_never_cached(monkeypatch, tmp_path):
+    import linkcheck
     md, _ = world(monkeypatch, tmp_path)
     import urllib.error
 
@@ -1592,12 +1719,13 @@ def test_cite_W1_an_unknown_answer_is_never_cached(monkeypatch, tmp_path):
         raise urllib.error.HTTPError(req.full_url, 503, "Unavailable", {}, None)
     monkeypatch.setattr(lc, "Fetcher", lambda: real(opener=opener, sleep=lambda s: None))
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     cache = json.loads((md / "linkcache.json").read_text(encoding="utf-8"))
     assert rec["outcome"] == "UNKNOWN" and OUT not in cache["links"]
 
 
 def test_cite_W1b_the_snapshot_is_asked_for_near_the_last_alive_date(monkeypatch, tmp_path):
+    import linkcheck
     md, clock = world(monkeypatch, tmp_path)
     import linkcheck as lc
     pages_repo(monkeypatch, tmp_path, {"about/index.html": f'<a href="{OUT}">out</a>'})
@@ -1608,44 +1736,47 @@ def test_cite_W1b_the_snapshot_is_asked_for_near_the_last_alive_date(monkeypatch
     dead.append(OUT)
     clock.set(2026, 11, 10, 11)                              # 8 days on: the cache is stale, the link is dead
     drive("W1b")
-    rec = load(md, "receipts/W1b.json", "linkcheck")
+    rec = receipt("W1b", linkcheck)
     asked = [u for u in calls if u.startswith(lc.WAYBACK_API)]
     assert rec["outcome"] == "FINDINGS" and asked and "timestamp=20261102" in asked[-1]
 
 
 # ------------------------------------------------------------------ W2, W3
 def test_cite_W2_lists_the_receipts_of_the_week(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path, 2026, 10, 30, 11)
     import maint_receipt as mr
     mr.write_receipt("Q3", "PASS", n=0, why="4 open item(s), none older than 90 days", tool="maint_pages.py")
     clock.set(2026, 11, 2, 11)
     drive("W2")
-    rec = load(md, "receipts/W2.json", "maint_watch")
+    rec = receipt("W2", maint_watch)
     text = _digest(md, rec)
     assert rec["outcome"] == "PASS" and "2026-10-30T16:00:00+00:00 Q3 PASS: 4 open item(s)" in text.split(
         "## Receipts of the week")[1]
 
 
 def test_cite_W3_title_words_are_exempt_only_on_their_own_page(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import page
     pages_repo(monkeypatch, tmp_path, {"games/index.html": page("Gentle Harbor", "<h1>Gentle Harbor</h1>"),
                                        "about/index.html": page("About", "<p>i played Gentle Harbor once.</p>")},
                names=True)
     drive("W3")
-    rec = load(md, "receipts/W3.json", "maint_pages")
+    rec = receipt("W3", maint_pages)
     assert rec["outcome"] == "FINDINGS" and [f["subject"] for f in findings("W3")] == [
         "about/index.html: unknown-name (needs review)"]
 
 
 def test_cite_W3_a_capitalised_pair_in_the_names_file_is_never_exempt(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import local_names, page
     repo = pages_repo(monkeypatch, tmp_path, {"about/index.html": page(
         "Corvane Mistlewood", "<h1>Corvane Mistlewood</h1><p>i met Corvane Mistlewood.</p>")})
     local_names(repo, names=("Quillon Mistlewood",))     # a pair sharing a word with a known name: heuristic hit
     drive("W3")
-    rec = load(md, "receipts/W3.json", "maint_pages")
+    rec = receipt("W3", maint_pages)
     ev = json.loads((md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8"))
     exempted = [e["text"] for pg in ev["pages"].values() for e in pg["exempted"]]   # the one planted page
     assert rec["outcome"] == "FINDINGS" and len(ev["pages"]) >= 1 and not any("Mistlewood" in t for t in exempted)
@@ -1653,76 +1784,83 @@ def test_cite_W3_a_capitalised_pair_in_the_names_file_is_never_exempt(monkeypatc
 
 # ------------------------------------------------------------------ M2, M2b, M3: thresholds either side of the line
 def test_cite_M2_the_lcp_budget_either_side_of_2500(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _lighthouse(monkeypatch, 2499)
     drive("M2")
-    under = load(md, "receipts/M2.json", "maint_quality")
+    under = receipt("M2", maint_quality)
     _lighthouse(monkeypatch, 2501)
     drive("M2")
-    rec = load(md, "receipts/M2.json", "maint_quality")
+    rec = receipt("M2", maint_quality)
     assert under["outcome"] == "PASS" and rec["outcome"] == "FINDINGS" and "2501 > 2500" in rec["why"]
 
 
 def test_cite_M2b_lcp_p75_either_side_of_2500(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_quality import _crux as crux_body
     _crux(monkeypatch, 200, crux_body(lcp=2500))
     drive("M2b")
-    at = load(md, "receipts/M2b.json", "maint_quality")
+    at = receipt("M2b", maint_quality)
     _crux(monkeypatch, 200, crux_body(lcp=2501))
     drive("M2b")
-    rec = load(md, "receipts/M2b.json", "maint_quality")
+    rec = receipt("M2b", maint_quality)
     assert at["outcome"] == "PASS" and rec["outcome"] == "FINDINGS" and "p75 2501 > 2500" in rec["why"]
 
 
 def test_cite_M2b_inp_p75_either_side_of_200(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_quality import _crux as crux_body
     _crux(monkeypatch, 200, crux_body(inp=200))
     drive("M2b")
-    at = load(md, "receipts/M2b.json", "maint_quality")
+    at = receipt("M2b", maint_quality)
     _crux(monkeypatch, 200, crux_body(inp=201))
     drive("M2b")
-    rec = load(md, "receipts/M2b.json", "maint_quality")
+    rec = receipt("M2b", maint_quality)
     assert at["outcome"] == "PASS" and rec["outcome"] == "FINDINGS" and "interaction_to_next_paint p75 201" in rec["why"]
 
 
 def test_cite_M3_the_certificate_line_at_13_and_14_days(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     _tls(monkeypatch, days=14.5)
     drive("M3")
-    over = load(md, "receipts/M3.json", "headers_tls_check")
+    over = receipt("M3", headers_tls_check)
     _tls(monkeypatch, days=13.5)
     drive("M3")
-    rec = load(md, "receipts/M3.json", "headers_tls_check")
+    rec = receipt("M3", headers_tls_check)
     assert over["outcome"] == "PASS" and rec["outcome"] == "FINDINGS" and "certificate expires in 13." in rec["why"]
 
 
 # ------------------------------------------------------------------ M4, Q1, Q2, Q3
 def test_cite_M4_the_route_goes_through_find_your_door(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path)
     drive("M4")
-    rec = load(md, "receipts/M4.json", "maint_pages")
+    rec = receipt("M4", maint_pages)
     walk = (md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8")
     assert rec["outcome"] == "SKIP" and "-> /lessons/find-your-door/ ->" in walk.split("shortest click route found:")[1]
 
 
 def test_cite_Q1_due_at_exactly_90_days(monkeypatch, tmp_path):
+    import maint_pages
     md, clock = world(monkeypatch, tmp_path, 2027, 1, 17, 11)
     pages_repo(monkeypatch, tmp_path, names=True)          # every page published 2026-10-20
     _today(monkeypatch, "2027-01-17")                      # 89 days
     drive("Q1")
-    before = load(md, "receipts/Q1.json", "maint_pages")
+    before = receipt("Q1", maint_pages)
     _today(monkeypatch, "2027-01-18")                      # 90 days
     clock.set(2027, 1, 18, 11)
     drive("Q1")
-    rec = load(md, "receipts/Q1.json", "maint_pages")
+    rec = receipt("Q1", maint_pages)
     assert before["why"].startswith("0 of 4 pages due") and rec["why"].startswith(
         "awaiting managing-editor judgement: 4 of 4 pages due")
 
 
 def test_cite_Q2_the_voice_token_is_still_swept_in_the_lessons(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     from test_maint_pages import D11, page
     d11 = D11.replace("`Vexmoor-rig` → \"a machine\".", "`Vexmoor-rig` → \"a machine\", Halvard → first person.")
@@ -1731,12 +1869,13 @@ def test_cite_Q2_the_voice_token_is_still_swept_in_the_lessons(monkeypatch, tmp_
                                               "notes/plan.md": "Halvard rules this.\n"}, names=True)
     _client(repo)
     drive("Q2")
-    rec = load(md, "receipts/Q2.json", "maint_pages")
+    rec = receipt("Q2", maint_pages)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1) and [f["subject"] for f in findings("Q2")] == [
         "lessons/alpha/index.html: forbidden token"]
 
 
 def test_cite_Q3_a_closed_finding_is_not_stale(monkeypatch, tmp_path):
+    import maint_pages
     md, clock = world(monkeypatch, tmp_path, 2026, 1, 5, 9)
     import maint_receipt as mr
     pages_repo(monkeypatch, tmp_path, names=True)
@@ -1745,11 +1884,12 @@ def test_cite_Q3_a_closed_finding_is_not_stale(monkeypatch, tmp_path):
                      status="closed")
     clock.set(2026, 11, 2, 11)
     drive("Q3")
-    rec = load(md, "receipts/Q3.json", "maint_pages")
+    rec = receipt("Q3", maint_pages)
     assert rec["outcome"] == "PASS" and "0 finding" in rec["why"]
 
 
 def test_cite_Q3_stale_either_side_of_90_days(monkeypatch, tmp_path):
+    import maint_pages
     md, clock = world(monkeypatch, tmp_path, 2026, 8, 4, 9)
     import maint_receipt as mr
     pages_repo(monkeypatch, tmp_path, names=True)
@@ -1757,60 +1897,65 @@ def test_cite_Q3_stale_either_side_of_90_days(monkeypatch, tmp_path):
     mr.write_finding("W1", "S3", "ninety days old", "x", "Site Maintainer")           # 2026-08-04: 90 days
     clock.set(2026, 11, 2, 11)
     drive("Q3")
-    at_90 = load(md, "receipts/Q3.json", "maint_pages")
+    at_90 = receipt("Q3", maint_pages)
     clock.set(2026, 8, 3, 9)
     mr.write_finding("W1", "S3", "ninety-one days old", "x", "Site Maintainer")      # 2026-08-03: 91 days
     clock.set(2026, 11, 2, 11)
     drive("Q3")
-    rec = load(md, "receipts/Q3.json", "maint_pages")
+    rec = receipt("Q3", maint_pages)
     assert at_90["outcome"] == "PASS" and (rec["outcome"], rec["n"]) == ("FINDINGS", 1)
 
 
 # ------------------------------------------------------------------ Q4, Q6
 def test_cite_Q4_an_aaaa_record_outside_pages(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     import headers_tls_check as h
     _dns(monkeypatch, extra={("b4him.com", "AAAA"): ("ok", sorted(h.PAGES_AAAA) + ["2001:db8::1"])})
     drive("Q4")
-    rec = load(md, "receipts/Q4.json", "headers_tls_check")
+    rec = receipt("Q4", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "AAAA points outside GitHub Pages: 2001:db8::1" in rec["why"]
 
 
 def test_cite_Q4_enforce_https_must_be_on(monkeypatch, tmp_path):
+    import headers_tls_check
     md, _ = world(monkeypatch, tmp_path)
     import headers_tls_check as h
     from test_maint_edge import PAGES_OK
     _dns(monkeypatch)
     monkeypatch.setattr(h, "gh_pages", lambda slug: ("ok", dict(PAGES_OK, https_enforced=False)))
     drive("Q4")
-    rec = load(md, "receipts/Q4.json", "headers_tls_check")
+    rec = receipt("Q4", headers_tls_check)
     assert rec["outcome"] == "FINDINGS" and "Enforce HTTPS is off" in rec["why"]
 
 
 def test_cite_Q6_no_row_is_a_retire_candidate_before_4_quarters(monkeypatch, tmp_path):
+    import maint_watch
     md, clock = world(monkeypatch, tmp_path, 2026, 11, 1, 9)
     import maint_receipt as mr
     mr.write_receipt("W1", "PASS", n=0, why="ok", tool="linkcheck.py")
     clock.set(2026, 11, 2, 11)
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
-    rec = load(md, "receipts/Q6.json", "maint_watch")
+    rec = receipt("Q6", maint_watch)
     drill = (md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8")
     assert rec["outcome"] == "SKIP" and "W1: zero findings and zero alarms so far, but history only since" in drill
     assert "candidate to retire" not in drill
 
 
 def test_cite_Q6_an_alarm_time_must_belong_to_the_drill(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path)
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     drive("Q6")
     code, prev, _ = close("Q6", "confirm", "23:00")                       # later than now: not this drill's alarm
-    rec = load(md, "receipts/Q6.json", "maint_watch")
+    rec = receipt("Q6", maint_watch)
     assert code == 1 and rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting alarm confirmation")
 
 
 # ------------------------------------------------------------------ H1, H2, H3, A1, A2, A3, A4
 def test_cite_H1_every_tile_is_measured(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     import maint_human as mh
     from test_maint_human import png
@@ -1825,73 +1970,82 @@ def test_cite_H1_every_tile_is_measured(monkeypatch, tmp_path):
         return res
     monkeypatch.setattr(mh, "CAPTURE", capture)
     drive("H1")
-    rec = load(md, "receipts/H1.json", "maint_human")
+    rec = receipt("H1", maint_human)
     assert rec["outcome"] == "UNKNOWN" and "capture check failed" in rec["why"] and "expected 2560x4000" in rec["why"]
 
 
 def test_cite_H2_a_value_needs_real_content(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H2", "2027-01-05", GOOD_NOTE.format(d="2027-01-05").replace("the publication gate", "ok"))
     drive("H2")
-    rec = load(md, "receipts/H2.json", "maint_watch")
+    rec = receipt("H2", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "Reviewed: <what was reviewed>" in rec["why"]
 
 
 def test_cite_H3_a_finding_line_is_required(monkeypatch, tmp_path):
+    import maint_watch
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 5, 11)
     _note(md, "H3", "2027-01-05", GOOD_NOTE.format(d="2027-01-05").replace("Findings: none\n", ""))
     drive("H3")
-    rec = load(md, "receipts/H3.json", "maint_watch")
+    rec = receipt("H3", maint_watch)
     assert rec["outcome"] == "UNKNOWN" and "at least one 'Finding: ...' line" in rec["why"]
 
 
 def test_cite_A1_the_new_wcag_22_criteria_are_in_the_pack(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     drive("A1")
-    rec = load(md, "receipts/A1.json", "maint_human")
+    rec = receipt("A1", maint_human)
     pack = (md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8")
     assert rec["outcome"] == "SKIP" and "- [ ] 2.4.11 Focus Not Obscured (Minimum), AA" in pack
 
 
 def test_cite_A2_the_inventory_names_each_page_url(monkeypatch, tmp_path):
+    import maint_pages
     md, _ = world(monkeypatch, tmp_path)
     pages_repo(monkeypatch, tmp_path)
     drive("A2")
-    rec = load(md, "receipts/A2.json", "maint_pages")
+    rec = receipt("A2", maint_pages)
     audit = (md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8")
     assert rec["outcome"] == "SKIP" and "https://example.invalid/lessons/alpha/" in audit
 
 
 def test_cite_A3_d2_opens_the_window_60_days_before_expiry(monkeypatch, tmp_path):
+    import maint_human
     md, clock = world(monkeypatch, tmp_path)
     _table(monkeypatch, tmp_path, "D2", "A3")
     _rdap(monkeypatch, "2026-12-20T00:00:00Z")                # the window opened 2026-10-21; grace 14 d to 11-04
     drive("A3")
     clock.set(2026, 11, 4, 1)
     drive("D2")
-    snap_as("D2", "receipts/D2_for/A3.json")
-    rec = load(md, "receipts/D2_for/A3.json", "maint_human")
+    import maint_watch
+    a3 = receipt("A3", maint_human)                          # A3 itself: the window is open, awaiting Daniel
+    rec = receipt("D2", maint_watch)                         # D2's view of A3: overdue once the grace runs out
+    assert a3["outcome"] == "SKIP" and a3["why"].startswith("awaiting Daniel's ruling: expires 2026-12-20")
     assert rec["outcome"] == "FINDINGS" and "the 60-day window opened 2026-10-21" in rec["why"]
 
 
 def test_cite_A3_the_60_day_line(monkeypatch, tmp_path):
+    import maint_human
     md, _ = world(monkeypatch, tmp_path)
     _rdap(monkeypatch, "2027-01-02T16:00:00Z")                # 61 days after 2026-11-02 16:00Z: not yet
     drive("A3")
-    before = load(md, "receipts/A3.json", "maint_human")
+    before = receipt("A3", maint_human)
     _rdap(monkeypatch, "2027-01-01T16:00:00Z")                # exactly 60 days: the window is open
     drive("A3")
-    rec = load(md, "receipts/A3.json", "maint_human")
+    rec = receipt("A3", maint_human)
     assert before["why"].startswith("not due: expires 2027-01-02 (61 days)")
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting Daniel's ruling: expires 2027-01-01 (60 days)")
 
 
 def test_cite_A4_the_contrast_hit_must_be_the_planted_one(monkeypatch, tmp_path):
+    import maint_quality
     md, _ = world(monkeypatch, tmp_path)
     _real_scanners(monkeypatch, **{"contrast-audit.js": lambda: {
         "low-contrast/index.html": ["contrast:p.some-other-paragraph:1.4"], "index.html": []}})
     drive("A4")
-    rec = load(md, "receipts/A4.json", "maint_quality")
+    rec = receipt("A4", maint_quality)
     assert rec["outcome"] == "FINDINGS" and "contrast-audit.js missed low-contrast" in rec["why"]
 
 
@@ -1934,6 +2088,7 @@ def never_pass(rec):
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_C1_corrupt_monitor_answers_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import headers_tls_check
     md, _ = fresh(monkeypatch, tmp_path)
     import headers_tls_check as h
     monkeypatch.setenv("UPTIMEROBOT_API_KEY", "ur-test")
@@ -1941,13 +2096,14 @@ def test_cite_C1_corrupt_monitor_answers_never_pass(monkeypatch, tmp_path, kind,
             "foreign_tz": json.dumps({"stat": "ok", "monitors": []}).encode()}.get(kind) or bad_bytes(kind, garbage)
     monkeypatch.setattr(h, "http_post", lambda *a, **k: (200, body))
     drive("C1")
-    rec = load(md, "receipts/C1.json", "headers_tls_check")
+    rec = receipt("C1", headers_tls_check)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE, east=FOREIGN)
 def test_cite_D1_corrupt_release_logs_never_pass(monkeypatch, tmp_path, kind, garbage, east):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_watch as mw
     log = md.parent / "release_log.jsonl"
@@ -1960,13 +2116,14 @@ def test_cite_D1_corrupt_release_logs_never_pass(monkeypatch, tmp_path, kind, ga
     else:
         log.write_bytes(bad_bytes(kind, garbage))
     drive("D1")
-    rec = load(md, "receipts/D1.json", "maint_watch")
+    rec = receipt("D1", maint_watch)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE, east=FOREIGN)
 def test_cite_D2_corrupt_inputs_never_pass(monkeypatch, tmp_path, kind, garbage, east):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_watch as mw
     _table(monkeypatch, md.parent, "D1", "D2")
@@ -1983,13 +2140,14 @@ def test_cite_D2_corrupt_inputs_never_pass(monkeypatch, tmp_path, kind, garbage,
         (md / "maintenance_log.jsonl").write_text(json.dumps(dict(line, at=f"2026-11-02T10:00:00+{east:02d}:00"))
                                                   + "\n", encoding="utf-8")
     drive("D2")
-    rec = load(md, "receipts/D2.json", "maint_watch")
+    rec = receipt("D2", maint_watch)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "OK"))
 def test_cite_D3_unproven_pings_never_pass_as_success(monkeypatch, tmp_path, kind, garbage):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_watch as mw
     calls = _hb(monkeypatch)
@@ -2002,13 +2160,14 @@ def test_cite_D3_unproven_pings_never_pass_as_success(monkeypatch, tmp_path, kin
     else:
         (md / mw.DRILLS).write_text("", encoding="utf-8")                 # an empty drill log
     drive("D3")
-    rec = load(md, "receipts/D3.json", "maint_watch")
+    rec = receipt("D3", maint_watch)
     assert not (rec.get("outcome") == "PASS" and "success signal" in rec.get("why", "")), rec
 
 
 @PROPS
 @given(kind=KINDS, code=st.sampled_from([401, 403, 429, 500, 502, 503]))
 def test_cite_W1_unproven_links_never_pass(monkeypatch, tmp_path, kind, code):
+    import linkcheck
     md, _ = fresh(monkeypatch, tmp_path)
     import urllib.error
 
@@ -2031,13 +2190,14 @@ def test_cite_W1_unproven_links_never_pass(monkeypatch, tmp_path, kind, code):
             raise urllib.error.HTTPError(req.full_url, code, "x", {}, None)
         _use_opener(monkeypatch, real, opener)
     drive("W1")
-    rec = load(md, "receipts/W1.json", "linkcheck")
+    rec = receipt("W1", linkcheck)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_W1b_corrupt_archive_answers_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import linkcheck
     md, _ = fresh(monkeypatch, tmp_path)
     import urllib.error
 
@@ -2069,13 +2229,14 @@ def test_cite_W1b_corrupt_archive_answers_never_pass(monkeypatch, tmp_path, kind
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
     _use_opener(monkeypatch, real, opener)
     drive("W1b")
-    rec = load(md, "receipts/W1b.json", "linkcheck")
+    rec = receipt("W1b", linkcheck)
     assert rec.get("outcome") == "UNKNOWN", rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_W2_corrupt_receipt_logs_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path)
     md.mkdir(parents=True, exist_ok=True)
     line = {"row": "W1", "outcome": "PASS", "n": 0, "why": "ok", "evidence": None, "tool": "tools/linkcheck.py"}
@@ -2089,37 +2250,40 @@ def test_cite_W2_corrupt_receipt_logs_never_pass(monkeypatch, tmp_path, kind, ga
     if text:
         (md / "maintenance_log.jsonl").write_text(text, encoding="utf-8")
     drive("W2")
-    rec = load(md, "receipts/W2.json", "maint_watch")
+    rec = receipt("W2", maint_watch)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_W3_a_corrupt_names_file_never_passes(monkeypatch, tmp_path, kind, garbage):
+    import maint_pages
     md, _ = fresh(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, md.parent)
     names = repo / "data" / "people_names.local.json"
     names.write_bytes(bad_bytes(kind, garbage) if kind != "future" else b'{"people": "nobody"}')
     drive("W3")
-    rec = load(md, "receipts/W3.json", "maint_pages")
+    rec = receipt("W3", maint_pages)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE, code=st.sampled_from([0, 2]))
 def test_cite_M1_unreadable_reports_never_pass(monkeypatch, tmp_path, kind, garbage, code):
+    import maint_quality
     md, _ = fresh(monkeypatch, tmp_path)
     out = {"empty": "", "garbage": garbage.decode("latin-1"), "not_json": "{not json",
            "future": json.dumps({"total": 1, "results": "x"}), "foreign_tz": json.dumps([1, 2])}[kind]
     _pa11y(monkeypatch, code, out)
     drive("M1")
-    rec = load(md, "receipts/M1.json", "maint_quality")
+    rec = receipt("M1", maint_quality)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS)
 def test_cite_M1b_unreadable_audits_never_pass(monkeypatch, tmp_path, kind):
+    import maint_quality
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_quality as mq
     res = {"empty": {}, "garbage": {"index.html": {"error": "garbage"}}, "not_json": {"index.html": "x"},
@@ -2127,13 +2291,14 @@ def test_cite_M1b_unreadable_audits_never_pass(monkeypatch, tmp_path, kind):
            "foreign_tz": {"index.html": {}}}[kind]
     monkeypatch.setattr(mq, "audit_contrast", lambda root, rels: res)
     drive("M1b")
-    rec = load(md, "receipts/M1b.json", "maint_quality")
+    rec = receipt("M1b", maint_quality)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_M2_unreadable_lighthouse_results_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import maint_quality
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_quality as mq
 
@@ -2147,25 +2312,27 @@ def test_cite_M2_unreadable_lighthouse_results_never_pass(monkeypatch, tmp_path,
     monkeypatch.setattr(mq, "chrome_path", lambda: None)
     monkeypatch.setattr(mq, "run_cmd", run_cmd)
     drive("M2")
-    rec = load(md, "receipts/M2.json", "maint_quality")
+    rec = receipt("M2", maint_quality)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS)
 def test_cite_M2b_unreadable_field_data_never_passes(monkeypatch, tmp_path, kind):
+    import maint_quality
     md, _ = fresh(monkeypatch, tmp_path)
     body = {"empty": None, "garbage": {"record": "x"}, "not_json": {}, "future": {"record": {"metrics": {}}},
             "foreign_tz": {"record": {"metrics": {"largest_contentful_paint": {"percentiles": {"p75": "fast"}}}}}}[kind]
     _crux(monkeypatch, 200, body)
     drive("M2b")
-    rec = load(md, "receipts/M2b.json", "maint_quality")
+    rec = receipt("M2b", maint_quality)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_M3_unreadable_tls_inputs_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import headers_tls_check
     md, _ = fresh(monkeypatch, tmp_path)
     import headers_tls_check as h
     _tls(monkeypatch)
@@ -2177,26 +2344,28 @@ def test_cite_M3_unreadable_tls_inputs_never_pass(monkeypatch, tmp_path, kind, g
         monkeypatch.setattr(h, "probe_cert", lambda host: {"not_after": "2027-01-01T00:00:00" if kind == "future"
                                                            else "Jan 1 00:00:00 2027 JST+9", "issuer": "x"})
     drive("M3")
-    rec = load(md, "receipts/M3.json", "headers_tls_check")
+    rec = receipt("M3", headers_tls_check)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS)
 def test_cite_M4_an_unreadable_tree_never_passes(monkeypatch, tmp_path, kind):
+    import maint_pages
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_pages as mp
     d = md.parent / "not-a-repo"
     d.mkdir(parents=True)
     monkeypatch.setattr(mp, "REPO", d)
     drive("M4")
-    rec = load(md, "receipts/M4.json", "maint_pages")
+    rec = receipt("M4", maint_pages)
     assert rec.get("outcome") == "UNKNOWN", rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_M5_corrupt_boards_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path, 2026, 10, 31, 11)
     import maint_watch as mw
     d = md.parent
@@ -2209,7 +2378,7 @@ def test_cite_M5_corrupt_boards_never_pass(monkeypatch, tmp_path, kind, garbage)
         (d / "PRODUCTION_BOARD.md").write_bytes(bad_bytes(kind, garbage))
     monkeypatch.setattr(mw, "REPO", d)
     drive("M5")
-    rec = load(md, "receipts/M5.json", "maint_watch")
+    rec = receipt("M5", maint_watch)
     assert never_pass(rec), rec
 
 
@@ -2226,30 +2395,33 @@ def _corrupt_queue(repo, kind, garbage):
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_Q1_a_corrupt_queue_is_unknown_not_none_due(monkeypatch, tmp_path, kind, garbage):
+    import maint_pages
     md, _ = fresh(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, md.parent)
     _corrupt_queue(repo, kind, garbage)
     drive("Q1")
-    rec = load(md, "receipts/Q1.json", "maint_pages")
+    rec = receipt("Q1", maint_pages)
     assert rec.get("outcome") in ("UNKNOWN", "FINDINGS"), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_Q2_a_corrupt_client_list_never_passes(monkeypatch, tmp_path, kind, garbage):
+    import maint_pages
     md, _ = fresh(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, md.parent, names=True)
     f = repo / "data" / "forbidden_tokens.local.json"
     f.write_bytes(bad_bytes(kind, garbage) if kind not in ("future", "foreign_tz") else
                   (b'{"tokens": []}' if kind == "future" else b'["Brindlecorp"]'))
     drive("Q2")
-    rec = load(md, "receipts/Q2.json", "maint_pages")
+    rec = receipt("Q2", maint_pages)
     assert rec.get("outcome") in ("UNKNOWN", "FINDINGS"), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_Q3_corrupt_queues_and_findings_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import maint_pages
     md, _ = fresh(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, md.parent, names=True)
     if kind == "garbage":
@@ -2258,13 +2430,14 @@ def test_cite_Q3_corrupt_queues_and_findings_never_pass(monkeypatch, tmp_path, k
     else:
         _corrupt_queue(repo, kind, garbage)
     drive("Q3")
-    rec = load(md, "receipts/Q3.json", "maint_pages")
+    rec = receipt("Q3", maint_pages)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS)
 def test_cite_Q4_unanswered_dns_never_passes(monkeypatch, tmp_path, kind):
+    import headers_tls_check
     md, _ = fresh(monkeypatch, tmp_path)
     import headers_tls_check as h
     _dns(monkeypatch)
@@ -2273,13 +2446,14 @@ def test_cite_Q4_unanswered_dns_never_passes(monkeypatch, tmp_path, kind):
     else:
         monkeypatch.setattr(h, "gh_pages", lambda slug: ("unknown", "gh api exit 1"))
     drive("Q4")
-    rec = load(md, "receipts/Q4.json", "headers_tls_check")
+    rec = receipt("Q4", headers_tls_check)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_Q5_unreadable_grades_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import headers_tls_check
     md, _ = fresh(monkeypatch, tmp_path)
     import headers_tls_check as h
     monkeypatch.setenv("MAINT_OBSERVATORY_OK", "1")
@@ -2288,26 +2462,28 @@ def test_cite_Q5_unreadable_grades_never_pass(monkeypatch, tmp_path, kind, garba
         bad_bytes(kind, garbage)
     monkeypatch.setattr(h, "http_post", lambda *a, **k: (200, body))
     drive("Q5")
-    rec = load(md, "receipts/Q5.json", "headers_tls_check")
+    rec = receipt("Q5", headers_tls_check)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_Q6_a_corrupt_drill_log_never_passes(monkeypatch, tmp_path, kind, garbage):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_watch as mw
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
     md.mkdir(parents=True, exist_ok=True)
     (md / mw.DRILLS).write_bytes(bad_bytes(kind, garbage))
     drive("Q6")
-    rec = load(md, "receipts/Q6.json", "maint_watch")
+    rec = receipt("Q6", maint_watch)
     assert rec.get("outcome") == "UNKNOWN", rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_H1_unreadable_captures_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import maint_human
     md, _ = fresh(monkeypatch, tmp_path, 2027, 1, 4, 11)
     import maint_human as mh
 
@@ -2322,13 +2498,14 @@ def test_cite_H1_unreadable_captures_never_pass(monkeypatch, tmp_path, kind, gar
                                  "problems": mh.check_tiles(paths, plan, 1280, 2500)}}}
     monkeypatch.setattr(mh, "CAPTURE", capture)
     drive("H1")
-    rec = load(md, "receipts/H1.json", "maint_human")
+    rec = receipt("H1", maint_human)
     assert rec.get("outcome") == "UNKNOWN", rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_H2_unreadable_notes_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path, 2027, 1, 5, 11)
     (md / "notes").mkdir(parents=True, exist_ok=True)
     if kind == "future":
@@ -2338,13 +2515,14 @@ def test_cite_H2_unreadable_notes_never_pass(monkeypatch, tmp_path, kind, garbag
     else:
         (md / "notes" / "H2_2027-01-05.md").write_bytes(bad_bytes(kind, garbage))
     drive("H2")
-    rec = load(md, "receipts/H2.json", "maint_watch")
+    rec = receipt("H2", maint_watch)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_H3_unreadable_notes_never_pass(monkeypatch, tmp_path, kind, garbage):
+    import maint_watch
     md, _ = fresh(monkeypatch, tmp_path, 2027, 1, 5, 11)
     (md / "notes").mkdir(parents=True, exist_ok=True)
     if kind == "future":
@@ -2354,13 +2532,14 @@ def test_cite_H3_unreadable_notes_never_pass(monkeypatch, tmp_path, kind, garbag
     else:
         (md / "notes" / "H3_2027-01-05.md").write_bytes(bad_bytes(kind, garbage))
     drive("H3")
-    rec = load(md, "receipts/H3.json", "maint_watch")
+    rec = receipt("H3", maint_watch)
     assert never_pass(rec), rec
 
 
 @PROPS
 @given(why=st.text(min_size=1, max_size=30))
 def test_cite_A1_no_page_list_never_passes(monkeypatch, tmp_path, why):
+    import maint_human
     md, _ = fresh(monkeypatch, tmp_path, 2027, 1, 4, 11)
     import site_pages
 
@@ -2368,24 +2547,26 @@ def test_cite_A1_no_page_list_never_passes(monkeypatch, tmp_path, why):
         raise site_pages.GitError(why)
     monkeypatch.setattr(site_pages, "served_pages", no_git)
     drive("A1")
-    rec = load(md, "receipts/A1.json", "maint_human")
+    rec = receipt("A1", maint_human)
     assert rec.get("outcome") == "UNKNOWN", rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=GARBAGE)
 def test_cite_A2_a_corrupt_queue_never_passes(monkeypatch, tmp_path, kind, garbage):
+    import maint_pages
     md, _ = fresh(monkeypatch, tmp_path)
     repo = pages_repo(monkeypatch, md.parent)
     _corrupt_queue(repo, kind, garbage)
     drive("A2")
-    rec = load(md, "receipts/A2.json", "maint_pages")
+    rec = receipt("A2", maint_pages)
     assert rec.get("outcome") == "UNKNOWN", rec
 
 
 @PROPS
 @given(kind=KINDS, garbage=st.text(min_size=1, max_size=20))
 def test_cite_A3_unreadable_rdap_never_passes(monkeypatch, tmp_path, kind, garbage):
+    import maint_human
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_human as mh
     boot = {"services": [[["com"], ["https://rdap.example.invalid/com/v1/"]]]}
@@ -2395,13 +2576,14 @@ def test_cite_A3_unreadable_rdap_never_passes(monkeypatch, tmp_path, kind, garba
            "foreign_tz": {"events": "x"}}[kind]
     monkeypatch.setattr(mh, "GET_JSON", lambda url: boot if url == mh.BOOTSTRAP else dom)
     drive("A3")
-    rec = load(md, "receipts/A3.json", "maint_human")
+    rec = receipt("A3", maint_human)
     assert rec.get("outcome") == "UNKNOWN", rec
 
 
 @PROPS
 @given(kind=KINDS)
 def test_cite_A4_broken_scanners_never_pass(monkeypatch, tmp_path, kind):
+    import maint_quality
     md, _ = fresh(monkeypatch, tmp_path)
     import maint_quality as mq
 
@@ -2411,5 +2593,5 @@ def test_cite_A4_broken_scanners_never_pass(monkeypatch, tmp_path, kind):
            "future": broken, "foreign_tz": lambda: {}}[kind]
     _real_scanners(monkeypatch, **{"pa11y-ci": bad})
     drive("A4")
-    rec = load(md, "receipts/A4.json", "maint_quality")
+    rec = receipt("A4", maint_quality)
     assert never_pass(rec), rec
