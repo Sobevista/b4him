@@ -13,5 +13,5 @@ data/people_names.local.json
 tools/capability_inventory/output/
 # The rack backup's local log (tools/rack_backup.py): one line per run, names this machine's Drive path. Local evidence.
 rack_backup_log.jsonl
-# Maintenance run output (receipts, findings, audits): local evidence, never site content (B4HIM_BUILDER_RULES).
+# Maintenance receipts, findings, audits and notes (tools/maint_receipt.py): run outputs, never site content.
 .maint/

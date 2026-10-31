@@ -82,8 +82,35 @@ def today() -> str:
     return dt.datetime.now(dt.timezone.utc).date().isoformat()
 
 
+def mdir(root: Path) -> Path:
+    """Where this run writes: MAINT_DIR if set (maint_receipt's own override), else <root>/.maint."""
+    d = Path(os.environ["MAINT_DIR"]) if os.environ.get("MAINT_DIR") else root / ".maint"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+@contextlib.contextmanager
+def _receipts_into(root: Path):
+    """maint_receipt writes to MAINT_DIR or this checkout's .maint/; a --root run writes beside the tree it measured."""
+    had = "MAINT_DIR" in os.environ
+    old = os.environ.get("MAINT_DIR")
+    os.environ["MAINT_DIR"] = str(mdir(root))
+    try:
+        yield
+    finally:
+        if had:
+            os.environ["MAINT_DIR"] = old
+        else:
+            os.environ.pop("MAINT_DIR", None)
+
+
+def finding(root: Path, row: str, severity: str, subject: str, detail: str, route_to: str) -> dict:
+    with _receipts_into(root):
+        return maint_receipt.write_finding(row, severity, subject, detail, route_to)
+
+
 def evidence_path(root: Path, name: str) -> tuple[Path, str]:
-    p = maint_receipt.maint_dir(root) / f"{today()}_{name}.json"
+    p = mdir(root) / f"{today()}_{name}.json"
     return p, f".maint/{p.name}"
 
 
@@ -163,8 +190,8 @@ def run_cmd(argv: list[str], cwd: Path | None = None, env: dict | None = None, t
 
 
 def receipt(root: Path, row: str, outcome: str, n=None, why="", evidence=None) -> dict:
-    return maint_receipt.write_receipt(row, outcome, n=n, why=why, evidence=evidence, tool="maint_quality.py",
-                                       root=root)
+    with _receipts_into(root):
+        return maint_receipt.write_receipt(row, outcome, n=n, why=why, evidence=evidence, tool="maint_quality.py")
 
 
 # ---------------------------------------------------------------- M1 accessibility (pa11y-ci)
@@ -228,7 +255,7 @@ def run_pa11y(root: Path, rels: list[str], tag: str) -> tuple[int, dict | None, 
     exe = find_bin("pa11y-ci", root)
     if not exe:
         raise Unavailable(f"pa11y-ci not installed: {INSTALL['pa11y-ci']}")
-    work = maint_receipt.maint_dir(root) / "a11y"
+    work = mdir(root) / "a11y"
     work.mkdir(exist_ok=True)
     with serve(root) as base:
         urls = [base + page_path(r) for r in rels]
@@ -253,7 +280,7 @@ def cmd_a11y(root: Path) -> dict:
     write_json(ev_path, {"row": "M1", "pages": rels, **detail, "outcome": outcome})
     if outcome == "FINDINGS" and rep is not None:
         for subject, text in pa11y_findings(rep, detail["base"]):
-            maint_receipt.write_finding("M1", "S2", subject, text, "Site Maintainer", root=root)
+            finding(root, "M1", "S2", subject, text, "Site Maintainer")
     return receipt(root, "M1", outcome, n=n, why=why, evidence=ev)
 
 
@@ -366,9 +393,8 @@ def cmd_contrast(root: Path) -> dict:
     write_json(ev_path, {"row": "M1b", "viewport": "1280x800", "outcome": outcome, **g, "per_page": results})
     if outcome == "FINDINGS":
         for k, v in g["failure_causes"].items():
-            maint_receipt.write_finding("M1b", "S2", k, f"{v['elements']} element(s), min {v['ratio']}:1, templates "
-                                        f"{', '.join(v['templates'])}, selectors {', '.join(v['selectors'][:8])}",
-                                        "Site Maintainer", root=root)
+            finding(root, "M1b", "S2", k, f"{v['elements']} element(s), min {v['ratio']}:1, templates "
+                    f"{', '.join(v['templates'])}, selectors {', '.join(v['selectors'][:8])}", "Site Maintainer")
     return receipt(root, "M1b", outcome, n=n, why=why, evidence=ev)
 
 
@@ -455,7 +481,7 @@ def cmd_perf(root: Path) -> dict:
         if not exe:
             raise Unavailable(f"lhci not installed: {INSTALL['lhci']}")
         rels = served_pages(root)
-        work = maint_receipt.maint_dir(root) / "lhci"
+        work = mdir(root) / "lhci"
         work.mkdir(exist_ok=True)
         cfg = lhci_config(root, rels, work)
         cfg_path = work / "lighthouserc.generated.json"
@@ -478,8 +504,7 @@ def cmd_perf(root: Path) -> dict:
     write_json(ev_path, {"row": "M2", "budgets_assumed": budgets, "runs": runs, "medians": med, "outcome": outcome,
                          "note": "TBT is a lab proxy for INP, not INP. Budgets are [ASSUMED, Daniel rules]."})
     for path, a, v, c in misses:
-        maint_receipt.write_finding("M2", "S3", f"{path} {a}", f"median {v:g} > budget {c:g} [ASSUMED budget]",
-                                    "Site Maintainer", root=root)
+        finding(root, "M2", "S3", f"{path} {a}", f"median {v:g} > budget {c:g} [ASSUMED budget]", "Site Maintainer")
     return receipt(root, "M2", outcome, n=n, why=why, evidence=ev)
 
 
@@ -543,7 +568,7 @@ def cmd_crux(root: Path, origin: str = ORIGIN, opener=urllib.request.urlopen) ->
     write_json(ev_path, {"row": "M2b", "origin": origin, "status": status, "outcome": outcome, "p75": p75,
                          "record": (body or {}).get("record"), "error": (body or {}).get("error")})
     for m in why.split("p75 misses: ", 1)[-1].split("; ") if outcome == "FINDINGS" else []:
-        maint_receipt.write_finding("M2b", "S3", origin, m.split(" (UNKNOWN")[0], "Site Maintainer", root=root)
+        finding(root, "M2b", "S3", origin, m.split(" (UNKNOWN")[0], "Site Maintainer")
     return receipt(root, "M2b", outcome, n=n, why=why, evidence=ev)
 
 
@@ -579,7 +604,7 @@ def scratch_site(root: Path) -> Path:
     """A throwaway git repo holding the fixtures OUTSIDE tools/ (release.broken_links and linkcheck's root-link pass
     skip tools/ by design), with the mixed-content fault armed, so the reused release check and the sibling scanners
     can be pointed at it. Lives under .maint/ (ignored); never deleted here."""
-    d = maint_receipt.maint_dir(root) / "calib" / dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+    d = mdir(root) / "calib" / dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%f")
     shutil.copytree(root / FIXTURES, d / "maint_fixtures")
     mc = d / "maint_fixtures" / FAULTS["mixed-content"][0]
     mc.write_text(arm(mc.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
@@ -809,7 +834,7 @@ def cmd_calibrate(root: Path, scanners: dict | None = None) -> dict:
     outcome, n, why = judge_calibration(cal)
     write_json(ev_path, {"row": "A4", "outcome": outcome, **cal})
     for p in cal["problems"]:
-        maint_receipt.write_finding("A4", "S2", p.split(" ", 1)[0], p, "Site Maintainer (a tool fix)", root=root)
+        finding(root, "A4", "S2", p.split(" ", 1)[0], p, "Site Maintainer (a tool fix)")
     return receipt(root, "A4", outcome, n=n, why=why, evidence=ev)
 
 

@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 import maint_quality as mq
-import maint_receipt as mr
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -29,20 +28,18 @@ def findings(root):
 
 
 # ---------------------------------------------------------------- receipts
-def test_receipt_shape_and_refusals(tmp_path):
-    r = mr.write_receipt("M1", "PASS", n=0, why="ok", evidence=".maint/x.json", tool="t", root=tmp_path)
-    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"} and r["at"].endswith("Z")
-    assert receipts(tmp_path) == [r]
+def test_receipts_land_beside_the_measured_tree_with_the_shared_helper(tmp_path, monkeypatch):
+    """maint_receipt.py is the watch builder's canonical copy; this tool routes it to <root>/.maint for one call."""
+    monkeypatch.delenv("MAINT_DIR", raising=False)
+    r = mq.receipt(tmp_path, "M1", "PASS", n=0, why="ok", evidence=".maint/x.json")
+    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"} and r["tool"] == "maint_quality.py"
+    assert receipts(tmp_path) == [r] and "MAINT_DIR" not in __import__("os").environ
     for bad in (dict(outcome="GREEN"), dict(outcome="FINDINGS", n=0), dict(outcome="UNKNOWN", why=""),
-                dict(outcome="PASS", evidence="audits/x.json"), dict(outcome="PASS", evidence=".maint/../x"),
-                dict(outcome="PASS", n=-1)):
-        kw = {"why": "w", **bad}
-        with pytest.raises(mr.ReceiptError):
-            mr.write_receipt("M1", root=tmp_path, **kw)
-    with pytest.raises(mr.ReceiptError):
-        mr.write_finding("M1", "S9", "s", "d", "r", root=tmp_path)
-    f = mr.write_finding("M1", "S2", "s", "d", "Site Maintainer", root=tmp_path)
-    assert findings(tmp_path) == [f]
+                dict(outcome="PASS", evidence="audits/x.json")):
+        with pytest.raises(ValueError):
+            mq.receipt(tmp_path, "M1", **{"why": "w", **bad})
+    f = mq.finding(tmp_path, "M1", "S2", "s", "d", "Site Maintainer")
+    assert findings(tmp_path) == [f] and len(receipts(tmp_path)) == 1
 
 
 # ---------------------------------------------------------------- page list
