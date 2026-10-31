@@ -26,10 +26,12 @@ rewrites PRODUCTION_BOARD.md); it imports its constants and load_queue instead.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
 import html
 import json
+import os
 import re
 import subprocess
 import sys
@@ -113,8 +115,40 @@ def site_base(repo: Path) -> str:
     return f"https://{host}" if host else "https://<no CNAME>"
 
 
+def mdir(repo: Path) -> Path:
+    return Path(repo) / ".maint"
+
+
+@contextlib.contextmanager
+def _maint_at(repo: Path):
+    """maint_receipt writes to MAINT_DIR or its own repo's .maint/; point it at `repo`'s for this one call."""
+    saved = os.environ.get("MAINT_DIR")
+    os.environ["MAINT_DIR"] = str(mdir(repo))
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop("MAINT_DIR", None)
+        else:
+            os.environ["MAINT_DIR"] = saved
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    """Every line of a .jsonl file; an unparseable line comes back as {"_broken": line_no}, never dropped."""
+    if not path.exists():
+        return []
+    out = []
+    for i, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if line.strip():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                out.append({"_broken": i})
+    return out
+
+
 def audits(repo: Path) -> Path:
-    d = mr.maint_dir(repo) / "audits"
+    d = mdir(repo) / "audits"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -128,15 +162,17 @@ def write(p: Path, text: str) -> None:
 
 
 def receipt(repo: Path, row: str, outcome: str, n=None, why="", evidence=None) -> dict:
-    return mr.write_receipt(row, outcome, n, why, evidence, tool=TOOL, root=repo)
+    with _maint_at(repo):
+        return mr.write_receipt(row, outcome, n, why, evidence, tool=TOOL)
 
 
 def finding(repo: Path, row: str, sev: str, subject: str, detail: str, route: str) -> dict:
-    return mr.write_finding(row, sev, subject, detail, route, root=repo)
+    with _maint_at(repo):
+        return mr.write_finding(row, sev, subject, detail, route)
 
 
 def last_receipt(repo: Path, row: str) -> dict | None:
-    recs = [r for r in mr.read_jsonl(mr.maint_dir(repo) / mr.LOG_NAME) if r.get("row") == row]
+    recs = [r for r in read_jsonl(mdir(repo) / mr.LOG_NAME) if r.get("row") == row]
     return recs[-1] if recs else None
 
 
@@ -427,7 +463,7 @@ def cmd_witness(repo: Path, today: dt.date, seat: str, date: str | None = None) 
     head = head_sha(repo)
     if head != state["head"]:
         raise CouldNotRun(f"HEAD moved since the sweep ({state['head'][:12]} -> {head[:12]}): re-run genericize")
-    state["witness"] = {"seat": seat, "at": mr.now_utc(), "head": head}
+    state["witness"] = {"seat": seat, "at": mr.now_utc().isoformat(timespec="seconds"), "head": head}
     evr, _ = _save_genericize(repo, state)
     o, n, why = genericize_outcome(state)
     return [receipt(repo, "Q2", o, n if o == "FINDINGS" else None, why, evr)]
@@ -556,7 +592,7 @@ def cmd_hygiene(repo: Path, today: dt.date) -> list[dict]:
     patches = [r for r in rows if not r.get("_broken") and pb.is_patch(r)
                and pb.stage_index(r) < pb.STAGES.index("PUBLISHED")]
     broken = [r for r in rows if r.get("_broken")]
-    raw = mr.read_jsonl(mr.maint_dir(repo) / mr.FINDINGS_NAME)
+    raw = read_jsonl(mdir(repo) / mr.FINDINGS_NAME)
     groups: dict[tuple, dict] = {}
     for f in raw:
         if f.get("_broken"):

@@ -85,12 +85,12 @@ def local_names(repo, names=("Quillon",), role="client"):
 
 
 def log(repo, row=None):
-    recs = mr.read_jsonl(repo / ".maint" / mr.LOG_NAME)
+    recs = mp.read_jsonl(repo / ".maint" / mr.LOG_NAME)
     return [r for r in recs if row is None or r["row"] == row]
 
 
 def findings(repo, row=None):
-    recs = mr.read_jsonl(repo / ".maint" / mr.FINDINGS_NAME)
+    recs = mp.read_jsonl(repo / ".maint" / mr.FINDINGS_NAME)
     return [r for r in recs if row is None or r["row"] == row]
 
 
@@ -101,19 +101,23 @@ def nongit(tmp_path):
 
 
 # ------------------------------------------------------------------------------------------------- maint_receipt
-def test_receipt_shape_and_refusals(tmp_path):
-    r = mr.write_receipt("W3", "UNKNOWN", why="no names", evidence=".maint/x", tool="t.py", root=tmp_path)
-    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"}
-    assert json.loads((tmp_path / ".maint" / "maintenance_log.jsonl").read_text(encoding="utf-8")) == r
-    for bad in (("W3", "OK"), ("W3", "FINDINGS")):          # not an outcome; FINDINGS without n
+def test_receipts_land_in_the_scanned_repo_with_the_shared_shape(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAINT_DIR", str(tmp_path / "elsewhere"))         # a stray MAINT_DIR does not win
+    r = mp.receipt(tmp_path, "W3", "UNKNOWN", why="no names", evidence=".maint/x")
+    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"} and r["tool"] == mp.TOOL
+    assert mp.read_jsonl(tmp_path / ".maint" / "maintenance_log.jsonl") == [r]
+    assert not (tmp_path / "elsewhere").exists()
+    import os
+    assert os.environ["MAINT_DIR"] == str(tmp_path / "elsewhere")       # restored after the call
+    for bad in (("W3", "OK"), ("W3", "FINDINGS")):                       # not an outcome; FINDINGS without n
         with pytest.raises(ValueError):
-            mr.write_receipt(*bad, root=tmp_path)
+            mp.receipt(tmp_path, *bad)
     with pytest.raises(ValueError):
-        mr.write_receipt("W3", "UNKNOWN", root=tmp_path)     # an UNKNOWN says why
-    f = mr.write_finding("W3", "S1", "s", "d", "r", root=tmp_path)
+        mp.receipt(tmp_path, "W3", "UNKNOWN")                            # an UNKNOWN says why
+    f = mp.finding(tmp_path, "W3", "S1", "s", "d", "r")
     assert set(f) == {"at", "row", "severity", "subject", "detail", "route_to"}
     with pytest.raises(ValueError):
-        mr.write_finding("W3", "S9", "s", "d", "r", root=tmp_path)
+        mp.finding(tmp_path, "W3", "S9", "s", "d", "r")
 
 
 def test_served_pages_skip_dot_and_underscore_paths(tmp_path):
