@@ -215,21 +215,104 @@ def people_page(text: str, reg) -> dict:
                          for f in r.findings]}
 
 
+# ---- the scan layer (tuning lives here, not in people_registry.py) -------------------------------------------------
+#: Site furniture: scanned ONCE site-wide as "(site chrome)", not once per page, so it is never unscanned and never
+#: counted 23 times.
+CHROME_EL = re.compile(r"(?is)<(nav|header|footer)\b[^>]*>.*?</\1\s*>")
+#: Block-level tags. people_registry joins capitalised words across any whitespace (newlines included), so a bare
+#: newline would not stop "Games Videos Writing" reading as one name: each block edge gets a newline-dot-newline,
+#: which ends the run and the sentence and adds no word.
+BLOCK = re.compile(r"(?i)</?(?:p|div|li|ul|ol|h[1-6]|section|article|main|aside|header|footer|nav|table|thead|tbody|"
+                   r"tr|td|th|blockquote|figure|figcaption|dl|dt|dd|br|hr|label|button|option|select|summary|details|"
+                   r"pre|form|fieldset|legend|caption)\b[^>]*>")
+BLOCK_SEP = "\n.\n"
+SITE_CHROME = "(site chrome)"
+
+
+def _blocks(html_text: str) -> str:
+    return BLOCK.sub(lambda m: BLOCK_SEP + m.group(0) + BLOCK_SEP, html_text)
+
+
+def scan_html(page_html: str) -> tuple[str, list[str]]:
+    """(the page with nav/header/footer removed and block edges separated, the removed chrome blocks)."""
+    chrome = [m.group(0) for m in CHROME_EL.finditer(page_html)]
+    return _blocks(CHROME_EL.sub(BLOCK_SEP, page_html)), chrome
+
+
+def _words(s: str) -> str:
+    return " ".join(pr.WORD.findall(html.unescape(re.sub(r"<[^>]+>", " ", s)))).lower()
+
+
+def site_vocabulary(texts: dict[str, str]) -> list[str]:
+    """The site's own titles: every served page's <title> and <h1>, as word strings. A heuristic hit whose words run
+    contiguously inside one of them is the site naming itself, not a person."""
+    out = set()
+    for t in texts.values():
+        for m in re.finditer(r"(?is)<(title|h1)\b[^>]*>(.*?)</\1\s*>", t):
+            w = _words(m.group(2))
+            if w:
+                out.add(w)
+    return sorted(out)
+
+
+def tuned_registry(reg, repo: Path):
+    """A copy of the registry whose safe words also hold data/people_registry.json's role_terms (safe_terms are already
+    in it). The loaded registry itself is not changed."""
+    import copy
+    r2 = copy.copy(reg)
+    extra = {w.lower() for ws in reg.data.get("role_terms", {}).values() for w in ws}
+    r2.safe = set(reg.safe) | extra | {s.lower() for s in reg.data.get("safe_terms", [])}
+    return r2
+
+
+def exempt(res: dict, vocab: list[str]) -> dict:
+    """Drop a heuristic unknown-name hit only when it is the site's own title vocabulary; record what was dropped.
+    A known-person or age hit is never exempted. The outcome is recomputed with the CLI's mapping."""
+    if res["exit"] == 2 and not res["findings"] and res["status"].startswith("COULD NOT RUN"):
+        return res
+    keep, dropped = [], []
+    padded = [f" {v} " for v in vocab]
+    for f in res["findings"]:
+        w = _words(f["text"])
+        if f["kind"] == "unknown-name" and w and any(f" {w} " in v for v in padded):
+            dropped.append({"text": f["text"], "why": "site title vocabulary (<title>/<h1>)"})
+        else:
+            keep.append(f)
+    code = 1 if keep else (0 if res["known_names_loaded"] else 2)
+    if keep:
+        status = "REFUSED"
+    elif res["known_names_loaded"]:
+        status = "CLEAN"
+    else:
+        status = "UNKNOWN (known-names list not loaded; only the unknown-name heuristic ran)"
+    return {**res, "findings": keep, "exempted": dropped, "exit": code,
+            "outcome": {0: "PASS", 1: "FINDINGS", 2: "UNKNOWN"}[code], "status": status}
+
+
 def people_scan(repo: Path) -> dict:
-    """W3 over every served HTML page. Writes nothing."""
+    """W3 over every served HTML page (body text) plus the site chrome once. Writes nothing."""
     pages = served_files(repo)
     try:
-        reg = _registry(repo)
+        reg = tuned_registry(_registry(repo), repo)
         reg_err = None
     except pr.RegistryError as e:
         reg, reg_err = None, str(e)
-    per = {}
+    texts = {p: page_text(repo, p) for p in pages}
+    vocab = site_vocabulary(texts)
+    per, chrome = {}, []
     for p in pages:
+        body, ch = scan_html(texts[p])
+        chrome += [c for c in ch if c not in chrome]
         if reg is None:
             per[p] = {"exit": 2, "outcome": "UNKNOWN", "status": f"COULD NOT RUN: {reg_err}", "findings": [],
                       "known_names_loaded": False}
         else:
-            per[p] = people_page(page_text(repo, p), reg)
+            per[p] = exempt(people_page(body, reg), vocab)
+    if chrome and reg is not None:
+        # furniture is a list of separate items (menu links, a wordmark, footer spans): every tag edge separates
+        items = BLOCK_SEP.join(re.sub(r"<[^>]+>", lambda m: BLOCK_SEP + m.group(0) + BLOCK_SEP, c) for c in chrome)
+        per[SITE_CHROME] = exempt(people_page(items, reg), vocab)
+        per[SITE_CHROME]["distinct_blocks"] = len(chrome)
     n = sum(len(v["findings"]) for v in per.values())
     unknown = [p for p, v in per.items() if not v["known_names_loaded"] or v["outcome"] == "UNKNOWN"]
     if not pages:
@@ -237,7 +320,7 @@ def people_scan(repo: Path) -> dict:
     elif n:
         outcome = "FINDINGS"
         why = (f"{n} finding(s) on {sum(1 for v in per.values() if v['findings'])} of {len(pages)} pages"
-               + (f"; known-names half UNKNOWN on {len(unknown)} pages (data/people_names.local.json absent or "
+               + (f"; known-names half UNKNOWN on {len(unknown)} scanned units (data/people_names.local.json absent or "
                   f"unreadable)" if unknown else ""))
     elif unknown:
         outcome = "UNKNOWN"
@@ -246,7 +329,12 @@ def people_scan(repo: Path) -> dict:
             f"unknown-name heuristic ran")
     else:
         outcome, why = "PASS", f"{len(pages)} pages clean with the known-names list loaded"
-    return {"pages": per, "count": len(pages), "n": n, "outcome": outcome, "why": why, "head": head_sha(repo)}
+    ex = sum(len(v.get("exempted", [])) for v in per.values())
+    if pages:
+        why += (f"; scan layer: body text per page + site chrome once ({per.get(SITE_CHROME, {}).get('distinct_blocks', 0)}"
+                f" distinct blocks); {ex} heuristic hit(s) exempted as site title vocabulary (listed in evidence)")
+    return {"pages": per, "count": len(pages), "n": n, "outcome": outcome, "why": why, "head": head_sha(repo),
+            "exempted": ex}
 
 
 def _classify(f: dict) -> tuple[str, str]:

@@ -189,6 +189,51 @@ def test_w3_exit_mapping_matches_the_people_registry_cli(tmp_path, monkeypatch):
             assert mp.people_page(text, mp._registry(repo))["exit"] == pr.main([str(f)])
 
 
+CHROME = ('<header><a class="brand" href="/"><span class="wordmark">Lantern Works</span></a><nav>\n'
+          '  <a href="/lessons/">Lessons</a>\n  <a href="/games/">Games</a>\n  <a href="/videos/">Videos</a>\n'
+          '  <a href="/about/">About</a>\n</nav></header>')
+FOOTER = "<footer><span>Lantern Works · example.invalid</span>\n<span>Built In The Open</span></footer>"
+
+
+def chrome_page(title, h1, body, footer=FOOTER):
+    return (f"<html><head><title>{title} · Lantern Works</title></head><body>{CHROME}<main><h1>{h1}</h1>"
+            f"<div><p>i wrote The Quiet Lantern first and Gentle Harbor after it.</p></div>{body}</main>{footer}"
+            f"</body></html>")
+
+
+def test_w3_tuning_drops_nav_runs_and_title_vocabulary_but_keeps_a_planted_full_name(tmp_path):
+    planted = "<p>i worked beside Corvane Mistlewood for a year.</p>"        # an invented name pair
+    repo = make_repo(tmp_path, {
+        "about/index.html": chrome_page("The Quiet Lantern", "The Quiet Lantern", planted),
+        "games/index.html": chrome_page("Gentle Harbor", "Gentle Harbor", "<p>i play here, my son and i.</p>"),
+    })
+    raw = mp.people_page((repo / "about/index.html").read_text(encoding="utf-8"), mp._registry(repo))
+    assert len(raw["findings"]) >= 3                     # untuned: nav run, wordmark/title words, the planted name
+    res = mp.people_scan(repo)
+    about = res["pages"]["about/index.html"]
+    assert [f["text"] for f in about["findings"]] == ["Corvane Mistlewood"]
+    assert {e["text"] for e in about["exempted"]} == {"Quiet Lantern", "Gentle Harbor"}   # titles, read from pages
+    assert not res["pages"]["games/index.html"]["findings"]          # "son" is a role term; titles are vocabulary
+    assert not res["pages"][mp.SITE_CHROME]["findings"]              # nav items no longer run together
+    assert res["outcome"] == "FINDINGS" and res["n"] == 1
+
+
+def test_w3_planted_name_in_the_footer_is_caught_once_not_per_page(tmp_path):
+    foot = "<footer><span>with thanks to Corvane Mistlewood</span></footer>"
+    repo = make_repo(tmp_path, {f"p{i}/index.html": chrome_page(f"P{i}", f"P{i}", "", foot) for i in range(3)})
+    res = mp.people_scan(repo)
+    hits = [(k, f["text"]) for k, v in res["pages"].items() for f in v["findings"] if "Mistlewood" in f["text"]]
+    assert hits == [(mp.SITE_CHROME, "Corvane Mistlewood")]
+
+
+def test_w3_vocabulary_never_exempts_a_known_person(tmp_path):
+    repo = make_repo(tmp_path, {"about/index.html": chrome_page("Quillon", "Quillon", "<p>i met Quillon.</p>")})
+    local_names(repo)
+    about = mp.people_scan(repo)["pages"]["about/index.html"]
+    known = [f for f in about["findings"] if f["kind"] == "known-outside-rule"]
+    assert len(known) >= 2 and not any("Quillon" in e["text"] for e in about["exempted"])   # title/h1 or not
+
+
 # -------------------------------------------------------------------------------------------------- Q2 genericize
 def test_d11_tokens_are_read_from_decisions_not_written_in_the_tool(tmp_path):
     repo = make_repo(tmp_path)
