@@ -6,15 +6,16 @@ maint_quality.py - the maintenance calendar's quality rows, each ending in one r
     py tools/maint_quality.py contrast    # M1b  tools/contrast-audit.js in headless Chromium, grouped by cause
     py tools/maint_quality.py perf        # M2   Lighthouse CI over the static tree, 3 runs, median vs budgets
     py tools/maint_quality.py crux        # M2b  CrUX API field data for the origin (needs CRUX_API_KEY)
-    py tools/maint_quality.py calibrate   # A4   every scanner over tools/maint_fixtures/, each planted fault seen?
+    py tools/maint_quality.py calibrate   # A4   every scanner over tools/_maint_fixtures/, each planted fault seen?
 
 Exit 0 PASS, 1 FINDINGS, 2 UNKNOWN or SKIP (a check that could not run is never a pass). Receipts and findings go
 through tools/maint_receipt.py into .maint/ (git-ignored); evidence is .maint/<date>_<row>.json.
 
-THE PAGE LIST. b4him has no sitemap, so the list is the served HTML: `git ls-files *.html`, minus any path with a
-segment starting with "." or "_" (GitHub Pages' Jekyll build does not serve those) and minus tools/ (the factory,
-not site pages; the calibration fixtures live there). It is served locally from the working tree by a throwaway
-http.server on 127.0.0.1, so a run measures the bytes in the tree, not the live site.
+THE PAGE LIST. b4him has no sitemap, so the list is the served HTML from tools/site_pages.py, the one page list
+every scanner shares: tracked *.html with no path segment starting with "." or "_" (GitHub Pages' Jekyll build does
+not serve those). tools/tracks/n8n.html is served, so it is measured; the calibration fixtures sit in
+tools/_maint_fixtures/, never served and never listed. The pages are served locally from the working tree by a
+throwaway http.server on 127.0.0.1, so a run measures the bytes in the tree, not the live site.
 
 LIMITS, stated so nobody reads silence as success:
   * M1: pa11y's standards are WCAG2A/AA/AAA as HTML_CodeSniffer defines them (WCAG 2.1 era); WCAG 2.2's new
@@ -26,8 +27,9 @@ LIMITS, stated so nobody reads silence as success:
     hover/focus states or non-text contrast (SC 1.4.11).
   * M2: TBT is a lab proxy for INP, not INP. The budgets are [ASSUMED, Daniel rules] (.lighthouserc.json).
   * M2b: no CrUX data for the origin is UNKNOWN-field, never good. The query is all form factors aggregated.
-  * A4: tools/maint_fixtures/ holds a clean control page and five planted faults. They are copied into a scratch git
-    repo under .maint/calib/ (outside tools/, which release.broken_links skips) and the mixed-content fault is armed
+  * A4: tools/_maint_fixtures/ (never served: the "_") holds a clean control page and five planted faults. They are
+    copied into a scratch git repo under .maint/calib/ as maint_fixtures/ (served there, and outside tools/, which
+    release.broken_links skips) and the mixed-content fault is armed
     only there, so the tracked, served copy carries no http:// subresource for the live scans to trip on. Sibling
     scanners (linkcheck.py, headers_tls_check.py, maint_pages.py) are called in process when they are on the branch;
     absent, each is UNKNOWN. A scanner that runs and misses its fault, or flags the control page, is FINDINGS.
@@ -57,6 +59,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import maint_receipt  # noqa: E402
+import site_pages  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 ORIGIN = "https://b4him.com"
@@ -123,19 +126,13 @@ def write_json(p: Path, data) -> None:
 
 
 def served_pages(root: Path, files: list[str] | None = None) -> list[str]:
-    """The served HTML, as repo-relative posix paths (see the module docstring for the rule)."""
+    """The served HTML, as repo-relative posix paths: the shared rule in tools/site_pages.py."""
     if files is None:
-        p = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--", "*.html"], capture_output=True)
-        if p.returncode:
-            raise Unavailable(f"git ls-files failed: {p.stderr.decode('utf-8', 'replace').strip()}")
-        files = [f for f in p.stdout.decode("utf-8", "replace").split("\0") if f]
-    out = []
-    for f in files:
-        parts = f.split("/")
-        if any(s.startswith((".", "_")) for s in parts) or parts[0] == "tools" or not f.endswith(".html"):
-            continue
-        out.append(f)
-    return sorted(out)
+        try:
+            return site_pages.served_pages(root)
+        except site_pages.GitError as e:
+            raise Unavailable(f"git ls-files failed: {e}") from None
+    return sorted(f for f in files if f.lower().endswith(site_pages.PAGE_EXTS) and site_pages.is_served(f))
 
 
 def page_path(rel: str) -> str:
@@ -598,7 +595,7 @@ def cmd_crux(root: Path, origin: str = ORIGIN, opener=urllib.request.urlopen) ->
 
 
 # ---------------------------------------------------------------- A4 calibration
-FIXTURES = "tools/maint_fixtures"
+FIXTURES = "tools/_maint_fixtures"     # the "_" keeps Pages from serving it
 CONTROL = "index.html"
 #: fault id -> (fixture page, scanners expected to see it)
 FAULTS = {

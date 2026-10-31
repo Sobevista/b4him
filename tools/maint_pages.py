@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import maint_receipt as mr  # noqa: E402
 import people_registry as pr  # noqa: E402
 import production_board as pb  # noqa: E402
+import site_pages  # noqa: E402
 import voice_check as vc  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
@@ -87,12 +88,15 @@ def head_sha(repo: Path) -> str:
 
 
 def is_served(path: str) -> bool:
-    return not any(part.startswith((".", "_")) for part in path.split("/"))
+    return site_pages.is_served(path)
 
 
 def served_files(repo: Path, exts=(".html",)) -> list[str]:
-    out = git(repo, "ls-tree", "-r", "--name-only", "-z", "HEAD")[1]
-    return sorted(p for p in out.split("\0") if p and p.lower().endswith(exts) and is_served(p))
+    """The shared page list (tools/site_pages.py), from HEAD's tree."""
+    try:
+        return site_pages.served_pages(repo, exts, ref="HEAD")
+    except site_pages.GitError as e:
+        raise CouldNotRun(str(e)) from None
 
 
 def page_text(repo: Path, path: str) -> str:

@@ -44,6 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import maint_receipt  # noqa: E402
+import site_pages  # noqa: E402
 
 TOOL = "headers_tls_check.py"
 HOST = "b4him.com"
@@ -259,8 +260,8 @@ SUBRESOURCE = re.compile(
 
 
 def served(path: str) -> bool:
-    """GitHub Pages (Jekyll) never serves a path with a component starting with '.' or '_'."""
-    return not any(part.startswith((".", "_")) for part in path.split("/"))
+    """GitHub Pages (Jekyll) never serves a path with a component starting with '.' or '_' (tools/site_pages.py)."""
+    return site_pages.is_served(path)
 
 
 def mixed_content(lines: list[str]) -> list[dict]:

@@ -45,17 +45,19 @@ def test_receipts_land_beside_the_measured_tree_with_the_shared_helper(tmp_path,
 # ---------------------------------------------------------------- page list
 def test_served_pages_rule():
     files = ["index.html", "about/index.html", "_drafts/x.html", "a/.hidden/x.html", "tools/tracks/n8n.html",
-             "tools/maint_fixtures/index.html", "lessons/x/index.html", "README.md"]
-    assert mq.served_pages(REPO, files) == ["about/index.html", "index.html", "lessons/x/index.html"]
+             "tools/_maint_fixtures/index.html", "lessons/x/index.html", "README.md"]
+    # tools/tracks/n8n.html IS served by Pages, so M1/M2 measure it (the shared rule, tools/site_pages.py)
+    assert mq.served_pages(REPO, files) == ["about/index.html", "index.html", "lessons/x/index.html",
+                                            "tools/tracks/n8n.html"]
     assert mq.page_path("index.html") == "/" and mq.page_path("a/b/index.html") == "/a/b/"
     assert mq.page_path("tools/tracks/n8n.html") == "/tools/tracks/n8n.html"
     assert [mq.template_of(r) for r in ("index.html", "lessons/index.html", "lessons/x/index.html")] == [
         "home", "lessons", "lessons/* (item page)"]
 
 
-def test_served_pages_real_tree_has_no_factory_and_has_home():
+def test_served_pages_real_tree_has_no_fixture_and_has_home():
     pages = mq.served_pages(REPO)
-    assert "index.html" in pages and not any(p.startswith("tools/") for p in pages)
+    assert "index.html" in pages and not any("maint_fixtures" in p for p in pages)
 
 
 # ---------------------------------------------------------------- M1

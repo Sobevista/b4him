@@ -48,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import maint_receipt  # noqa: E402
 import production_board as pb  # noqa: E402
 import release  # noqa: E402
+import site_pages  # noqa: E402
 
 ROW_LINKS, ROW_WAYBACK = "W1", "W1b"
 TOOL = "tools/linkcheck.py"
@@ -81,13 +82,16 @@ def _parse(s: str | None) -> dt.datetime | None:
 
 # ---------------------------------------------------------------- the served tree
 def unserved(rel: str) -> bool:
-    """Jekyll (GitHub Pages' legacy build) never serves a path with a part starting with '.' or '_'."""
-    return any(part.startswith((".", "_")) for part in rel.split("/") if part)
+    """Jekyll (GitHub Pages' legacy build) never serves a path with a part starting with '.' or '_' (site_pages)."""
+    return not site_pages.is_served(rel)
 
 
 def served_pages(root: Path) -> list[str]:
-    files = [f for f in release.git("ls-files", "-z").split("\0") if f]
-    return sorted(f for f in files if f.lower().endswith((".html", ".htm")) and not unserved(f))
+    """The shared page list (tools/site_pages.py), from root's git index."""
+    try:
+        return site_pages.served_pages(root)
+    except site_pages.GitError as e:
+        raise release.ReleaseError(str(e)) from None
 
 
 def live_paths(ref: str) -> set[str] | None:
