@@ -2861,3 +2861,983 @@ def test_cite_Q4_a_dns_lookup_error_is_unknown(monkeypatch, tmp_path):
     drive("Q4")
     rec = receipt("Q4", headers_tls_check)
     assert rec["outcome"] == "UNKNOWN" and "TXT: LifetimeTimeout" in rec["why"]
+
+# ================================================================== round 8: maint_run's receipt intake, row by row
+# Every row is driven through tools/maint_run.py, so every row's cites must refuse what the runner must refuse: a
+# receipt from another run, one from before the run, one from another tool, and a PASS whose process then exits
+# unexplained. Each attack replaces only maint_run's RUN (the child process) for the row.
+def _intake_attack(monkeypatch, clock, row, kind):
+    import os
+
+    import maint_receipt as mr
+    import maint_run as run
+    own = run.RUNNERS[row][0]
+    other = "maint_pages.py" if own != "maint_pages.py" else "linkcheck.py"
+
+    def fake(argv, timeout):
+        if kind == "another_run":
+            saved = os.environ.get(mr.RUN_ENV)
+            os.environ[mr.RUN_ENV] = "another-run"
+            try:
+                mr.write_receipt(row, "PASS", n=0, why="from another run", tool=own)
+            finally:
+                os.environ[mr.RUN_ENV] = saved
+            return 0, "", ""
+        if kind == "stale":
+            t = clock.t
+            clock.t = t - dt.timedelta(hours=1)
+            mr.write_receipt(row, "PASS", n=0, why="written an hour before the run", tool=own)
+            clock.t = t + dt.timedelta(minutes=1)
+            return 0, "", ""
+        if kind == "foreign":
+            mr.write_receipt(row, "PASS", n=0, why="written by another tool", tool=other)
+            return 0, "", ""
+        mr.write_receipt(row, "PASS", n=0, why="then the process died", tool=own)       # unexplained exit
+        return 2, "", "Traceback: then the process died"
+    monkeypatch.setattr(run, "RUN", fake)
+
+
+def test_cite_W1_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1", "another_run")
+    drive("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W1 receipt" in rec["why"]
+
+
+def test_cite_W1_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1", "stale")
+    drive("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W1 receipt" in rec["why"]
+
+
+def test_cite_W1_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1", "foreign")
+    drive("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W1 receipt" in rec["why"]
+
+
+def test_cite_W1_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1", "unexplained")
+    drive("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_W1b_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1b", "another_run")
+    drive("W1b")
+    rec = receipt("W1b", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W1b receipt" in rec["why"]
+
+
+def test_cite_W1b_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1b", "stale")
+    drive("W1b")
+    rec = receipt("W1b", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W1b receipt" in rec["why"]
+
+
+def test_cite_W1b_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1b", "foreign")
+    drive("W1b")
+    rec = receipt("W1b", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W1b receipt" in rec["why"]
+
+
+def test_cite_W1b_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1b", "unexplained")
+    drive("W1b")
+    rec = receipt("W1b", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_W2_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W2", "another_run")
+    drive("W2")
+    rec = receipt("W2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W2 receipt" in rec["why"]
+
+
+def test_cite_W2_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W2", "stale")
+    drive("W2")
+    rec = receipt("W2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W2 receipt" in rec["why"]
+
+
+def test_cite_W2_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W2", "foreign")
+    drive("W2")
+    rec = receipt("W2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W2 receipt" in rec["why"]
+
+
+def test_cite_W2_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W2", "unexplained")
+    drive("W2")
+    rec = receipt("W2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_W3_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W3", "another_run")
+    drive("W3")
+    rec = receipt("W3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W3 receipt" in rec["why"]
+
+
+def test_cite_W3_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W3", "stale")
+    drive("W3")
+    rec = receipt("W3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W3 receipt" in rec["why"]
+
+
+def test_cite_W3_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W3", "foreign")
+    drive("W3")
+    rec = receipt("W3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a W3 receipt" in rec["why"]
+
+
+def test_cite_W3_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W3", "unexplained")
+    drive("W3")
+    rec = receipt("W3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_D1_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D1", "another_run")
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D1 receipt" in rec["why"]
+
+
+def test_cite_D1_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D1", "stale")
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D1 receipt" in rec["why"]
+
+
+def test_cite_D1_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D1", "foreign")
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D1 receipt" in rec["why"]
+
+
+def test_cite_D1_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D1", "unexplained")
+    drive("D1")
+    rec = receipt("D1", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_D2_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D2", "another_run")
+    drive("D2")
+    rec = receipt("D2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D2 receipt" in rec["why"]
+
+
+def test_cite_D2_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D2", "stale")
+    drive("D2")
+    rec = receipt("D2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D2 receipt" in rec["why"]
+
+
+def test_cite_D2_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D2", "foreign")
+    drive("D2")
+    rec = receipt("D2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D2 receipt" in rec["why"]
+
+
+def test_cite_D2_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D2", "unexplained")
+    drive("D2")
+    rec = receipt("D2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_D3_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D3", "another_run")
+    drive("D3")
+    rec = receipt("D3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D3 receipt" in rec["why"]
+
+
+def test_cite_D3_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D3", "stale")
+    drive("D3")
+    rec = receipt("D3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D3 receipt" in rec["why"]
+
+
+def test_cite_D3_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D3", "foreign")
+    drive("D3")
+    rec = receipt("D3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a D3 receipt" in rec["why"]
+
+
+def test_cite_D3_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D3", "unexplained")
+    drive("D3")
+    rec = receipt("D3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_M1_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1", "another_run")
+    drive("M1")
+    rec = receipt("M1", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M1 receipt" in rec["why"]
+
+
+def test_cite_M1_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1", "stale")
+    drive("M1")
+    rec = receipt("M1", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M1 receipt" in rec["why"]
+
+
+def test_cite_M1_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1", "foreign")
+    drive("M1")
+    rec = receipt("M1", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M1 receipt" in rec["why"]
+
+
+def test_cite_M1_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1", "unexplained")
+    drive("M1")
+    rec = receipt("M1", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_M1b_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1b", "another_run")
+    drive("M1b")
+    rec = receipt("M1b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M1b receipt" in rec["why"]
+
+
+def test_cite_M1b_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1b", "stale")
+    drive("M1b")
+    rec = receipt("M1b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M1b receipt" in rec["why"]
+
+
+def test_cite_M1b_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1b", "foreign")
+    drive("M1b")
+    rec = receipt("M1b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M1b receipt" in rec["why"]
+
+
+def test_cite_M1b_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1b", "unexplained")
+    drive("M1b")
+    rec = receipt("M1b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_M2_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2", "another_run")
+    drive("M2")
+    rec = receipt("M2", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M2 receipt" in rec["why"]
+
+
+def test_cite_M2_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2", "stale")
+    drive("M2")
+    rec = receipt("M2", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M2 receipt" in rec["why"]
+
+
+def test_cite_M2_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2", "foreign")
+    drive("M2")
+    rec = receipt("M2", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M2 receipt" in rec["why"]
+
+
+def test_cite_M2_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2", "unexplained")
+    drive("M2")
+    rec = receipt("M2", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_M2b_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2b", "another_run")
+    drive("M2b")
+    rec = receipt("M2b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M2b receipt" in rec["why"]
+
+
+def test_cite_M2b_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2b", "stale")
+    drive("M2b")
+    rec = receipt("M2b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M2b receipt" in rec["why"]
+
+
+def test_cite_M2b_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2b", "foreign")
+    drive("M2b")
+    rec = receipt("M2b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M2b receipt" in rec["why"]
+
+
+def test_cite_M2b_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2b", "unexplained")
+    drive("M2b")
+    rec = receipt("M2b", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_M3_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M3", "another_run")
+    drive("M3")
+    rec = receipt("M3", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M3 receipt" in rec["why"]
+
+
+def test_cite_M3_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M3", "stale")
+    drive("M3")
+    rec = receipt("M3", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M3 receipt" in rec["why"]
+
+
+def test_cite_M3_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M3", "foreign")
+    drive("M3")
+    rec = receipt("M3", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M3 receipt" in rec["why"]
+
+
+def test_cite_M3_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M3", "unexplained")
+    drive("M3")
+    rec = receipt("M3", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_M4_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M4", "another_run")
+    drive("M4")
+    rec = receipt("M4", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M4 receipt" in rec["why"]
+
+
+def test_cite_M4_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M4", "stale")
+    drive("M4")
+    rec = receipt("M4", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M4 receipt" in rec["why"]
+
+
+def test_cite_M4_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M4", "foreign")
+    drive("M4")
+    rec = receipt("M4", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M4 receipt" in rec["why"]
+
+
+def test_cite_M4_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M4", "unexplained")
+    drive("M4")
+    rec = receipt("M4", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_M5_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M5", "another_run")
+    drive("M5")
+    rec = receipt("M5", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M5 receipt" in rec["why"]
+
+
+def test_cite_M5_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M5", "stale")
+    drive("M5")
+    rec = receipt("M5", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M5 receipt" in rec["why"]
+
+
+def test_cite_M5_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M5", "foreign")
+    drive("M5")
+    rec = receipt("M5", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a M5 receipt" in rec["why"]
+
+
+def test_cite_M5_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M5", "unexplained")
+    drive("M5")
+    rec = receipt("M5", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_Q1_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q1", "another_run")
+    drive("Q1")
+    rec = receipt("Q1", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q1 receipt" in rec["why"]
+
+
+def test_cite_Q1_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q1", "stale")
+    drive("Q1")
+    rec = receipt("Q1", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q1 receipt" in rec["why"]
+
+
+def test_cite_Q1_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q1", "foreign")
+    drive("Q1")
+    rec = receipt("Q1", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q1 receipt" in rec["why"]
+
+
+def test_cite_Q1_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q1", "unexplained")
+    drive("Q1")
+    rec = receipt("Q1", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_Q2_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q2", "another_run")
+    drive("Q2")
+    rec = receipt("Q2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q2 receipt" in rec["why"]
+
+
+def test_cite_Q2_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q2", "stale")
+    drive("Q2")
+    rec = receipt("Q2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q2 receipt" in rec["why"]
+
+
+def test_cite_Q2_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q2", "foreign")
+    drive("Q2")
+    rec = receipt("Q2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q2 receipt" in rec["why"]
+
+
+def test_cite_Q2_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q2", "unexplained")
+    drive("Q2")
+    rec = receipt("Q2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_Q3_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q3", "another_run")
+    drive("Q3")
+    rec = receipt("Q3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q3 receipt" in rec["why"]
+
+
+def test_cite_Q3_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q3", "stale")
+    drive("Q3")
+    rec = receipt("Q3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q3 receipt" in rec["why"]
+
+
+def test_cite_Q3_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q3", "foreign")
+    drive("Q3")
+    rec = receipt("Q3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q3 receipt" in rec["why"]
+
+
+def test_cite_Q3_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q3", "unexplained")
+    drive("Q3")
+    rec = receipt("Q3", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_Q4_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q4", "another_run")
+    drive("Q4")
+    rec = receipt("Q4", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q4 receipt" in rec["why"]
+
+
+def test_cite_Q4_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q4", "stale")
+    drive("Q4")
+    rec = receipt("Q4", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q4 receipt" in rec["why"]
+
+
+def test_cite_Q4_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q4", "foreign")
+    drive("Q4")
+    rec = receipt("Q4", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q4 receipt" in rec["why"]
+
+
+def test_cite_Q4_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q4", "unexplained")
+    drive("Q4")
+    rec = receipt("Q4", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_Q5_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q5", "another_run")
+    drive("Q5")
+    rec = receipt("Q5", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q5 receipt" in rec["why"]
+
+
+def test_cite_Q5_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q5", "stale")
+    drive("Q5")
+    rec = receipt("Q5", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q5 receipt" in rec["why"]
+
+
+def test_cite_Q5_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q5", "foreign")
+    drive("Q5")
+    rec = receipt("Q5", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q5 receipt" in rec["why"]
+
+
+def test_cite_Q5_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q5", "unexplained")
+    drive("Q5")
+    rec = receipt("Q5", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_Q6_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q6", "another_run")
+    drive("Q6")
+    rec = receipt("Q6", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q6 receipt" in rec["why"]
+
+
+def test_cite_Q6_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q6", "stale")
+    drive("Q6")
+    rec = receipt("Q6", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q6 receipt" in rec["why"]
+
+
+def test_cite_Q6_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q6", "foreign")
+    drive("Q6")
+    rec = receipt("Q6", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a Q6 receipt" in rec["why"]
+
+
+def test_cite_Q6_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q6", "unexplained")
+    drive("Q6")
+    rec = receipt("Q6", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_H1_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H1", "another_run")
+    drive("H1")
+    rec = receipt("H1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H1 receipt" in rec["why"]
+
+
+def test_cite_H1_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H1", "stale")
+    drive("H1")
+    rec = receipt("H1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H1 receipt" in rec["why"]
+
+
+def test_cite_H1_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H1", "foreign")
+    drive("H1")
+    rec = receipt("H1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H1 receipt" in rec["why"]
+
+
+def test_cite_H1_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H1", "unexplained")
+    drive("H1")
+    rec = receipt("H1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_H2_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H2", "another_run")
+    drive("H2")
+    rec = receipt("H2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H2 receipt" in rec["why"]
+
+
+def test_cite_H2_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H2", "stale")
+    drive("H2")
+    rec = receipt("H2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H2 receipt" in rec["why"]
+
+
+def test_cite_H2_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H2", "foreign")
+    drive("H2")
+    rec = receipt("H2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H2 receipt" in rec["why"]
+
+
+def test_cite_H2_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H2", "unexplained")
+    drive("H2")
+    rec = receipt("H2", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_H3_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H3", "another_run")
+    drive("H3")
+    rec = receipt("H3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H3 receipt" in rec["why"]
+
+
+def test_cite_H3_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H3", "stale")
+    drive("H3")
+    rec = receipt("H3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H3 receipt" in rec["why"]
+
+
+def test_cite_H3_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H3", "foreign")
+    drive("H3")
+    rec = receipt("H3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "without a H3 receipt" in rec["why"]
+
+
+def test_cite_H3_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H3", "unexplained")
+    drive("H3")
+    rec = receipt("H3", maint_watch)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_A1_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A1", "another_run")
+    drive("A1")
+    rec = receipt("A1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A1 receipt" in rec["why"]
+
+
+def test_cite_A1_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A1", "stale")
+    drive("A1")
+    rec = receipt("A1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A1 receipt" in rec["why"]
+
+
+def test_cite_A1_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A1", "foreign")
+    drive("A1")
+    rec = receipt("A1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A1 receipt" in rec["why"]
+
+
+def test_cite_A1_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A1", "unexplained")
+    drive("A1")
+    rec = receipt("A1", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_A2_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A2", "another_run")
+    drive("A2")
+    rec = receipt("A2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A2 receipt" in rec["why"]
+
+
+def test_cite_A2_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A2", "stale")
+    drive("A2")
+    rec = receipt("A2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A2 receipt" in rec["why"]
+
+
+def test_cite_A2_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A2", "foreign")
+    drive("A2")
+    rec = receipt("A2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A2 receipt" in rec["why"]
+
+
+def test_cite_A2_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A2", "unexplained")
+    drive("A2")
+    rec = receipt("A2", maint_pages)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_A3_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A3", "another_run")
+    drive("A3")
+    rec = receipt("A3", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A3 receipt" in rec["why"]
+
+
+def test_cite_A3_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A3", "stale")
+    drive("A3")
+    rec = receipt("A3", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A3 receipt" in rec["why"]
+
+
+def test_cite_A3_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A3", "foreign")
+    drive("A3")
+    rec = receipt("A3", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A3 receipt" in rec["why"]
+
+
+def test_cite_A3_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A3", "unexplained")
+    drive("A3")
+    rec = receipt("A3", maint_human)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
+
+def test_cite_A4_maint_run_refuses_a_receipt_from_another_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A4", "another_run")
+    drive("A4")
+    rec = receipt("A4", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A4 receipt" in rec["why"]
+
+
+def test_cite_A4_maint_run_refuses_a_receipt_from_before_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A4", "stale")
+    drive("A4")
+    rec = receipt("A4", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A4 receipt" in rec["why"]
+
+
+def test_cite_A4_maint_run_refuses_a_receipt_from_another_tool(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A4", "foreign")
+    drive("A4")
+    rec = receipt("A4", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "without a A4 receipt" in rec["why"]
+
+
+def test_cite_A4_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A4", "unexplained")
+    drive("A4")
+    rec = receipt("A4", maint_quality)
+    assert rec.get("outcome") == "UNKNOWN" and "a non-zero exit is not a pass" in rec["why"]
