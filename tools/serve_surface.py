@@ -43,7 +43,10 @@ SPECIAL = (".", "_", "#", "~")
 SERVED_UNREFERENCED = frozenset({"tools/tracks/n8n.html", "assets/brand/beacon-emblem-master.png",
                                  "assets/brand/beacon-lockup-master.png"})
 #: Never served whatever the config says (leading dot or underscore), or kept unserved as pages-gem did (CNAME).
-NEVER_SERVED = frozenset({".gitattributes", ".gitignore", "CNAME", CONFIG})
+#: .lighthouserc.json and .pa11yci are the maintenance calendar's tool configs (dot-named so Pages never serves them).
+NEVER_SERVED = frozenset({".gitattributes", ".gitignore", ".lighthouserc.json", ".pa11yci", "CNAME", CONFIG})
+#: Root-level files the maintenance calendar's npm tooling needs (pa11y-ci, @lhci/cli); internal, excluded by name.
+NPM_FILES = frozenset({"package.json", "package-lock.json"})
 #: URL path on the live site -> the tracked source whose exclusion hides it. Each must answer 404 once a site-config
 #: patch is live. /RESUME.html is jekyll's rendering of RESUME.md (jekyll-optional-front-matter), live before the patch.
 INTERNAL_SAMPLE = {"/RESUME.md": "RESUME.md", "/RESUME.html": "RESUME.md",
@@ -61,10 +64,18 @@ class SurfaceError(RuntimeError):
 
 
 def internal_class(rel: str) -> bool:
-    """The factory: planning/rules Markdown, queues and logs, data, boards, seats, tools code and tests."""
+    """The factory: planning/rules Markdown, queues and logs, data, boards, seats, tools code, data and tests, and
+    the npm manifests of the maintenance tooling."""
     return (rel.endswith((".md", ".jsonl", ".py", ".cmd"))
+            or rel in NPM_FILES
             or rel.startswith(("boards/", "data/", "seats/", "tools/capability_inventory/"))
-            or (rel.startswith("tools/") and rel.endswith(".js")))
+            or (rel.startswith("tools/") and rel.endswith((".js", ".json"))))
+
+
+def jekyll_special(rel: str) -> bool:
+    """True if Pages never serves `rel` whatever _config.yml says: some path part starts with `.` or `_` (or `#`),
+    or ends with `~` (jekyll 3.10 EntryFilter#special? / #backup?). A rejected directory drops all below it."""
+    return any(p.startswith((".", "_", "#")) or p.endswith("~") for p in rel.split("/"))
 
 
 def load_exclude(text: str) -> list[str]:
@@ -167,7 +178,8 @@ def references(tree: Tree, rel: str) -> set[str]:
 
 
 def served(tree: Tree) -> set[str]:
-    fs = set(tree.files)
+    # a path with a part starting `.` or `_` never reaches the site (e.g. tools/_maint_fixtures/*.html): skip it
+    fs = {f for f in tree.files if not jekyll_special(f)}
     pages = {f for f in fs if f.endswith(".html")}
     out = set(pages) | (SERVED_UNREFERENCED & fs)
     todo = list(pages) + [f for f in fs if f.endswith(".css")]
@@ -179,7 +191,8 @@ def served(tree: Tree) -> set[str]:
             if ref not in out:
                 out.add(ref)
                 todo.append(ref)
-    # an internal file a served page references stays in: surface() then reports the config hides what a page uses
+    # an internal file a served page references stays in: surface() then reports the config hides what a page uses.
+    # So does a `.`/`_` file a served page references (never a start point above): Pages cannot serve it, a problem.
     return {f for f in out if f not in NEVER_SERVED}
 
 
