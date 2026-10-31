@@ -104,7 +104,7 @@ def nongit(tmp_path):
 def test_receipts_land_in_the_scanned_repo_with_the_shared_shape(tmp_path, monkeypatch):
     monkeypatch.delenv("MAINT_DIR", raising=False)
     r = mp.receipt(tmp_path, "W3", "UNKNOWN", why="no names", evidence=".maint/x")
-    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"} and r["tool"] == mp.TOOL
+    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool", "run_id"} and r["tool"] == "tools/" + mp.TOOL
     assert mp.read_jsonl(tmp_path / ".maint" / "maintenance_log.jsonl") == [r]
     import os
     assert "MAINT_DIR" not in os.environ                                 # restored after the call

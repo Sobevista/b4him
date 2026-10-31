@@ -63,7 +63,9 @@ def where_py() -> str:
 
 def create_argv(repo: Path = REPO, py: str | None = None, ru: str | None = None) -> list[str]:
     script = Path(repo) / "tools" / "maint_run.py"
-    tr = f'"{py or where_py()}" "{script}"'
+    tr = f'"{py or where_py()}" "{script}" --scheduled'   # run_start records trigger=scheduled (maint_run.py)
+    if len(tr) > 261:
+        raise Unreadable(f"the /TR value is {len(tr)} chars; schtasks allows 262")
     return (["schtasks.exe", "/Create", "/TN", TASK, "/SC", "DAILY", "/ST", AT, "/TR", tr]
             + (["/RU", ru] if ru else []) + ["/F"])
 
@@ -128,6 +130,8 @@ def check(now: dt.datetime | None = None) -> dict:
     tr = _field(out, "Task To Run") or ""
     if not tr.startswith('"'):
         problems.append(f"{TASK}: Task To Run is not quoted ({tr[:80]!r}); a path with spaces will break")
+    if not tr.rstrip().endswith("--scheduled"):
+        problems.append(f"{TASK}: Task To Run lacks --scheduled, so its runs record trigger=manual")
     last = _field(out, "Last Run Time")
     if last is None:
         return {"state": "unknown", "problems": problems, "why": "schtasks printed no 'Last Run Time' field"}

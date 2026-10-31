@@ -42,7 +42,7 @@ def findings(d):
 
 def test_receipt_shape(sandbox):
     r = maint_receipt.write_receipt("X1", "FINDINGS", n=2, why="w", evidence=".maint/a.json", tool="t.py")
-    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"}
+    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool", "run_id"}
     assert receipts(sandbox) == [r]
     with pytest.raises(ValueError):
         maint_receipt.write_receipt("X1", "OK")

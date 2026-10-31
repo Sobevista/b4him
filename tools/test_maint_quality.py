@@ -32,7 +32,7 @@ def test_receipts_land_beside_the_measured_tree_with_the_shared_helper(tmp_path,
     """maint_receipt.py is the watch builder's canonical copy; this tool routes it to <root>/.maint for one call."""
     monkeypatch.delenv("MAINT_DIR", raising=False)
     r = mq.receipt(tmp_path, "M1", "PASS", n=0, why="ok", evidence=".maint/x.json")
-    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"} and r["tool"] == "maint_quality.py"
+    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool", "run_id"} and r["tool"] == "tools/maint_quality.py"
     assert receipts(tmp_path) == [r] and "MAINT_DIR" not in __import__("os").environ
     for bad in (dict(outcome="GREEN"), dict(outcome="FINDINGS", n=0), dict(outcome="UNKNOWN", why=""),
                 dict(outcome="PASS", evidence="audits/x.json")):

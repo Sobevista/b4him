@@ -9,7 +9,16 @@ WHERE. Everything goes under `.maint/` in the repo root, which .gitignore ignore
 and the repo is public.
     .maint/maintenance_log.jsonl       one receipt per run
         {"at": ISO-UTC, "row": "<calendar id>", "outcome": "PASS|FINDINGS|UNKNOWN|SKIP", "n": int|null,
-         "why": str, "evidence": "<path under .maint/>"|null, "tool": "<script>"}
+         "why": str, "evidence": "<path under .maint/>"|null, "tool": "<repo-relative script path>",
+         "run_id": "<uuid4 of the tools/maint_run.py run>"|null}
+      and, around each run of tools/maint_run.py, two run records (no "row" key; read_receipts() skips them), the
+      runner's first and last writes (the harness counter's spec, delivered.py @ c06bb63e):
+        {"at": ISO-UTC, "kind": "run_start", "run_id": <uuid4>, "runner": "tools/maint_run.py",
+         "proc_started": <this process's creation time, ISO-UTC>|null, "trigger": "scheduled"|"manual"}
+        {"at": ISO-UTC, "kind": "run_end", "run_id": <uuid4>, "runner": "tools/maint_run.py"}
+TOOL AND RUN. `tool` is the writing script's path relative to the repo root (`tools/linkcheck.py`, never a bare
+name), so a counter can match it exactly. `run_id` is the MAINT_RUN_ID that tools/maint_run.py puts in its children's
+environment for the length of one run; a tool run by hand has none, so its receipts carry `run_id: null`.
     .maint/maintenance_findings.jsonl  one line per finding
         {"at": ISO-UTC, "row", "severity": "S1|S2|S3", "subject", "detail", "route_to"}
 The receipt shape follows release.log() (tools/release.py): the time first, appended, one JSON object per line.
@@ -46,8 +55,26 @@ def now_utc() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
-def _tool() -> str:
-    return Path(sys.argv[0]).name if sys.argv and sys.argv[0] else "unknown"
+RUN_ENV = "MAINT_RUN_ID"
+
+
+def tool_path(tool: str | None = None) -> str:
+    """The writing script as a repo-relative posix path. A bare name ("linkcheck.py") is a script in tools/; an
+    absolute or relative path is made relative to the repo root when it lies inside it."""
+    t = str(tool or (sys.argv[0] if sys.argv and sys.argv[0] else "") or "unknown").replace("\\", "/")
+    if "/" not in t:
+        return f"tools/{t}"
+    p = Path(t)
+    if not p.is_absolute():                    # already repo-relative ("tools/linkcheck.py")
+        return p.as_posix().removeprefix("./")
+    try:
+        return p.resolve().relative_to(REPO.resolve()).as_posix()
+    except (ValueError, OSError):
+        return f"tools/{p.name}"
+
+
+def run_id() -> str | None:
+    return os.environ.get(RUN_ENV) or None
 
 
 def _append(name: str, entry: dict) -> None:
@@ -76,7 +103,19 @@ def write_receipt(row: str, outcome: str, n: int | None = None, why: str = "", e
             raise ValueError(f"evidence must be a path under .maint/, got {evidence!r}")
         evidence = ev
     entry = {"at": now_utc().isoformat(timespec="seconds"), "row": row, "outcome": outcome, "n": n,
-             "why": why or "", "evidence": evidence, "tool": tool or _tool()}
+             "why": why or "", "evidence": evidence, "tool": tool_path(tool), "run_id": run_id()}
+    _append(LOG_NAME, entry)
+    return entry
+
+
+RUN_KINDS = ("run_start", "run_end")
+
+
+def write_run_marker(kind: str, rid: str, **fields) -> dict:
+    """tools/maint_run.py's run_start / run_end line, in the receipt log (exact shape in the module docstring)."""
+    if kind not in RUN_KINDS or not rid:
+        raise ValueError(f"a run marker is one of {RUN_KINDS} with a run_id")
+    entry = {"at": now_utc().isoformat(timespec="seconds"), "kind": kind, "run_id": rid, **fields}
     _append(LOG_NAME, entry)
     return entry
 
@@ -129,7 +168,12 @@ def _read(name: str) -> list[dict]:
 
 
 def read_receipts() -> list[dict]:
-    return _read(LOG_NAME)
+    """Receipts only: the run markers (lines with a `kind`) are left out."""
+    return [e for e in _read(LOG_NAME) if "kind" not in e]
+
+
+def read_run_markers() -> list[dict]:
+    return [e for e in _read(LOG_NAME) if e.get("kind") in RUN_KINDS]
 
 
 def read_findings() -> list[dict]:

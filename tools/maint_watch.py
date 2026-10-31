@@ -882,7 +882,7 @@ def c1_monitor_line(now: dt.datetime) -> dict:
     its newest one from the last 7 days. With none, the digest writes C1 UNKNOWN itself: never a silent PASS."""
     try:
         mine = [e for t, e in receipts_of(mr.read_receipts(), "C1")
-                if e.get("tool") == C1_READER and t > now - dt.timedelta(days=7)]
+                if Path(str(e.get("tool") or "")).name == C1_READER and t > now - dt.timedelta(days=7)]
     except ValueError:
         mine = []
     if mine:

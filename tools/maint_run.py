@@ -38,8 +38,23 @@ stage-2 record, and offer only on exit 0 (PASS) or after the FINDINGS are review
 patched tree go under that proof's folder, never into the calendar's log; only the E1 receipt does. tools/approvals.py
 is NOT changed here: enforcement there is owed, and an E1 finding says so until it lands.
 
-Exit 0 every row run has a receipt · 2 a row's runner could not start (its tool is missing, or the process would not
-launch). FINDINGS and UNKNOWN are in the receipts, not in the exit code: D2 and the W2 digest are where they alarm.
+Exit 0 every runner ran cleanly and every row has its own receipt · 2 any runner failed: it could not start, crashed,
+timed out, exited without its row's receipt, or exited non-zero in a way its receipts do not explain (the row gets
+UNKNOWN either way). FINDINGS and UNKNOWN written by a tool that ran cleanly are in the receipts, not in the exit
+code: D2 and the W2 digest are where they alarm.
+
+RUN RECORDS (the harness counter's spec, delivered.py @ c06bb63e). Every run of this runner writes, in the same log,
+a run_start line as its FIRST write (seconds after launch, before any tool runs) and a run_end line as its LAST, in a
+finally block so a crash still closes the run; neither has a "row" key:
+    {"at", "kind": "run_start", "run_id": <uuid4, new per run>, "runner": "tools/maint_run.py",
+     "proc_started": <this process's creation time, GetProcessTimes>, "trigger": "scheduled"|"manual"}
+    {"at", "kind": "run_end", "run_id", "runner": "tools/maint_run.py"}
+The run_id goes to every child tool as MAINT_RUN_ID, so each receipt of the run carries it (tools/maint_receipt.py);
+a tool run by hand writes run_id null. trigger is "scheduled" only when MAINT_TRIGGER=scheduled, which only the
+scheduled task's action sets: its /TR passes `--scheduled` (tools/maint_schedule.py), which sets MAINT_TRIGGER for
+the run. schtasks /TR cannot set an environment variable, and a `cmd /c set ...&&` wrapper pasted into cmd.exe would
+split on the `&&` (cmd does not honour \\" inside the quoted /TR), so the flag is the safe carrier. A person can type
+--scheduled by hand; this marks intent, it does not authenticate.
 """
 from __future__ import annotations
 
@@ -49,6 +64,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -186,22 +202,23 @@ RUN = run_process
 
 
 def _log_len() -> int:
-    p = mr.maint_dir() / mr.LOG_NAME
-    if not p.is_file():
+    """How many receipts the log holds now (run markers are not receipts)."""
+    try:
+        return len(mr.read_receipts())
+    except ValueError:
         return 0
-    return len([x for x in p.read_text(encoding="utf-8-sig").splitlines() if x.strip()])
 
 
 def _new_receipts(since: int, start: dt.datetime, tool: str) -> list[dict]:
     """Receipts of THIS run of THIS tool: after the log position the run began at, stamped at or after its start,
-    written by the runner's own script."""
-    out = []
+    written by the runner's own script (tools/<tool>), carrying this run's run_id (null outside a scheduled run)."""
+    out, rid = [], mr.run_id()
     for e in mr.read_receipts()[since:]:
         try:
             t = dt.datetime.fromisoformat(str(e.get("at")))
         except ValueError:
             continue
-        if t >= start and Path(str(e.get("tool") or "")).name == tool:
+        if t >= start and Path(str(e.get("tool") or "")).name == tool and e.get("run_id") == rid:
             out.append(e)
     return out
 
@@ -242,6 +259,8 @@ def run_tool(tool: str, args: tuple[str, ...], timeout: int, rows: list[str], to
     outs = {e["outcome"] for e in new}
     unexplained = started and code != 0 and (code not in EXPLAINS or not (outs & EXPLAINS[code]))
     out_rows = {}
+    failed = (not started or code is None or code not in (0, 1, 2) or unexplained
+              or any(r not in got for r in rows))
     for r in rows:
         if r not in got:
             out_rows[r] = mr.write_receipt(r, "UNKNOWN", why=why.replace("{row}", r), tool=TOOL)
@@ -251,7 +270,8 @@ def run_tool(tool: str, args: tuple[str, ...], timeout: int, rows: list[str], to
                                            f"{got[r]['outcome']}: a non-zero exit is not a pass ({tail})", tool=TOOL)
         else:
             out_rows[r] = got[r]
-    return {"started": started, "code": code, "receipts": out_rows, "also": [e for e in new if e["row"] not in rows]}
+    return {"started": started, "code": code, "failed": failed, "receipts": out_rows,
+            "also": [e for e in new if e["row"] not in rows]}
 
 
 # ------------------------------------------------------------------ E1: the patch proof
@@ -318,6 +338,7 @@ def patch_proof(tree: Path) -> dict:
 def run(ids: list[str], rows_by_id: dict[str, dict], tools_dir: Path | None = None) -> dict:
     done: dict[str, dict] = {}
     could_not_start: list[str] = []
+    failed: list[str] = []
     for rid in ordered(ids):
         if rid in done:
             continue
@@ -338,11 +359,14 @@ def run(ids: list[str], rows_by_id: dict[str, dict], tools_dir: Path | None = No
         res = run_tool(tool, args, timeout, group, tools_dir)
         if not res["started"]:
             could_not_start += group
+        elif res["failed"]:
+            failed += group
         done.update(res["receipts"])
         for e in res["also"]:                # the digest's C1/M5/H2/H3/HUMAN lines count for those rows this run
             if e["row"] in ids and e["row"] not in done:
                 done[e["row"]] = e
-    return {"receipts": [done[r] for r in ordered(ids) if r in done], "could_not_start": could_not_start}
+    return {"receipts": [done[r] for r in ordered(ids) if r in done], "could_not_start": could_not_start,
+            "failed": failed}
 
 
 def main(argv=None) -> int:
@@ -353,13 +377,18 @@ def main(argv=None) -> int:
     g.add_argument("--patch-proof", metavar="TREE", help="E1: M1 + M1b + W1(a) + M2 on a patched tree")
     ap.add_argument("--date", help="the day whose due rows run (default today, local)")
     ap.add_argument("--list", action="store_true", help="print what would run; run nothing")
+    ap.add_argument("--scheduled", action="store_true", help="set only by the scheduled task's /TR: trigger=scheduled")
     a = ap.parse_args(argv)
+    if a.scheduled:
+        os.environ[TRIGGER_ENV] = "scheduled"
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if a.patch_proof:
-        r = patch_proof(Path(a.patch_proof))
-        print(json.dumps(r, ensure_ascii=False))
-        return {"PASS": 0, "FINDINGS": 1, "UNKNOWN": 2}[r["outcome"]]
+        def proof() -> int:
+            r = patch_proof(Path(a.patch_proof))
+            print(json.dumps(r, ensure_ascii=False))
+            return {"PASS": 0, "FINDINGS": 1, "UNKNOWN": 2}[r["outcome"]]
+        return in_run(proof)
     try:
         rows = load_table()
     except (OSError, ValueError, KeyError) as e:
@@ -380,12 +409,60 @@ def main(argv=None) -> int:
     if a.list:
         print(" ".join(ordered(ids)))
         return 0
-    res = run(ids, by_id)
-    for e in res["receipts"]:
-        print(json.dumps(e, ensure_ascii=False))
-    print(f"maint_run: {len(res['receipts'])} receipt(s) for {len(ids)} row(s)"
-          + (f"; runner could not start for {', '.join(res['could_not_start'])}" if res["could_not_start"] else ""))
-    return 2 if res["could_not_start"] or len(res["receipts"]) < len(ids) else 0
+    def body() -> int:
+        res = run(ids, by_id)
+        for e in res["receipts"]:
+            print(json.dumps(e, ensure_ascii=False))
+        print(f"maint_run: {len(res['receipts'])} receipt(s) for {len(ids)} row(s), run_id {mr.run_id()}"
+              + (f"; runner could not start for {', '.join(res['could_not_start'])}" if res["could_not_start"] else "")
+              + (f"; runner failed for {', '.join(res['failed'])}" if res["failed"] else ""))
+        return 2 if res["could_not_start"] or res["failed"] or len(res["receipts"]) < len(ids) else 0
+    return in_run(body)
+
+
+RUNNER = "tools/maint_run.py"
+TRIGGER_ENV = "MAINT_TRIGGER"        # set to "scheduled" only by the scheduled task's action (tools/maint_schedule.py)
+
+
+def proc_started() -> str | None:
+    """This process's creation time (GetProcessTimes, Windows), ISO-8601 UTC; None where it cannot be read."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        k32.GetProcessTimes.restype = wintypes.BOOL
+        times = [wintypes.FILETIME() for _ in range(4)]
+        if not k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(t) for t in times]):
+            return None
+        ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime        # 100 ns since 1601-01-01 UTC
+        t = dt.datetime(1601, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(microseconds=ticks // 10)
+        return t.isoformat(timespec="seconds")
+    except (AttributeError, OSError, ImportError):
+        return None
+
+
+def trigger() -> str:
+    return "scheduled" if os.environ.get(TRIGGER_ENV) == "scheduled" else "manual"
+
+
+def in_run(body) -> int:
+    """One run of the runner: run_start is its first write, BEFORE any tool runs; MAINT_RUN_ID is in the environment
+    so every receipt written during the run (here or in a child tool) carries this run_id; run_end is its last write,
+    in a finally block, so a crash still closes the run (and the process exits non-zero)."""
+    rid = str(uuid.uuid4())
+    saved = os.environ.get(mr.RUN_ENV)
+    mr.write_run_marker("run_start", rid, runner=RUNNER, proc_started=proc_started(), trigger=trigger())
+    os.environ[mr.RUN_ENV] = rid
+    try:
+        return int(body())
+    finally:
+        if saved is None:
+            os.environ.pop(mr.RUN_ENV, None)
+        else:
+            os.environ[mr.RUN_ENV] = saved
+        mr.write_run_marker("run_end", rid, runner=RUNNER)
 
 
 if __name__ == "__main__":

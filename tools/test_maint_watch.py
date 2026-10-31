@@ -76,7 +76,7 @@ SKIP_LINE = {"at": "2026-10-30T12:30:01+00:00", "date": "2026-10-30", "mode": "a
 def test_receipt_shape_and_append_only(env):
     a = mr.write_receipt("D1", "PASS", why="ok", tool="t")
     b = mr.write_receipt("D1", "FINDINGS", n=2, why="x", evidence=".maint/audits/x.md", tool="t")
-    assert set(a) == {"at", "row", "outcome", "n", "why", "evidence", "tool"}
+    assert set(a) == {"at", "row", "outcome", "n", "why", "evidence", "tool", "run_id"}
     assert [r["outcome"] for r in mr.read_receipts()] == ["PASS", "FINDINGS"] and b["n"] == 2
     f = mr.write_finding("D1", "S2", "subj", "detail", "Release Manager")
     assert set(f) == {"at", "row", "severity", "subject", "detail", "route_to"} and mr.read_findings() == [f]
@@ -581,7 +581,7 @@ def test_digest_uses_the_c1_readers_receipt_when_there_is_one(env):
     mw.main(["--now", "2026-11-02T09:00:00-04:00", "digest"])
     text = (env.md / "audits" / "2026-11-02_weekly.md").read_text(encoding="utf-8")
     assert "C1 uptime monitor: PASS b4him: up" in text
-    assert [r["tool"] for r in mr.read_receipts() if r["row"] == "C1"] == ["headers_tls_check.py"]
+    assert [r["tool"] for r in mr.read_receipts() if r["row"] == "C1"] == ["tools/headers_tls_check.py"]
 
 
 def test_digest_lists_open_findings_and_unknowns_by_age(env):

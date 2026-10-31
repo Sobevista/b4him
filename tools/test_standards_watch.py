@@ -66,7 +66,7 @@ def test_the_feeds_are_the_verified_official_urls():
 
 def test_first_run_counts_the_last_week_and_relevant_items_only(net):
     r = sw.run(NOW)
-    assert r["row"] == "E3" and r["outcome"] == "FINDINGS" and r["tool"] == "standards_watch.py"
+    assert r["row"] == "E3" and r["outcome"] == "FINDINGS" and r["tool"] == "tools/standards_watch.py"
     subjects = sorted(f["subject"] for f in mr.read_findings())
     # w0 is older than one cadence; c2 is not about Pages/Actions/Jekyll
     assert subjects == ["docs-pages: Clarify CNAME", "gh-changelog: Actions: new runner images",

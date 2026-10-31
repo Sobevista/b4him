@@ -22,7 +22,7 @@ def fake(answers, calls=None):
     return run
 
 
-def listing(last="11/3/2026 10:35:02 AM", tr=f'"{PY}" "C:\\x y\\tools\\maint_run.py"'):
+def listing(last="11/3/2026 10:35:02 AM", tr=f'"{PY}" "C:\\x y\\tools\\maint_run.py" --scheduled'):
     return (0, f"HostName: X\nTaskName: \\b4him-maint-run\nLast Run Time: {last}\nLast Result: 0\n"
                f"Task To Run: {tr}\n", "")
 
@@ -34,7 +34,7 @@ def test_the_line_is_list2cmdline_with_a_quoted_tr_at_10_35(monkeypatch, tmp_pat
     line = ms.command(repo)
     script = repo / "tools" / "maint_run.py"
     assert line == subprocess.list2cmdline(["schtasks.exe", "/Create", "/TN", "b4him-maint-run", "/SC", "DAILY",
-                                            "/ST", "10:35", "/TR", f'"{PY}" "{script}"', "/F"])
+                                            "/ST", "10:35", "/TR", f'"{PY}" "{script}" --scheduled', "/F"])
     assert calls == [["where", "py"]]                       # py resolved by `where py`, the first hit
     assert '/TR "\\"C:\\Windows\\py.exe\\" \\"' in line      # the stored Task To Run will begin with a quote
     assert all(a[0] != "schtasks" for a in calls)            # printing never touches the scheduler
@@ -62,7 +62,8 @@ def test_no_py_is_unknown(monkeypatch, capsys):
     (listing(), "ok"),
     (listing(last="11/1/2026 10:35:02 AM"), "stale"),                      # over 26 h ago
     (listing(last="11/30/1999 12:00:00 AM"), "stale"),                     # never ran
-    (listing(tr=f"{PY} C:\\x\\maint_run.py"), "stale"),                    # unquoted /TR
+    (listing(tr=f"{PY} C:\\x\\maint_run.py --scheduled"), "stale"),      # unquoted /TR
+    (listing(tr=f'"{PY}" "C:\\x\\maint_run.py"'), "stale"),              # no --scheduled: runs look manual
     ((1, "", "ERROR: The system cannot find the file specified.\r\n"), "missing"),
     ((1, "", "ERROR: Access is denied.\r\n"), "unknown"),
     (listing(last="sometime"), "unknown"),

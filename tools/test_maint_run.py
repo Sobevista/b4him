@@ -101,7 +101,7 @@ def test_all_runs_each_tool_once_per_args_and_heartbeat_last(md, monkeypatch):
                           ("maint_watch.py", ("one", "D3"))]
     ev = {e["row"]: e for e in res["receipts"]}
     assert ev["E1"]["outcome"] == "SKIP" and ev["E2"]["outcome"] == "SKIP"
-    assert ("standards_watch.py", ()) in calls and ev["E3"]["tool"] == "standards_watch.py"   # E3 has a tool now
+    assert ("standards_watch.py", ()) in calls and ev["E3"]["tool"] == "tools/standards_watch.py"   # E3 has a tool now
 
 
 # ------------------------------------------------------------------ crash isolation (real processes, fake tools)
@@ -121,7 +121,8 @@ PRELUDE = textwrap.dedent("""\
     def write(row, outcome, n=0):
         d = os.environ['MAINT_DIR']; os.makedirs(d, exist_ok=True)
         e = {'at': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'), 'row': row,
-             'outcome': outcome, 'n': n, 'why': 'fake', 'evidence': None, 'tool': os.path.basename(sys.argv[0])}
+             'outcome': outcome, 'n': n, 'why': 'fake', 'evidence': None, 'tool': 'tools/' + os.path.basename(sys.argv[0]),
+             'run_id': os.environ.get('MAINT_RUN_ID')}
         open(os.path.join(d, 'maintenance_log.jsonl'), 'a', encoding='utf-8').write(json.dumps(e) + '\\n')
     """)
 
@@ -154,16 +155,80 @@ def test_a_crash_is_an_unknown_for_that_row_and_the_run_goes_on(fakes):
     assert got["R6"]["outcome"] == "UNKNOWN" and "could not start" in got["R6"]["why"]
     assert res["could_not_start"] == ["R6"]                          # only a runner that never started counts
     assert [e["row"] for e in mr.read_receipts()][-1] == "D2"        # the watch row was last
-    assert all(e["tool"] == "maint_run.py" for r, e in got.items() if r in ("R2", "R3", "R4", "R5", "R6"))
+    assert all(e["tool"] == "tools/maint_run.py" for r, e in got.items() if r in ("R2", "R3", "R4", "R5", "R6"))
 
 
-def test_exit_code_is_2_only_when_a_runner_could_not_start(fakes, monkeypatch, capsys):
+def test_exit_code_is_non_zero_on_any_runner_failure(fakes, monkeypatch, capsys):
     monkeypatch.setattr(run, "load_table", lambda path=None: list(fakes.values()))
-    assert run.main(["--row", "R1", "--row", "R2", "--row", "R3"]) == 0     # crashes and timeouts still exit 0
-    assert run.main(["--row", "R6"]) == 2
+    assert run.main(["--row", "R1"]) == 0                                    # a clean runner
+    assert run.main(["--row", "R1", "--row", "R2", "--row", "R3"]) == 2     # a crash and a timeout: non-zero
+    assert run.main(["--row", "R4"]) == 2                                    # exited 0 with no receipt
+    assert run.main(["--row", "R6"]) == 2                                    # could not start
     assert run.main(["--row", "NOPE"]) == 2
     out = capsys.readouterr().out
-    assert "3 receipt(s) for 3 row(s)" in out and "runner could not start for R6" in out
+    assert "3 receipt(s) for 3 row(s)" in out and "runner failed for R2, R3" in out
+    assert "runner could not start for R6" in out
+
+
+# ------------------------------------------------------------------ run records (the harness counter's spec)
+def raw_log(md):
+    import json as _j
+    return [_j.loads(x) for x in (md / "maintenance_log.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+def test_run_records_bracket_every_receipt_of_the_run(fakes, md, monkeypatch):
+    monkeypatch.setattr(run, "load_table", lambda path=None: list(fakes.values()))
+    monkeypatch.delenv("MAINT_TRIGGER", raising=False)
+    monkeypatch.delenv("MAINT_RUN_ID", raising=False)
+    assert run.main(["--row", "R1", "--row", "D2"]) == 0
+    log = raw_log(md)
+    start, end, body = log[0], log[-1], log[1:-1]
+    assert list(start) == ["at", "kind", "run_id", "runner", "proc_started", "trigger"]
+    assert start["kind"] == "run_start" and start["runner"] == "tools/maint_run.py" and start["trigger"] == "manual"
+    assert list(end) == ["at", "kind", "run_id", "runner"] and end["kind"] == "run_end"
+    assert end["run_id"] == start["run_id"] and "row" not in start and "row" not in end
+    assert [e["row"] for e in body] == ["R1", "D2"]
+    assert all(e["run_id"] == start["run_id"] and e["tool"] == "tools/ok.py" for e in body)   # set by the CHILD
+    import datetime as _dt
+    t0 = _dt.datetime.fromisoformat(start["at"])
+    ps = _dt.datetime.fromisoformat(start["proc_started"])
+    assert ps.utcoffset() is not None and _dt.timedelta(0) <= t0 - ps.replace(microsecond=0) < _dt.timedelta(
+        seconds=120)                                                     # run_start within 120 s of launch
+    assert "MAINT_RUN_ID" not in __import__("os").environ               # the id dies with the run
+    assert mr.read_receipts() == body                                   # readers never see the run records
+
+
+def test_run_ids_are_unique_and_scheduled_is_recorded(fakes, md, monkeypatch):
+    monkeypatch.setattr(run, "load_table", lambda path=None: list(fakes.values()))
+    monkeypatch.delenv("MAINT_TRIGGER", raising=False)
+    run.main(["--row", "R1"])
+    monkeypatch.setenv("MAINT_TRIGGER", "x")                             # cleaned by monkeypatch after the test
+    run.main(["--row", "R1", "--scheduled"])
+    starts = [e for e in raw_log(md) if e.get("kind") == "run_start"]
+    assert len({s["run_id"] for s in starts}) == 2
+    assert [s["trigger"] for s in starts] == ["manual", "scheduled"]
+
+
+def test_a_crash_still_writes_run_end_and_exits_non_zero(fakes, md, monkeypatch):
+    monkeypatch.setattr(run, "load_table", lambda path=None: list(fakes.values()))
+
+    def boom(*a, **k):
+        raise RuntimeError("runner bug")
+    monkeypatch.setattr(run, "run", boom)
+    with pytest.raises(RuntimeError):
+        run.main(["--row", "R1"])
+    log = raw_log(md)
+    assert [e["kind"] for e in log] == ["run_start", "run_end"] and log[0]["run_id"] == log[1]["run_id"]
+
+
+def test_a_tool_run_by_hand_writes_run_id_null_and_a_repo_relative_tool(md, monkeypatch):
+    monkeypatch.delenv("MAINT_RUN_ID", raising=False)
+    r = mr.write_receipt("W1", "PASS", n=0, why="by hand", tool="linkcheck.py")
+    assert r["run_id"] is None and r["tool"] == "tools/linkcheck.py"
+    assert mr.write_receipt("W1", "PASS", why="x", tool=str(HERE / "linkcheck.py"))["tool"] == "tools/linkcheck.py"
+    assert mr.write_receipt("W1", "PASS", why="x", tool="tools/linkcheck.py")["tool"] == "tools/linkcheck.py"
+    monkeypatch.setenv("MAINT_RUN_ID", "abc")
+    assert mr.write_receipt("W1", "PASS", why="x", tool="linkcheck.py")["run_id"] == "abc"
 
 
 def test_a_partial_run_never_reads_as_pass(fakes, monkeypatch):

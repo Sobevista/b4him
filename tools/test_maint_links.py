@@ -299,7 +299,7 @@ def test_corrupt_cache_is_ignored_not_fatal(site):
 # ---------------------------------------------------------------- maint_receipt
 def test_receipt_shape_and_refusals(site):
     r = maint_receipt.write_receipt("W1", "PASS", n=0, why="ok", evidence=None, tool="x.py")
-    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool"}
+    assert set(r) == {"at", "row", "outcome", "n", "why", "evidence", "tool", "run_id"}
     with pytest.raises(ValueError):
         maint_receipt.write_receipt("W1", "OK")
     with pytest.raises(ValueError):
