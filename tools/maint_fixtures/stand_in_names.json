@@ -1,0 +1,12 @@
+{
+  "_note": "An invented stand-in for calibration only. It is not a real person. tools/maint_quality.py calibrate loads it in place of the git-ignored names file, never as it.",
+  "people": [
+    {
+      "label": "FIXTURE-CLIENT",
+      "role": "client",
+      "names": [
+        "Zorblax"
+      ]
+    }
+  ]
+}
