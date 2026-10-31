@@ -13,3 +13,4 @@ data/people_names.local.json
 tools/capability_inventory/output/
 # The rack backup's local log (tools/rack_backup.py): one line per run, names this machine's Drive path. Local evidence.
 rack_backup_log.jsonl
+.maint/
