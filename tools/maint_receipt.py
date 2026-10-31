@@ -15,7 +15,7 @@ and the repo is public.
 The receipt shape follows release.log() (tools/release.py): the time first, appended, one JSON object per line.
 
     write_receipt(row, outcome, n=None, why="", evidence=None)   -> the dict written
-    write_finding(row, severity, subject, detail="", route_to="") -> the dict written
+    write_finding(row, severity, subject, detail="", route_to="", **extra) -> the dict written
     read_receipts() / read_findings()                             -> list[dict], oldest first
 
 The log is append-only: nothing here rewrites or deletes a line. A malformed call raises ValueError and writes nothing,
@@ -81,7 +81,8 @@ def write_receipt(row: str, outcome: str, n: int | None = None, why: str = "", e
     return entry
 
 
-def write_finding(row: str, severity: str, subject: str, detail: str = "", route_to: str = "") -> dict:
+def write_finding(row: str, severity: str, subject: str, detail: str = "", route_to: str = "", **extra) -> dict:
+    """Extra keys (linkcheck's W1b proposal, a page list) ride after the six fixed ones and never replace them."""
     if not isinstance(row, str) or not row.strip():
         raise ValueError("a finding needs its calendar row id")
     if severity not in SEVERITIES:
@@ -90,6 +91,7 @@ def write_finding(row: str, severity: str, subject: str, detail: str = "", route
         raise ValueError("a finding needs a subject")
     entry = {"at": now_utc().isoformat(timespec="seconds"), "row": row, "severity": severity, "subject": subject,
              "detail": detail or "", "route_to": route_to or ""}
+    entry.update({k: v for k, v in extra.items() if k not in entry})
     _append(FINDINGS_NAME, entry)
     return entry
 
