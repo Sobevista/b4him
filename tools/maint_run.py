@@ -48,7 +48,9 @@ a run_start line as its FIRST write (seconds after launch, before any tool runs)
 finally block so a crash still closes the run; neither has a "row" key:
     {"at", "kind": "run_start", "run_id": <uuid4, new per run>, "runner": "tools/maint_run.py",
      "proc_started": <this process's creation time, GetProcessTimes>, "trigger": "scheduled"|"manual"}
-    {"at", "kind": "run_end", "run_id", "runner": "tools/maint_run.py"}
+    {"at", "kind": "run_end", "run_id", "runner": "tools/maint_run.py", "exit": <the runner's exit code, int>,
+     "rows_failed": [<row ids whose runner failed this run>]}
+A crash of the runner itself records exit 1 and the rows that had failed before it.
 The run_id goes to every child tool as MAINT_RUN_ID, so each receipt of the run carries it (tools/maint_receipt.py);
 a tool run by hand writes run_id null. trigger is "scheduled" only when MAINT_TRIGGER=scheduled, which only the
 scheduled task's action sets: its /TR passes `--scheduled` (tools/maint_schedule.py), which sets MAINT_TRIGGER for
@@ -384,8 +386,10 @@ def main(argv=None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if a.patch_proof:
-        def proof() -> int:
+        def proof(rows_failed: list) -> int:
             r = patch_proof(Path(a.patch_proof))
+            if r["outcome"] == "UNKNOWN":      # a proof step's runner failed, or the tree was not a checkout
+                rows_failed.append("E1")
             print(json.dumps(r, ensure_ascii=False))
             return {"PASS": 0, "FINDINGS": 1, "UNKNOWN": 2}[r["outcome"]]
         return in_run(proof)
@@ -409,8 +413,9 @@ def main(argv=None) -> int:
     if a.list:
         print(" ".join(ordered(ids)))
         return 0
-    def body() -> int:
+    def body(rows_failed: list) -> int:
         res = run(ids, by_id)
+        rows_failed += res["could_not_start"] + res["failed"]
         for e in res["receipts"]:
             print(json.dumps(e, ensure_ascii=False))
         print(f"maint_run: {len(res['receipts'])} receipt(s) for {len(ids)} row(s), run_id {mr.run_id()}"
@@ -455,14 +460,20 @@ def in_run(body) -> int:
     saved = os.environ.get(mr.RUN_ENV)
     mr.write_run_marker("run_start", rid, runner=RUNNER, proc_started=proc_started(), trigger=trigger())
     os.environ[mr.RUN_ENV] = rid
+    rows_failed: list[str] = []                # body() fills it: the rows whose runner failed this run
+    code = CRASH_EXIT
     try:
-        return int(body())
+        code = int(body(rows_failed))
+        return code
     finally:
         if saved is None:
             os.environ.pop(mr.RUN_ENV, None)
         else:
             os.environ[mr.RUN_ENV] = saved
-        mr.write_run_marker("run_end", rid, runner=RUNNER)
+        mr.write_run_marker("run_end", rid, runner=RUNNER, exit=code, rows_failed=sorted(set(rows_failed)))
+
+
+CRASH_EXIT = 1                                 # the exit code recorded when the runner itself raised
 
 
 if __name__ == "__main__":

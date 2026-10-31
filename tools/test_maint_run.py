@@ -180,22 +180,40 @@ def test_run_records_bracket_every_receipt_of_the_run(fakes, md, monkeypatch):
     monkeypatch.setattr(run, "load_table", lambda path=None: list(fakes.values()))
     monkeypatch.delenv("MAINT_TRIGGER", raising=False)
     monkeypatch.delenv("MAINT_RUN_ID", raising=False)
+    monkeypatch.setattr(run, "proc_started", lambda: "2026-10-31T09:00:00+00:00")   # this process is pytest's
     assert run.main(["--row", "R1", "--row", "D2"]) == 0
     log = raw_log(md)
     start, end, body = log[0], log[-1], log[1:-1]
     assert list(start) == ["at", "kind", "run_id", "runner", "proc_started", "trigger"]
     assert start["kind"] == "run_start" and start["runner"] == "tools/maint_run.py" and start["trigger"] == "manual"
-    assert list(end) == ["at", "kind", "run_id", "runner"] and end["kind"] == "run_end"
+    assert list(end) == ["at", "kind", "run_id", "runner", "exit", "rows_failed"] and end["kind"] == "run_end"
+    assert end["exit"] == 0 and end["rows_failed"] == [] and start["proc_started"] == "2026-10-31T09:00:00+00:00"
     assert end["run_id"] == start["run_id"] and "row" not in start and "row" not in end
     assert [e["row"] for e in body] == ["R1", "D2"]
     assert all(e["run_id"] == start["run_id"] and e["tool"] == "tools/ok.py" for e in body)   # set by the CHILD
-    import datetime as _dt
-    t0 = _dt.datetime.fromisoformat(start["at"])
-    ps = _dt.datetime.fromisoformat(start["proc_started"])
-    assert ps.utcoffset() is not None and _dt.timedelta(0) <= t0 - ps.replace(microsecond=0) < _dt.timedelta(
-        seconds=120)                                                     # run_start within 120 s of launch
     assert "MAINT_RUN_ID" not in __import__("os").environ               # the id dies with the run
     assert mr.read_receipts() == body                                   # readers never see the run records
+
+
+def test_proc_started_is_the_child_process_creation_time():
+    """A fresh process's GetProcessTimes creation time, read in that process: within seconds of now, with an offset.
+    (Asserting it in-process would measure pytest's own start, the round-5 review's red run.)"""
+    import datetime as _dt
+    import subprocess as _sp
+    import sys as _sys
+    before = _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0)
+    out = _sp.run([_sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); import maint_run; "
+                   "print(maint_run.proc_started())", str(HERE)], capture_output=True, encoding="utf-8",
+                  check=True).stdout.strip()
+    ps = _dt.datetime.fromisoformat(out)
+    assert ps.utcoffset() is not None and before - _dt.timedelta(seconds=2) <= ps <= before + _dt.timedelta(seconds=60)
+
+
+def test_run_end_names_the_rows_whose_runner_failed(fakes, md, monkeypatch):
+    monkeypatch.setattr(run, "load_table", lambda path=None: list(fakes.values()))
+    assert run.main(["--row", "R1", "--row", "R2", "--row", "R3", "--row", "R6"]) == 2
+    end = raw_log(md)[-1]
+    assert end["kind"] == "run_end" and end["exit"] == 2 and end["rows_failed"] == ["R2", "R3", "R6"]
 
 
 def test_run_ids_are_unique_and_scheduled_is_recorded(fakes, md, monkeypatch):
@@ -219,6 +237,7 @@ def test_a_crash_still_writes_run_end_and_exits_non_zero(fakes, md, monkeypatch)
         run.main(["--row", "R1"])
     log = raw_log(md)
     assert [e["kind"] for e in log] == ["run_start", "run_end"] and log[0]["run_id"] == log[1]["run_id"]
+    assert log[1]["exit"] == 1 and log[1]["rows_failed"] == []          # the crash is recorded as a non-zero exit
 
 
 def test_a_tool_run_by_hand_writes_run_id_null_and_a_repo_relative_tool(md, monkeypatch):

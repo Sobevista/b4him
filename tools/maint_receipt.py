@@ -15,7 +15,8 @@ and the repo is public.
       runner's first and last writes (the harness counter's spec, delivered.py @ c06bb63e):
         {"at": ISO-UTC, "kind": "run_start", "run_id": <uuid4>, "runner": "tools/maint_run.py",
          "proc_started": <this process's creation time, ISO-UTC>|null, "trigger": "scheduled"|"manual"}
-        {"at": ISO-UTC, "kind": "run_end", "run_id": <uuid4>, "runner": "tools/maint_run.py"}
+        {"at": ISO-UTC, "kind": "run_end", "run_id": <uuid4>, "runner": "tools/maint_run.py", "exit": int,
+         "rows_failed": [row ids whose runner failed]}
 TOOL AND RUN. `tool` is the writing script's path relative to the repo root (`tools/linkcheck.py`, never a bare
 name), so a counter can match it exactly. `run_id` is the MAINT_RUN_ID that tools/maint_run.py puts in its children's
 environment for the length of one run; a tool run by hand has none, so its receipts carry `run_id: null`.

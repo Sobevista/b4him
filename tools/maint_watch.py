@@ -41,7 +41,9 @@ NOTE FORMAT (H2, H3: .maint/notes/<row>_<YYYY-MM-DD>[_*].md). A dated filename i
         Reviewed: what was reviewed
         Verdict: the verdict (e.g. "no change", "amend section 5")
         Finding: one line per finding            (or the single line "Findings: none")
-    A note missing any part is UNKNOWN naming what is missing.
+    Each value needs real content (3+ characters; not ".", "x", "n/a", a placeholder). The filename's date may not
+    be in the future and must equal the Date: line. H2 is the Independent Reviewer's: its Reviewer may not be a
+    page-author seat. A note missing any part is UNKNOWN naming what is missing.
 ASSIST ROWS (M1b, M4, A2, Q1, Q2). The scanner's result is evidence (findings filed, the evidence file); the row's
     receipt is `SKIP awaiting <seat> judgement` until the seat judges. The cadence + grace clock runs from the FIRST
     awaiting line and no re-run or new scanner output resets it; only a close does (a judgement or a PASS).
@@ -704,12 +706,22 @@ def newest_note(rid: str) -> tuple[dt.date, str] | None:
 
 
 NOTE_FIELD = re.compile(r"^\s*[-*]?\s*(?P<k>date|reviewer|reviewed|verdict|findings?)\s*:\s*(?P<v>.*)$", re.I)
-PLACEHOLDER = re.compile(r"^(?:<.*>|\.\.\.|_+|tbd|todo|-|\[\s*\])?$", re.I)
+PLACEHOLDER = re.compile(r"^(?:<.*>|\.+|_+|-+|x|n/?a|none\??|tbd|todo|\[\s*\]|yyyy-mm-dd)?$", re.I)
+MIN_VALUE = 3                                  # a value shorter than this carries no content ("x", "ok", ".")
 
 
-def note_problems(path: Path) -> list[str]:
-    """What a review note lacks (NOTE FORMAT in the module docstring); [] means complete. An empty file, or the
-    template with its placeholders left in, names every part it is missing."""
+def _real(v: str, key: str) -> bool:
+    v = v.strip()
+    if key == "finding" and v.lower() == "none":          # "Findings: none" is the explicit no-findings line
+        return True
+    return len(v) >= MIN_VALUE and not PLACEHOLDER.match(v)
+
+
+def note_problems(path: Path, rid: str = "", file_date: dt.date | None = None,
+                  today: dt.date | None = None) -> list[str]:
+    """What a review note lacks (NOTE FORMAT in the module docstring); [] means complete. An empty file, the template
+    with its placeholders left in, or trivial values ('.', 'x', 'n/a') name every part they are missing. The filename's
+    date must not be in the future and must equal the Date: line; H2's Reviewer must not be a page-author seat."""
     try:
         text = path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeDecodeError) as e:
@@ -718,16 +730,24 @@ def note_problems(path: Path) -> list[str]:
     got: dict[str, list[str]] = {}
     for line in text.splitlines():
         m = NOTE_FIELD.match(line)
-        if m and not PLACEHOLDER.match(m["v"].strip()):
-            got.setdefault(m["k"].lower().rstrip("s"), []).append(m["v"].strip())
+        if m:
+            k = m["k"].lower().rstrip("s")
+            if _real(m["v"], k):
+                got.setdefault(k, []).append(m["v"].strip())
     missing = []
+    if file_date and today and file_date > today:
+        missing.append(f"a filename date not in the future ({file_date} is after {today})")
     try:
-        dt.date.fromisoformat((got.get("date") or [""])[0][:10])
+        note_date = dt.date.fromisoformat((got.get("date") or [""])[0][:10])
+        if file_date and note_date != file_date:
+            missing.append(f"a Date: line equal to the filename's date ({note_date} != {file_date})")
     except ValueError:
         missing.append("Date: YYYY-MM-DD")
     seat = (got.get("reviewer") or [""])[0].lower()
     if seat not in mp.SEATS:
         missing.append("Reviewer: <a seat>")
+    elif rid == "H2" and seat in mp.AUTHOR_SEATS:
+        missing.append(f"an independent Reviewer for H2 ({seat} writes the pages)")
     if not got.get("reviewed"):
         missing.append("Reviewed: <what was reviewed>")
     if not got.get("verdict"):
@@ -749,7 +769,7 @@ def run_check(rid: str, now: dt.datetime, repo: Path | None = None, table: dict 
             last_day, evidence = (n if n else (None, None))
             what = "review note" if rid == "H2" else "re-read note"
             if n:                              # a dated filename is not a review: read it
-                missing = note_problems(mr.maint_dir() / n[1][len(".maint/"):])
+                missing = note_problems(mr.maint_dir() / n[1][len(".maint/"):], rid, n[0], now.date())
                 if missing:
                     return mr.write_receipt(rid, "UNKNOWN", why=f"{what} {n[1]} is not a complete note: missing "
                                             f"{', '.join(missing)} (see maint_watch.py NOTE FORMAT)",

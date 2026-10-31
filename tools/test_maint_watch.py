@@ -319,6 +319,40 @@ def note(e, row, day, text=None):
                                                    encoding="utf-8")
 
 
+@pytest.mark.parametrize("fname, body, needle", [
+    ("H3_2027-01-12.md", "Date:\nReviewer:\nReviewed:\nVerdict:\nFindings:\n", "Date: YYYY-MM-DD"),
+    ("H3_2027-01-12.md", "Date: 2027-01-12\nReviewer: reviewer\nReviewed: .\nVerdict: x\nFinding: n/a\n",
+     "Reviewed: <what was reviewed>"),
+    ("H3_2027-01-12.md", "Date: <YYYY-MM-DD>\nReviewer: <seat>\nReviewed: ...\nVerdict: ___\nFindings: TODO\n",
+     "Verdict: <the verdict>"),
+    ("H3_2099-01-01.md", "Date: 2099-01-01\nReviewer: reviewer\nReviewed: calendar\nVerdict: no change\n"
+                         "Findings: none\n", "not in the future"),
+    ("H3_2027-01-12.md", "Date: 1999-01-01\nReviewer: reviewer\nReviewed: calendar\nVerdict: no change\n"
+                         "Findings: none\n", "equal to the filename's date"),
+])
+def test_exp7_notes_that_say_nothing_are_unknown(env, fname, body, needle):
+    """Round 5 (exp7): empty values, '.', 'x', 'n/a', a template, a future filename date, a Date: mismatch."""
+    t = mw.load_rows()
+    env.clock.set(2027, 1, 12, 12)
+    (env.md / "notes").mkdir(parents=True, exist_ok=True)
+    (env.md / "notes" / fname).write_text(body, encoding="utf-8")
+    r = mw.run_check("H3", now(env), table=t)
+    assert r["outcome"] == "UNKNOWN" and needle in r["why"]
+
+
+def test_exp7_a_good_note_passes_and_h2_refuses_an_author_reviewer(env):
+    t = mw.load_rows()
+    env.clock.set(2027, 1, 12, 12)
+    good = "Date: 2027-01-12\nReviewer: reviewer\nReviewed: calendar\nVerdict: no change\nFindings: none\n"
+    note(env, "H3", "2027-01-12", good)
+    assert mw.run_check("H3", now(env), table=t)["outcome"] == "PASS"
+    note(env, "H2", "2027-01-12", good.replace("reviewer", "managing-editor"))
+    r = mw.run_check("H2", now(env), table=t)
+    assert r["outcome"] == "UNKNOWN" and "independent Reviewer for H2" in r["why"]
+    note(env, "H3", "2027-01-12", good.replace("reviewer", "managing-editor"))  # H3 has no independence rule
+    assert mw.run_check("H3", now(env), table=t)["outcome"] == "PASS"
+
+
 def test_a_note_is_read_not_just_its_filename(env):
     """The GPT review: H2/H3 passed on a dated FILENAME. Empty or template-only is UNKNOWN, naming what is missing."""
     t = mw.load_rows()
