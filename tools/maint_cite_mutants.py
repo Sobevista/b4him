@@ -7,6 +7,10 @@ row's cites, and records which fail. A mutant that no cite kills means a cite is
     py tools/maint_cite_mutants.py --repo <a scratch checkout>      the kill matrix; exit 1 if any mutant survives
     py tools/maint_cite_mutants.py --repo <checkout> --check         only check that every mutant applies once
 
+THE RULES. A clean gate first: every cite passes on the unmutated tree with 0 failed, 0 skipped, 0 errors, or the
+tool aborts. An identity mutant (old == new) or one whose text is not found exactly once is refused. A mutant run
+counts only as passed or failed with 0 errors; anything else stops the tool. 0 survivors is required (exit 1 else).
+
 Run it on a SCRATCH checkout (a worktree): each mutant edits a tool file there and restores it afterwards (in a
 finally block), but a crash of this script could leave one edited. Never on the live checkout.
 """
@@ -189,14 +193,99 @@ MUTANTS = [
      "        hits = htc.mixed_content(htc.git_grep_http(site))", "        hits = []"),
 ]
 
+#: The independent reviewer's 44 mutants (round 7, scratchpad review_b4him/mut8.py), copied verbatim. Every one must be
+#: killed: a survivor means a cite is missing.
+REVIEWER_MUTANTS = [
+    ("C1", "7-day ratio missing is UNKNOWN", "headers_tls_check.py", 'if m["uptime_7d"] is None:', 'if False:'),
+    ("C1", "paused monitor is UNKNOWN", "headers_tls_check.py", 'elif m["status"] != 2:', 'elif False:'),
+    ("D1", "10:30 cutoff", "maint_watch.py", "RELEASE_CUTOFF = dt.time(10, 30)", "RELEASE_CUTOFF = dt.time(23, 59)"),
+    ("D1", "failed patch outcome", "maint_watch.py", '            if p.get("outcome") not in OK_OUTCOMES:', "            if False:"),
+    ("D2", "stale schedule alarms", "maint_watch.py", 'sched.get("state") in ("missing", "stale")', 'sched.get("state") in ("missing",)'),
+    ("D2", "human rows close only on PASS", "maint_watch.py", 'if row.get("check") in ("human", "note", "board"):',
+     'if row.get("check") in ("note", "board"):'),
+    ("D3", "cause class after ':'", "maint_watch.py", '            cls += ": " + nxt', "            pass"),
+    ("D3", "drill withholds the ping", "maint_watch.py", 'if drill and drill["skip_date"] == now.date().isoformat():', "if False:"),
+    ("D3", "'OK (not found)' is not recorded", "maint_watch.py", 'if body.startswith("OK (") and body != "OK":', "if False:"),
+    ("W1", "live page is S2", "linkcheck.py", 'b["severity"] = "S3" if b["live_page"] is False else "S2"', 'b["severity"] = "S3"'),
+    ("W1", "UNKNOWN never cached", "linkcheck.py", '            if res["status"] in ("OK", "DEAD"):', "            if True:"),
+    ("W1b", "snapshot near last-alive date", "linkcheck.py", '        q["timestamp"] = near.strftime("%Y%m%d%H%M%S")', "        pass"),
+    ("W2", "receipts of the week", "maint_watch.py",
+     'week = [e for e in receipts if parse_at(e["at"]) > now - dt.timedelta(days=7)]', "week = []"),
+    ("W3", "per-page exemption", "maint_pages.py", "vocab = {p: site_vocabulary({p: t}) for p, t in texts.items()}",
+     "vocab = {p: site_vocabulary(texts) for p in texts}"),
+    ("W3", "names-file pair never exempt", "maint_pages.py",
+     'named = bool(CAP_PAIR.match(f["text"].strip())) and (w in full or any(x in single for x in w.split()))',
+     "named = False"),
+    ("M1", "exit 0 with issues is FINDINGS", "maint_quality.py", "        if rep is not None and pa11y_issue_count(rep):",
+     "        if False:"),
+    ("M1", "every page in the config", "maint_quality.py", '    cfg["urls"] = list(urls)', '    cfg["urls"] = list(urls)[:1]'),
+    ("M1b", "page error is UNKNOWN", "maint_quality.py", '    if g["errors"]:', "    if False:"),
+    ("M2", "budget near its line (+15%)", "maint_quality.py", '            out[audit] = float(spec[1]["maxNumericValue"])',
+     '            out[audit] = float(spec[1]["maxNumericValue"]) * 1.15'),
+    ("M2b", "LCP p75 near its line", "maint_quality.py", '"largest_contentful_paint": 2500.0', '"largest_contentful_paint": 3050.0'),
+    ("M2b", "INP p75 budget", "maint_quality.py", '"interaction_to_next_paint": 200.0', '"interaction_to_next_paint": 2000.0'),
+    ("M3", "cert threshold near its line", "headers_tls_check.py", "CERT_S1_DAYS = 14", "CERT_S1_DAYS = 6"),
+    ("M4", "the Find Your Door waypoint", "maint_pages.py",
+     'waypoints = ["index.html", "lessons/find-your-door/index.html", lesson]', 'waypoints = ["index.html", lesson]'),
+    ("M5", "board head read", "maint_watch.py", '        head = p.read_text(encoding="utf-8")[:2000]',
+     '        head = p.read_text(encoding="utf-8")[:0]'),
+    ("Q1", "90 days, off by one", "maint_pages.py", '"due": age >= pb.MAINT_PAGE_DAYS,', '"due": age > pb.MAINT_PAGE_DAYS,'),
+    ("Q1", "90 days doubled", "maint_pages.py", '"due": age >= pb.MAINT_PAGE_DAYS,', '"due": age >= pb.MAINT_PAGE_DAYS * 2,'),
+    ("Q2", "voice token kept in lessons", "maint_pages.py", '        if vl and not path.startswith("lessons/"):', "        if vl:"),
+    ("Q2", "D11 rule line exemption", "maint_pages.py", '        if path == "DECISIONS.md" and D11_RULE_LINE in text:',
+     "        if False:"),
+    ("Q3", "closed findings close", "maint_pages.py", '        if f.get("status") in ("closed", "wont-do"):', "        if False:"),
+    ("Q3", "stale boundary", "maint_pages.py", 'i["age"] > STALE_DAYS]', 'i["age"] > STALE_DAYS + 30]'),
+    ("Q4", "AAAA strays", "headers_tls_check.py", "        stray = sorted({x.lower() for x in aaaa} - PAGES_AAAA)",
+     "        stray = []"),
+    ("Q4", "Enforce HTTPS", "headers_tls_check.py", '        if pages.get("https_enforced") is not True:', "        if False:"),
+    ("Q5", "no tests_failed is UNKNOWN", "headers_tls_check.py", "    if not isinstance(failed, int):", "    if False:"),
+    ("Q6", "retire only after 4 quarters", "maint_watch.py", "        if mine[0][0] <= since:", "        if True:"),
+    ("Q6", "alarm time must belong to the drill", "maint_watch.py",
+     "    if at < midnight(skip, now.tzinfo) or at > now + dt.timedelta(minutes=5):", "    if False:"),
+    ("H1", "tile pixel check", "maint_human.py", "        if (w_px, h_px) != (width * scale, h * scale):", "        if False:"),
+    ("H1", "3 random pages", "maint_human.py", "sample(others, min(3, len(others)))", "sample(others, min(1, len(others)))"),
+    ("H2", "minimum content", "maint_watch.py", "MIN_VALUE = 3 ", "MIN_VALUE = 1 "),
+    ("H3", "a Finding line is required", "maint_watch.py", '    if not got.get("finding"):', "    if False:"),
+    ("A1", "WCAG 2.2 new criteria checklist", "maint_human.py", '+ [f"- [ ] {c}" for c in NEW_IN_22]', "+ []"),
+    ("A2", "inventory URL", "maint_pages.py", '"url": base + url_path(p),', '"url": "",'),
+    ("A3", "D2 window opens 60 days before", "maint_watch.py",
+     "opens = midnight(expires - dt.timedelta(days=RDAP_ROWS[rid]), now.tzinfo)",
+     "opens = midnight(expires - dt.timedelta(days=0), now.tzinfo)"),
+    ("A3", "60 days near its line", "maint_human.py", "WINDOW_DAYS = 60", "WINDOW_DAYS = 49"),
+    ("A4", "low-contrast must be the planted one", "maint_quality.py",
+     '        return any("planted-low-contrast" in h for h in hits)', "        return True"),
+]
+MUTANTS = MUTANTS + REVIEWER_MUTANTS
+
 FAILED = re.compile(r"^FAILED .*?::(test_\w+)", re.M)
+COUNT = re.compile(r"(\d+) (passed|failed|skipped|errors?|xfailed|xpassed|deselected)")
+
+
+def counts(stdout: str) -> dict:
+    """pytest's summary line as {passed, failed, skipped, error, ...}; a missing kind is 0."""
+    last = (stdout.strip().splitlines() or [""])[-1]
+    out = {"passed": 0, "failed": 0, "skipped": 0, "error": 0, "xfailed": 0, "xpassed": 0, "deselected": 0}
+    for n, kind in COUNT.findall(last):
+        out["error" if kind.startswith("error") else kind] += int(n)
+    return out
+
+
+def pytest(repo: Path, k: str | None = None) -> tuple[dict, str]:
+    argv = [sys.executable, "-m", "pytest", str(repo / "tools" / "test_row_cites.py"), "-q", "--tb=no", "-rf",
+            "-p", "no:cacheprovider", "--rootdir", str(repo)] + (["-k", k] if k else [])
+    p = subprocess.run(argv, capture_output=True, encoding="utf-8", errors="replace", cwd=str(repo))
+    return counts(p.stdout), p.stdout
 
 
 def run_cites(repo: Path, row: str) -> list[str]:
-    p = subprocess.run([sys.executable, "-m", "pytest", str(repo / "tools" / "test_row_cites.py"), "-q", "--tb=no",
-                        "-rf", "-p", "no:cacheprovider", "-k", f"_{row}_", "--rootdir", str(repo)],
-                       capture_output=True, encoding="utf-8", errors="replace", cwd=str(repo))
-    return sorted(set(FAILED.findall(p.stdout)))
+    """The cites of `row` that FAIL under the current tree. A run with an error, or with nothing that passed or
+    failed, is not a verdict: it raises, and the tool stops (a mutant must be killed by a failing cite, not by a
+    crash of the harness)."""
+    c, out = pytest(repo, f"_{row}_")
+    if c["error"] or c["skipped"] or c["xfailed"] or c["xpassed"] or not (c["passed"] + c["failed"]):
+        raise RuntimeError(f"row {row}: the cite run was not a clean verdict: {c}")
+    return sorted(set(FAILED.findall(out)))
 
 
 def main(argv=None) -> int:
@@ -208,7 +297,9 @@ def main(argv=None) -> int:
     bad = []
     for row, facet, tool, old, new in MUTANTS:
         n = (repo / "tools" / tool).read_text(encoding="utf-8").count(old)
-        if n != 1:
+        if old == new:
+            bad.append(f"{row} {facet}: an identity mutant (old == new) proves nothing")
+        elif n != 1:
             bad.append(f"{row} {facet}: occurs {n} time(s) in {tool}")
     if bad:
         print("MUTANTS THAT DO NOT APPLY:\n  " + "\n  ".join(bad))
@@ -216,6 +307,14 @@ def main(argv=None) -> int:
     if a.check:
         print(f"{len(MUTANTS)} mutants apply")
         return 0
+    # the gate: every cite passes on the unmutated tree, none skipped, none erroring; otherwise no mutant is judged
+    n_cites = len(re.findall(r"^def test_\w+\(", (repo / "tools" / "test_row_cites.py").read_text(encoding="utf-8"),
+                             re.M))
+    c, out = pytest(repo)
+    if c["passed"] != n_cites or c["failed"] or c["skipped"] or c["error"]:
+        print(f"ABORT: the unmutated cites are not clean: {c} (expected {n_cites} passed)")
+        return 2
+    print(f"clean gate: {n_cites} cites passed, 0 failed, 0 skipped, 0 errors\n")
     survivors = []
     print("| row | mutant (facet gutted) | tool | failing cite(s) |\n|---|---|---|---|")
     for row, facet, tool, old, new in MUTANTS:
@@ -223,25 +322,22 @@ def main(argv=None) -> int:
         orig = f.read_text(encoding="utf-8")
         try:
             f.write_text(orig.replace(old, new), encoding="utf-8", newline="\n")
-            killed = run_cites(repo, row)
+            try:
+                killed = run_cites(repo, row)
+            except RuntimeError as e:
+                print(f"| {row} | {facet} | tools/{tool} | NOT A VERDICT: {e} |")
+                return 2
         finally:
             f.write_text(orig, encoding="utf-8", newline="\n")
         if not killed:
             survivors.append(f"{row} {facet}")
         print(f"| {row} | {facet} | tools/{tool} | {', '.join(killed) or '**SURVIVED**'} |", flush=True)
-    clean = run_cites_all(repo)
-    print(f"\n{len(MUTANTS)} mutants, {len(MUTANTS) - len(survivors)} killed, {len(survivors)} survived; "
-          f"unmutated cites: {clean}")
+    print(f"\n{len(MUTANTS)} mutants ({len(REVIEWER_MUTANTS)} the reviewer's), {len(MUTANTS) - len(survivors)} "
+          f"killed, {len(survivors)} survived; cites: {n_cites}")
     if survivors:
         print("SURVIVORS (a cite is missing): " + "; ".join(survivors))
     return 1 if survivors else 0
 
-
-def run_cites_all(repo: Path) -> str:
-    p = subprocess.run([sys.executable, "-m", "pytest", str(repo / "tools" / "test_row_cites.py"), "-q", "--tb=no",
-                        "-p", "no:cacheprovider", "--rootdir", str(repo)],
-                       capture_output=True, encoding="utf-8", errors="replace", cwd=str(repo))
-    return (p.stdout.strip().splitlines() or ["?"])[-1]
 
 
 if __name__ == "__main__":

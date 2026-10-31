@@ -40,6 +40,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import maint_input as mi  # noqa: E402
 import maint_receipt as mr  # noqa: E402
 
 ROW = "E3"
@@ -134,20 +135,24 @@ def relevant(item: dict, rule) -> bool:
 
 
 def load_state(path: Path) -> dict:
-    if not path.is_file():
+    """No state yet is a first run. A state that exists but is unreadable, empty or not a JSON object is UNKNOWN
+    (the shared input layer): treating it as a first run would quietly forget which items were already reported."""
+    if not path.exists():
         return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}                              # an unreadable state is a first run, never a crash
+    data = mi.read_json(path, "the seen-item state")
+    if not isinstance(data, dict):
+        raise mi.InputUnknown("the seen-item state is not a JSON object")
+    return data
 
 
 def run(now: dt.datetime | None = None) -> dict:
     now = now or dt.datetime.now(dt.timezone.utc)
     md = mr.maint_dir()
     state_path = md / STATE
-    state = load_state(state_path)
+    try:
+        state = load_state(state_path)
+    except mi.InputUnknown as e:
+        return mr.write_receipt(ROW, "UNKNOWN", why=f"could not read: {e}", tool=TOOL)
     report = {"at": now.isoformat(timespec="seconds"), "tool": TOOL, "feeds": {}}
     new_all, failed = [], []
     for i, (fid, (url, what, rule)) in enumerate(FEEDS.items()):

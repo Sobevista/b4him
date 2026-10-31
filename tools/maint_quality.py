@@ -58,6 +58,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import maint_input as mi  # noqa: E402
 import maint_receipt  # noqa: E402
 import site_pages  # noqa: E402
 
@@ -87,6 +88,14 @@ class Unavailable(RuntimeError):
 
 
 # ---------------------------------------------------------------- shared
+def _config(path: Path, what: str):
+    """A JSON input through the shared input layer: missing, unreadable, empty or not JSON is Unavailable (UNKNOWN)."""
+    try:
+        return mi.read_json(path, what)
+    except mi.InputUnknown as e:
+        raise Unavailable(str(e)) from None
+
+
 def today() -> str:
     return dt.datetime.now(dt.timezone.utc).date().isoformat()
 
@@ -220,7 +229,7 @@ def chrome_path() -> str | None:
 
 
 def a11y_config(root: Path, urls: list[str], chrome: str | None = None) -> dict:
-    cfg = json.loads((root / ".pa11yci").read_text(encoding="utf-8"))
+    cfg = _config(root / ".pa11yci", "the pa11y-ci config")
     cfg["urls"] = list(urls)
     if chrome:
         d = cfg.setdefault("defaults", {})
@@ -429,7 +438,7 @@ def cmd_contrast(root: Path) -> dict:
 
 # ---------------------------------------------------------------- M2 lab performance (Lighthouse CI)
 def lhci_config(root: Path, rels: list[str], work: Path, chrome: str | None = None) -> dict:
-    cfg = json.loads((root / ".lighthouserc.json").read_text(encoding="utf-8"))["ci"]
+    cfg = _config(root / ".lighthouserc.json", "the Lighthouse CI config")["ci"]
     cfg["collect"] = {**cfg["collect"], "staticDistDir": str(root),
                       "url": ["http://localhost" + page_path(r) for r in rels]}
     if chrome:
@@ -518,7 +527,7 @@ def cmd_perf(root: Path) -> dict:
             raise Unavailable(f"lhci collect exit {p.returncode}: {(p.stderr or p.stdout or '')[-300:].strip()}")
         lhrs = []
         for f in sorted((work / ".lighthouseci").glob("lhr-*.json")):
-            lhrs.append(json.loads(f.read_text(encoding="utf-8")))
+            lhrs.append(_config(f, f"Lighthouse result {f.name}"))
         if not lhrs:
             raise Unavailable("lhci collect wrote no lhr-*.json under .maint/lhci/.lighthouseci")
     except Unavailable as e:

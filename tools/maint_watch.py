@@ -73,6 +73,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import maint_input as mi  # noqa: E402
 import maint_receipt as mr  # noqa: E402
 
 REPO = HERE.parent
@@ -119,8 +120,8 @@ def midnight(day: dt.date, tz) -> dt.datetime:
 def load_rows(path: Path | None = None) -> dict:
     p = path or ROWS_FILE
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        data["rows"] = {r["id"]: r for r in data["rows"]}
+        data = mi.read_json(p, "the row table")
+        data["rows"] = {r["id"]: r for r in mi.require_records(data["rows"], "the row table")}
         data["epoch_date"] = dt.date.fromisoformat(data["epoch"])
     except (OSError, ValueError, KeyError, TypeError) as e:
         raise Unknown(f"cannot read the row table {p.name}: {e}") from e
@@ -186,31 +187,18 @@ def fmt(d: dt.datetime | None) -> str:
 def load_release_log(path: Path) -> list[dict]:
     """From tools/release_watch.py load_log() (build/release-watch @ fbe8f58): a missing or unreadable line is
     UNKNOWN, because a line that cannot be read could be today's."""
-    if not path.is_file():
-        raise Unknown(f"no release log at {path.name}: no run has ever logged here, or this is the wrong checkout")
-    try:
-        text = path.read_text(encoding="utf-8-sig")
-    except OSError as e:
-        raise Unknown(f"cannot read the release log: {e}") from e
-    out = []
-    for n, raw in enumerate(text.splitlines(), 1):
-        if not raw.strip():
-            continue
-        try:
-            e = json.loads(raw)
-        except json.JSONDecodeError as ex:
-            raise Unknown(f"release log line {n} is not JSON ({ex})") from ex
-        if not isinstance(e, dict):
-            raise Unknown(f"release log line {n} is not a JSON object")
-        out.append(e)
-    return out
+    try:                                       # missing, unreadable, empty, not JSON, zero lines: each its UNKNOWN
+        return mi.read_jsonl(path, "the release log")
+    except mi.InputUnknown as e:
+        raise Unknown(str(e)) from e
 
 
-def _stamp(e: dict) -> dt.datetime:
+def _stamp(e: dict, now: dt.datetime | None = None) -> dt.datetime:
+    """A release line's instant, in the local zone. No zone, unreadable, or in the future: UNKNOWN."""
     try:
-        return parse_at(e.get("at"))
-    except (ValueError, TypeError) as ex:
-        raise Unknown(f"a release line dated {e.get('date')} has no readable zoned time: at={e.get('at')!r}") from ex
+        return local(mi.parse_time(e.get("at"), f"the release line dated {e.get('date')}", now))
+    except mi.InputUnknown as ex:
+        raise Unknown(str(ex)) from ex
 
 
 def judge_release_day(entries: list[dict], day: dt.date, now: dt.datetime) -> dict:
@@ -224,7 +212,7 @@ def judge_release_day(entries: list[dict], day: dt.date, now: dt.datetime) -> di
     for e in entries:
         if e.get("date") != day.isoformat() or e.get("mode") != "apply":
             continue
-        t = _stamp(e)
+        t = _stamp(e, now)
         d = f"{t:%H:%M} {e.get('outcome')} {e.get('lane') or 'content'}" + (f" {e['piece']}" if e.get("piece") else "")
         (scheduled if start <= t <= end else other).append(d)
         if e.get("outcome") not in OK_OUTCOMES:
@@ -375,6 +363,8 @@ def run_d2(now: dt.datetime, rows_file: Path | None = None) -> dict:
     try:
         table = load_rows(rows_file)
         receipts = mr.read_receipts()
+        for e in receipts:                     # a receipt from the future (a bad clock) is no proof of anything
+            mi.parse_time(e.get("at"), f"the {e.get('row')} receipt", now)
         over, events = overdue_rows(table, receipts, now)
         late = {o["row"] for o in over}
         stuck, pending = unknown_rows(table, receipts, now)
@@ -494,7 +484,11 @@ def _scrub(text: str, url: str) -> str:
 
 
 def run_d3(fail: bool, why_fail: str, now: dt.datetime, note: str = "") -> dict:
-    drill = armed_drill()
+    try:
+        drill = armed_drill()
+    except mi.InputUnknown as e:
+        return mr.write_receipt("D3", "UNKNOWN", why=f"cannot tell whether a drill withholds today's ping: {e}",
+                                tool=TOOL)
     if drill and drill["skip_date"] == now.date().isoformat():
         return mr.write_receipt("D3", "SKIP", why=f"drill (Q6): the {drill['skip_date']} heartbeat is withheld on "
                                 "purpose; the external alarm should fire", tool=TOOL)
@@ -517,6 +511,9 @@ def run_d3(fail: bool, why_fail: str, now: dt.datetime, note: str = "") -> dict:
                          "Healthchecks answered 200 but did not record the ping", "Daniel")
         return mr.write_receipt("D3", "FINDINGS", n=1, why=f"heartbeat ({signal}) HTTP {status} {body[:40]}: not "
                                 "recorded by the service", tool=TOOL)
+    if body != "OK":                           # Healthchecks records a ping with exactly "OK"; anything else is unproven
+        return mr.write_receipt("D3", "UNKNOWN", why=_scrub(f"heartbeat ({signal}) HTTP {status} answered "
+                                                            f"{body[:40]!r}, not 'OK': delivery unproven", url), tool=TOOL)
     return mr.write_receipt("D3", "PASS", why=f"heartbeat {signal} signal delivered, HTTP {status}"
                             + (f" ({why_fail})" if fail else "") + note, tool=TOOL)
 
@@ -662,16 +659,20 @@ def show(receipts: list[dict]) -> int:
 BOARD_STAMP = re.compile(r"\*Generated (\d{4}-\d{2}-\d{2}) by `tools/production_board\.py`")
 
 
-def board_date(repo: Path) -> dt.date:
+def board_date(repo: Path, today: dt.date | None = None) -> dt.date:
     p = repo / "PRODUCTION_BOARD.md"
     try:
+        mi.read_text(p, "PRODUCTION_BOARD.md")          # missing, unreadable and empty are distinct UNKNOWNs
         head = p.read_text(encoding="utf-8")[:2000]
-    except OSError as e:
+    except (OSError, mi.InputUnknown) as e:
         raise Unknown(f"cannot read PRODUCTION_BOARD.md: {e}") from e
     m = BOARD_STAMP.search(head)
     if not m:
         raise Unknown("PRODUCTION_BOARD.md carries no '*Generated <date> by `tools/production_board.py`' line")
-    return dt.date.fromisoformat(m.group(1))
+    d = dt.date.fromisoformat(m.group(1))
+    if today is not None and d > today:                  # a board stamped in the future proves no run
+        raise Unknown(f"PRODUCTION_BOARD.md is stamped {d}, in the future")
+    return d
 
 
 NOTE_RE = re.compile(r"^(?P<row>[A-Z]\d+)_(?P<date>\d{4}-\d{2}-\d{2})(?:_[^/\\]*)?\.md$")
@@ -707,7 +708,7 @@ def note_problems(path: Path, rid: str = "", file_date: dt.date | None = None,
     with its placeholders left in, or trivial values ('.', 'x', 'n/a') name every part they are missing. The filename's
     date must not be in the future and must equal the Date: line; H2's Reviewer must not be a page-author seat."""
     try:
-        text = path.read_text(encoding="utf-8-sig")
+        text = mi.read_text(path, "the note")      # missing / unreadable / empty: raised, a distinct UNKNOWN
     except (OSError, UnicodeDecodeError) as e:
         return [f"a readable file ({type(e).__name__})"]
     import maint_pages as mp
@@ -722,7 +723,9 @@ def note_problems(path: Path, rid: str = "", file_date: dt.date | None = None,
     if file_date and today and file_date > today:
         missing.append(f"a filename date not in the future ({file_date} is after {today})")
     try:
-        note_date = dt.date.fromisoformat((got.get("date") or [""])[0][:10])
+        dv = (got.get("date") or [""])[0].strip()
+        # a Date with a time is read as an instant (a foreign zone shifts the local day); without one, a plain date
+        note_date = local(mi.parse_time(dv, "the note's Date")).date() if len(dv) > 10 else dt.date.fromisoformat(dv)
         if file_date and note_date != file_date:
             missing.append(f"a Date: line equal to the filename's date ({note_date} != {file_date})")
     except ValueError:
@@ -747,13 +750,16 @@ def run_check(rid: str, now: dt.datetime, repo: Path | None = None, table: dict 
         row = table["rows"][rid]
         evidence = None
         if rid == "M5":
-            last_day, what = board_date(repo or REPO), "board run"
+            last_day, what = board_date(repo or REPO, now.date()), "board run"
         else:
             n = newest_note(rid)
             last_day, evidence = (n if n else (None, None))
             what = "review note" if rid == "H2" else "re-read note"
             if n:                              # a dated filename is not a review: read it
-                missing = note_problems(mr.maint_dir() / n[1][len(".maint/"):], rid, n[0], now.date())
+                try:
+                    missing = note_problems(mr.maint_dir() / n[1][len(".maint/"):], rid, n[0], now.date())
+                except mi.InputUnknown as e:   # missing / unreadable / empty: a distinct UNKNOWN, with the note
+                    return mr.write_receipt(rid, "UNKNOWN", why=f"{what} {n[1]}: {e}", evidence=n[1], tool=TOOL)
                 if missing:
                     return mr.write_receipt(rid, "UNKNOWN", why=f"{what} {n[1]} is not a complete note: missing "
                                             f"{', '.join(missing)} (see maint_watch.py NOTE FORMAT)",
@@ -953,6 +959,8 @@ def cmd_digest(a, now: dt.datetime) -> int:
     pre += checks
     try:
         receipts, findings = mr.read_receipts(), mr.read_findings()
+        for e in receipts + findings:          # a line from the future would misdate the week: not a digest
+            mi.parse_time(e.get("at"), f"the {e.get('row')} line", now)
     except ValueError as e:
         return show(pre + [mr.write_receipt("W2", "UNKNOWN", why=f"cannot read the receipts: {e}", tool=TOOL)])
     week = [e for e in receipts if parse_at(e["at"]) > now - dt.timedelta(days=7)]
@@ -1014,7 +1022,7 @@ DRILLS = "drills.jsonl"
 
 def _drills() -> list[dict]:
     p = mr.maint_dir() / DRILLS
-    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.is_file() else []
+    return mi.read_jsonl(p, "the drill log", expect=False) if p.exists() else []   # empty / garbage: UNKNOWN
 
 
 def _drill_append(rec: dict) -> None:
@@ -1175,10 +1183,11 @@ def main(argv=None) -> int:
         return cmd_daily(a, now)
     if a.cmd == "digest":
         return cmd_digest(a, now)
-    if a.cmd == "drill":
-        return cmd_drill(a, now)
-    if a.cmd == "confirm":
-        return cmd_confirm(a, now)
+    if a.cmd in ("drill", "confirm"):
+        try:
+            return (cmd_drill if a.cmd == "drill" else cmd_confirm)(a, now)
+        except mi.InputUnknown as e:              # the drill log could not be read: never a quiet skip
+            return show([mr.write_receipt("Q6", "UNKNOWN", why=f"cannot run the drill: {e}", tool=TOOL)])
     if a.cmd == "check":
         return show([run_check(a.row, now)])
     if a.cmd == "one":

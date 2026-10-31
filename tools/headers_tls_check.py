@@ -43,6 +43,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import maint_input as mi  # noqa: E402
 import maint_receipt  # noqa: E402
 import site_pages  # noqa: E402
 
@@ -328,6 +329,9 @@ def run_tls(host: str = HOST, day: dt.date | None = None, now: dt.datetime | Non
     except OSError as e:
         ev["cert"] = {"error": f"{type(e).__name__}: {e}"}
         res.find("S1", "HTTPS failing: cannot connect on 443", str(e)[:200], ROUTE_S1)
+    except (ValueError, KeyError, TypeError) as e:  # an expiry this tool cannot read is not a healthy certificate
+        ev["cert"] = {"error": f"unreadable notAfter: {type(e).__name__}"}
+        res.unknown(f"cert: the certificate's expiry could not be read ({type(e).__name__})")
 
     # 2. HTTP -> HTTPS redirect, and the HTTPS page itself
     try:
@@ -369,8 +373,12 @@ def run_tls(host: str = HOST, day: dt.date | None = None, now: dt.datetime | Non
         if prev is None:
             ev["header_diff"] = "no previous snapshot: this one is the baseline"
         else:
-            old = json.loads(prev.read_text(encoding="utf-8")).get("headers", {})
-            changes = diff_headers(old, headers)
+            try:
+                old = mi.read_json(prev, "the previous header snapshot").get("headers", {})
+            except (mi.InputUnknown, AttributeError) as e:
+                old = None
+                res.unknown(f"header diff: {e}")
+            changes = diff_headers(old, headers) if old is not None else []
             ev["header_diff"] = {"against": _rel(prev), "changes": changes}
             for c in changes:
                 res.find("S3", f"response header {c['header']} changed since {prev.stem}",
@@ -526,7 +534,11 @@ def run_observatory(host: str = HOST, day: dt.date | None = None) -> dict:
                  "the known frame-ancestors limit is not separated out)", ROUTE_SITE)
         return res.close(out, summary)
     known_file = maint() / KNOWN_LIMITS
-    known = json.loads(known_file.read_text(encoding="utf-8")) if known_file.is_file() else {}
+    try:
+        known = mi.read_json(known_file, "the known-limits record") if known_file.exists() else {}
+    except mi.InputUnknown as e:
+        res.unknown(str(e))
+        return res.close(out, summary)
     notes = []
     for t in names:
         if t in KNOWN_LIMIT_TESTS:
@@ -574,6 +586,8 @@ def run_uptime(day: dt.date | None = None) -> dict:
     try:
         data = json.loads(raw.decode("utf-8", "replace"))
     except json.JSONDecodeError:
+        data = {}
+    if not isinstance(data, dict):             # a list, a number: not the API's answer
         data = {}
     if status != 200 or data.get("stat") != "ok":
         err = data.get("error") or {}

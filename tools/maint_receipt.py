@@ -156,7 +156,11 @@ def _read(name: str) -> list[dict]:
     if not p.is_file():
         return []
     out = []
-    for i, raw in enumerate(p.read_text(encoding="utf-8-sig").splitlines(), 1):
+    try:
+        text = p.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        raise ValueError(f"{p.name} is unreadable ({type(e).__name__})") from None
+    for i, raw in enumerate(text.split("\n"), 1):      # JSONL ends lines at \n only: U+0085 may sit in a value
         if raw.strip():
             try:
                 e = json.loads(raw)

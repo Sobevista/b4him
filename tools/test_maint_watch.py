@@ -359,7 +359,7 @@ def test_a_note_is_read_not_just_its_filename(env):
     env.clock.set(2027, 1, 6, 9)
     note(env, "H2", "2027-01-05", "")
     r = mw.run_check("H2", now(env), table=t)
-    assert r["outcome"] == "UNKNOWN" and "Date: YYYY-MM-DD" in r["why"] and "Verdict" in r["why"]
+    assert r["outcome"] == "UNKNOWN" and "the note is empty" in r["why"]      # read, not trusted
     assert r["evidence"] == ".maint/notes/H2_2027-01-05.md"
     note(env, "H2", "2027-01-05", TEMPLATE_NOTE)
     r = mw.run_check("H2", now(env), table=t)
@@ -584,12 +584,15 @@ def test_d2_judges_a3_on_the_rdap_clock(env):
     env.clock.set(2027, 2, 3, 11)                                    # no poll since 01-25: Monday 02-01 + 1 d + 24 h
     r = mw.run_d2(now(env), p)
     assert r["outcome"] == "FINDINGS" and "RDAP poll stopped" in r["why"]
-    for d in (5, 12, 19):                                            # window opens 2027-07-03; grace 14 d
+    for d in (5, 12):                                                # window opens 2027-07-03; grace 14 d
         env.clock.set(2027, 7, d, 11)
         mr.write_receipt("A3", "FINDINGS", n=1, why="expires 2027-09-01 (58 days): the 60-day window is open",
                          tool="maint_human.py")
     env.clock.set(2027, 7, 16, 11)
     assert mw.run_d2(now(env), p)["outcome"] == "PASS"               # inside the 14-day grace (to 07-17 00:00)
+    env.clock.set(2027, 7, 19, 11)
+    mr.write_receipt("A3", "FINDINGS", n=1, why="expires 2027-09-01 (44 days): the 60-day window is open",
+                     tool="maint_human.py")
     env.clock.set(2027, 7, 20, 11)
     r = mw.run_d2(now(env), p)
     assert r["outcome"] == "FINDINGS" and "window opened 2027-07-03" in r["why"]

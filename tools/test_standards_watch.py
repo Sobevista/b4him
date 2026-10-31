@@ -105,8 +105,11 @@ def test_garbage_is_unknown(net):
     assert "docs-pages (not XML" in sw.run(NOW)["why"]
 
 
-def test_an_unreadable_state_file_is_a_first_run_not_a_crash(net):
+def test_an_unreadable_state_file_is_unknown_never_a_quiet_first_run(net):
     d = mr.maint_dir()
     d.mkdir(parents=True)
     (d / sw.STATE).write_text("{broken", encoding="utf-8")
-    assert sw.run(NOW)["outcome"] == "FINDINGS"
+    r = sw.run(NOW)
+    assert r["outcome"] == "UNKNOWN" and "the seen-item state is not JSON" in r["why"]
+    (d / sw.STATE).write_text("", encoding="utf-8")
+    assert "the seen-item state is empty" in sw.run(NOW)["why"]

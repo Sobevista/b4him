@@ -45,6 +45,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import maint_input as mi  # noqa: E402
 import maint_receipt as mr  # noqa: E402
 import maint_watch as mw  # noqa: E402
 import site_pages  # noqa: E402
@@ -302,6 +303,9 @@ def cmd_a3(repo: Path, now: dt.datetime) -> dict:
         data = GET_JSON(base.rstrip("/") + f"/domain/{DOMAIN}")
     except (OSError, ValueError, LookupError, urllib.error.URLError) as e:
         return mr.write_receipt("A3", "UNKNOWN", why=f"RDAP not read: {type(e).__name__}: {str(e)[:160]}", tool=TOOL)
+    if not isinstance(data, dict) or not isinstance(data.get("events", []), list) or \
+            not all(isinstance(e, dict) for e in data.get("events", [])):
+        return mr.write_receipt("A3", "UNKNOWN", why="RDAP answered something that is not a domain record", tool=TOOL)
     exp = next((e.get("eventDate") for e in data.get("events", []) if e.get("eventAction") == "expiration"), None)
     status = [str(s) for s in data.get("status", [])]
     ev = mr.maint_dir() / "audits" / f"{day.isoformat()}_rdap.json"
@@ -310,7 +314,10 @@ def cmd_a3(repo: Path, now: dt.datetime) -> dict:
     evr = rel(ev)
     if not exp:
         return mr.write_receipt("A3", "UNKNOWN", why="RDAP answered with no expiration event", evidence=evr, tool=TOOL)
-    expires = dt.datetime.fromisoformat(exp.replace("Z", "+00:00"))
+    try:                                       # no zone or unreadable: UNKNOWN; a foreign zone is the same instant
+        expires = mi.parse_time(exp, "the RDAP expiration")
+    except mi.InputUnknown as e:
+        return mr.write_receipt("A3", "UNKNOWN", why=str(e), evidence=evr, tool=TOOL)
     days = (expires - now).days
     opens = (expires - dt.timedelta(days=WINDOW_DAYS)).date()
     bad = [s for s in status if any(b in s.lower() for b in BAD_STATUS)]

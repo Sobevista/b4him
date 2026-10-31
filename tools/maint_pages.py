@@ -40,6 +40,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import maint_input as mi  # noqa: E402
 import maint_receipt as mr  # noqa: E402
 import people_registry as pr  # noqa: E402
 import production_board as pb  # noqa: E402
@@ -143,7 +144,7 @@ def read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
     out = []
-    for i, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+    for i, line in enumerate(path.read_text(encoding="utf-8-sig", errors="replace").split("\n"), 1):  # \n only
         if line.strip():
             try:
                 out.append(json.loads(line))
@@ -182,14 +183,25 @@ def last_receipt(repo: Path, row: str) -> dict | None:
     return recs[-1] if recs else None
 
 
-def load_rows(repo: Path) -> list[dict]:
+def load_rows(repo: Path, allow_broken: bool = False) -> list[dict]:
     """production_board.load_queue, pointed at `repo` (it reads the module-level QUEUE)."""
+    q = Path(repo) / "production_queue.jsonl"
+    try:                                       # missing / unreadable / empty / zero records: distinct UNKNOWNs
+        mi.read_text(q, "the production queue")
+    except mi.InputUnknown as e:
+        raise CouldNotRun(str(e)) from None
     saved = pb.QUEUE
-    pb.QUEUE = Path(repo) / "production_queue.jsonl"
+    pb.QUEUE = q
     try:
-        return pb.load_queue()
+        rows = pb.load_queue()
     finally:
         pb.QUEUE = saved
+    if not rows:
+        raise CouldNotRun("the production queue: zero records where records are expected")
+    broken = [r["_broken"] for r in rows if r.get("_broken")]
+    if broken and not allow_broken:            # Q3 reports them itself; every other row must not judge a part-read queue
+        raise CouldNotRun(f"the production queue has {len(broken)} unparseable line(s) (first: line {broken[0]})")
+    return rows
 
 
 def published_rows(rows: list[dict]) -> list[dict]:
@@ -437,9 +449,10 @@ def local_tokens(repo: Path) -> tuple[list[str], bool]:
     loaded = False
     if ft.exists():
         try:
+            mi.read_json(ft, "the client-name list")          # empty / unreadable / not JSON: never loaded
             toks += [t for t in json.loads(ft.read_text(encoding="utf-8")).get("tokens", []) if t]
-            loaded = True
-        except (OSError, ValueError):
+            loaded = bool(toks)                                # zero tokens where the client's name is expected
+        except (OSError, ValueError, AttributeError):
             loaded = False
     pn = d / "people_names.local.json"
     if pn.exists():
@@ -756,12 +769,13 @@ def _age(today: dt.date, *dates) -> tuple[int | None, str | None]:
 
 
 def cmd_hygiene(repo: Path, today: dt.date) -> list[dict]:
-    rows = load_rows(repo)
+    rows = load_rows(repo, allow_broken=True)        # unparseable lines are counted below: an UNKNOWN Q3
     patches = [r for r in rows if not r.get("_broken") and pb.is_patch(r)
                and pb.stage_index(r) < pb.STAGES.index("PUBLISHED")]
     broken = [r for r in rows if r.get("_broken")]
     raw = read_jsonl(mdir(repo) / mr.FINDINGS_NAME)
     groups: dict[tuple, dict] = {}
+    bad_f = [f for f in raw if f.get("_broken")]     # an unreadable findings line is never skipped quietly
     for f in raw:
         if f.get("_broken"):
             continue
@@ -798,8 +812,9 @@ def cmd_hygiene(repo: Path, today: dt.date) -> list[dict]:
     ev = audits(repo) / f"{today.isoformat()}_hygiene.md"
     write(ev, "\n".join(L) + "\n")
     evr = rel(repo, ev)
-    if broken:
-        return [receipt(repo, "Q3", "UNKNOWN", None, f"{len(broken)} unparseable queue line(s)", evr)]
+    if broken or bad_f:
+        return [receipt(repo, "Q3", "UNKNOWN", None, f"{len(broken)} unparseable queue line(s), {len(bad_f)} "
+                                                     f"unparseable findings line(s)", evr)]
     if stale:
         return [receipt(repo, "Q3", "FINDINGS", len(stale), f"{len(stale)} of {len(items)} open items older than "
                                                              f"{STALE_DAYS} days or undated", evr)]

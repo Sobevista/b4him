@@ -45,6 +45,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import maint_input as mi  # noqa: E402
 import maint_receipt  # noqa: E402
 import production_board as pb  # noqa: E402
 import release  # noqa: E402
@@ -74,9 +75,10 @@ def _iso(t: dt.datetime) -> str:
 
 
 def _parse(s: str | None) -> dt.datetime | None:
+    """A cache time through the shared input layer: aware, or None (no time, unreadable, no zone): never trusted."""
     try:
-        return dt.datetime.fromisoformat(s) if s else None
-    except ValueError:
+        return mi.parse_time(s, "a link-cache time") if s else None
+    except mi.InputUnknown:
         return None
 
 
@@ -265,14 +267,16 @@ def wayback(url: str, f: Fetcher, near: dt.datetime | None = None) -> dict:
 
 # ---------------------------------------------------------------- the cache
 def load_cache(path: Path) -> tuple[dict, str]:
+    """The cache is an optimisation, not an input the verdict rests on: through the shared input layer, a missing,
+    unreadable, empty or non-JSON cache is reported (in the evidence) and every link is fetched afresh."""
     if not path.exists():
         return {"version": 1, "links": {}, "wayback": {}}, "no cache yet"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = mi.read_json(path, "the link cache")
         data.setdefault("links", {})
         data.setdefault("wayback", {})
         return data, "loaded"
-    except (ValueError, OSError) as e:
+    except (mi.InputUnknown, AttributeError) as e:
         return {"version": 1, "links": {}, "wayback": {}}, f"unreadable, ignored ({e})"
 
 
@@ -286,7 +290,9 @@ def save_cache(path: Path, cache: dict) -> None:
 
 def fresh(entry: dict | None, now: dt.datetime, definite: tuple) -> bool:
     t = _parse((entry or {}).get("checked_at"))
-    return bool(entry) and entry.get("status") in definite and t is not None and now - t < MAX_AGE
+    # a cache entry stamped in the future (a bad clock, a foreign zone misread) is no evidence: fetch again
+    return bool(entry) and entry.get("status") in definite and t is not None and now - t < MAX_AGE \
+        and t <= now + mi.SKEW
 
 
 def outbound_check(urls: dict, cache: dict, f: Fetcher, now: dt.datetime) -> list[dict]:
@@ -365,6 +371,8 @@ def _run(root: Path, live_ref: str, fetcher: Fetcher | None, now: dt.datetime | 
     try:
         rep["repo_head"] = release.git("rev-parse", "HEAD").strip()
         pages = served_pages(root)
+        if not pages:                          # zero served pages where pages are expected: not a clean site
+            raise release.ReleaseError("zero served pages where pages are expected")
         live = live_paths(live_ref)
         if live is not None:
             rep["live_ref_sha"] = release.git("rev-parse", live_ref).strip()
