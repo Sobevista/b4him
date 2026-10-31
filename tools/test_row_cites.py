@@ -1237,7 +1237,8 @@ def test_cite_A1_the_pack_has_every_page_and_the_easy_checks(monkeypatch, tmp_pa
     pack = (md / rec["evidence"][len(".maint/"):]).read_text(encoding="utf-8")
     assert rec["outcome"] == "SKIP" and rec["why"].startswith("awaiting Daniel's ruling: A1 WCAG-EM pack (23 pages")
     assert pack.count("| `") == 23 and "Visible Keyboard Focus" in pack and "2.5.8 Target Size (Minimum)" in pack
-    assert "automated_axe_pa11y.json (copied from" in pack
+    copied = (md / rec["evidence"][len(".maint/"):]).parent / "automated_axe_pa11y.json"
+    assert "automated_axe_pa11y.json (copied from" in pack and copied.read_text(encoding="utf-8") == '{"results": {}}'
 
 
 def test_a1_without_a_page_list_is_unknown(monkeypatch, tmp_path):
