@@ -16,7 +16,8 @@ What is read and what is assumed (every [ASSUMED] is Daniel's to rule, as the ca
     and annual rows run on the first Monday of their months, QUARTER_MONTHS / HALF_MONTHS / YEAR_MONTHS [ASSUMED].
   * "every 5 min" (C1) is an external monitor; its receipt is the W2 digest's monitor line, so D2 watches it weekly.
   * the daily rows after D1 (D2, D3) run once D1's cutoff has passed: at 10:30 local [ASSUMED].
-  * event rows (E1-E3) have no clock; D2 does not schedule them (E2 is watched through D1).
+  * event rows (E1, E2) have no clock; D2 does not schedule them (E2 is watched through D1). E3's event is found by
+    polling feeds (tools/standards_watch.py), so it is a weekly row: POLLED_EVENTS [ASSUMED].
   * epoch: the first date any row is scheduled from. Default the calendar's PROPOSED date [ASSUMED].
 """
 from __future__ import annotations
@@ -35,6 +36,9 @@ YEAR_MONTHS = [1]
 HUMAN_ROWS = {"H1", "A1", "A3"}          # the HUMAN-row reminders: closed by Daniel's ledger E-number
 NOTE_ROWS = {"H2", "H3"}                 # receipts-only: a review note under .maint/notes/
 BOARD_ROWS = {"M5"}                      # receipts-only: the production board's own run
+#: Event rows whose event is found by polling, so they run on a clock. E3's changes (WCAG / Pages / Actions) are
+#: found by tools/standards_watch.py reading their feeds weekly [ASSUMED: weekly, set by the 2026-10-31 build brief].
+POLLED_EVENTS = {"E3": {"kind": "weekly", "note": "event row polled weekly by tools/standards_watch.py [ASSUMED]"}}
 
 
 def strip_cites(s: str) -> str:
@@ -59,6 +63,8 @@ def parse_grace(text: str) -> dict:
 
 def classify(rid: str, cadence: str) -> dict:
     c = cadence.lower()
+    if rid in POLLED_EVENTS:
+        return dict(POLLED_EVENTS[rid])
     if rid.startswith("E") or c.startswith("on ") or "each release" in c or "changes" in c:
         return {"kind": "event"}
     if "min" in c:

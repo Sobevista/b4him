@@ -412,9 +412,10 @@
   {
    "id": "E3",
    "cadence": "WCAG / Pages / Actions changes",
-   "kind": "event",
-   "grace_hours": null,
-   "check": "event",
+   "kind": "weekly",
+   "note": "event row polled weekly by tools/standards_watch.py [ASSUMED]",
+   "grace_hours": 24,
+   "check": "receipt",
    "mode": "—",
    "task": "Standards watch",
    "receipt": "—",

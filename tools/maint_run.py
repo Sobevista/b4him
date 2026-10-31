@@ -12,8 +12,9 @@ ran has a receipt in .maint/maintenance_log.jsonl.
 
 WHEN A ROW IS DUE (the calendar's Days paragraph, as tools/maint_rows.json carries it): daily rows every day; weekly
 rows on Monday; monthly rows on the first Monday of the month; quarterly, 6-monthly and annual rows on the first
-Monday of their months (the table's `months`, [ASSUMED] in maint_rows_build.py). Event rows (E1-E3) are never due on
-the clock; --all and --row give them a SKIP or UNKNOWN receipt saying why.
+Monday of their months (the table's `months`, [ASSUMED] in maint_rows_build.py). Event rows (E1, E2) are never due
+on the clock; --all and --row give them a SKIP receipt saying why. E3, the standards watch, polls its feeds weekly
+(tools/standards_watch.py), so the table makes it a weekly row.
 
 ORDER. Every other row first, in table order; then the watcher's own rows (W2 digest, M5/H2/H3 checks, the HUMAN
 reminders, Q6); then D1, D2 and D3 last, so D2's overdue list and D3's heartbeat reflect the whole run. Schedule this
@@ -66,6 +67,7 @@ RUNNERS: dict[str, tuple[str, tuple[str, ...], int]] = {
     "Q5": ("headers_tls_check.py", ("observatory",), 10 * MIN),
     "A2": ("maint_pages.py", ("inventory",), 15 * MIN),
     "A4": ("maint_quality.py", ("calibrate",), HOUR),
+    "E3": ("standards_watch.py", (), 5 * MIN),
     # the watcher's rows: after the rest, so the digest sees this run's receipts
     "W2": ("maint_watch.py", ("digest",), 5 * MIN),
     "M5": ("maint_watch.py", ("check", "M5"), 2 * MIN),
@@ -88,7 +90,6 @@ EVENT_RECEIPTS = {
                    "patched tree); a calendar run is not that event"),
     "E2": ("SKIP", "event row: each release's --verify-live outcome is judged by D1 (a release line that is not "
                    "PUBLISHED or SKIP, PUSHED-UNVERIFIED included, is a D1 finding)"),
-    "E3": ("UNKNOWN", "event row with no tool: nothing watches for WCAG / Pages / Actions changes; a person must"),
 }
 
 

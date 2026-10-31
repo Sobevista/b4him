@@ -16,12 +16,12 @@ ROWS = run.load_table()
 IDS = [r["id"] for r in ROWS]
 BY_ID = {r["id"]: r for r in ROWS}
 DAILY = {"D1", "D2", "D3"}
-WEEKLY = {"C1", "W1", "W1b", "W2", "W3"}
+WEEKLY = {"C1", "W1", "W1b", "W2", "W3", "E3"}                # E3: the standards watch polls weekly
 MONTHLY = {"M1", "M1b", "M2", "M2b", "M3", "M4", "M5"}
 QUARTERLY = {"Q1", "Q2", "Q3", "Q4", "Q5", "Q6"}
 SEMI = {"H1", "H2", "H3"}
 ANNUAL = {"A1", "A2", "A3", "A4"}
-EVENTS = {"E1", "E2", "E3"}
+EVENTS = {"E1", "E2"}
 
 
 @pytest.fixture
@@ -100,7 +100,8 @@ def test_all_runs_each_tool_once_per_args_and_heartbeat_last(md, monkeypatch):
     assert calls[-3:] == [("maint_watch.py", ("one", "D1")), ("maint_watch.py", ("one", "D2")),
                           ("maint_watch.py", ("one", "D3"))]
     ev = {e["row"]: e for e in res["receipts"]}
-    assert ev["E1"]["outcome"] == "SKIP" and ev["E3"]["outcome"] == "UNKNOWN"
+    assert ev["E1"]["outcome"] == "SKIP" and ev["E2"]["outcome"] == "SKIP"
+    assert ("standards_watch.py", ()) in calls and ev["E3"]["tool"] == "standards_watch.py"   # E3 has a tool now
 
 
 # ------------------------------------------------------------------ crash isolation (real processes, fake tools)
