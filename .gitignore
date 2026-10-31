@@ -9,7 +9,11 @@ release_alarm.md
 release_task_output.log
 # The real names behind the people registry (tools/people_registry.py reads it when present). b4him is public: never commit it.
 data/people_names.local.json
+# The genericization sweep's private tokens (the client's name lives only here; D11). Never commit it.
+data/forbidden_tokens.local.json
 # The live capability inventory names this machine's tasks and paths: local evidence, never committed to a public repo.
 tools/capability_inventory/output/
 # The rack backup's local log (tools/rack_backup.py): one line per run, names this machine's Drive path. Local evidence.
 rack_backup_log.jsonl
+# Maintenance calendar run outputs (receipts, findings, audits): local evidence; release.py refuses an unclean tree.
+.maint/
