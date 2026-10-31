@@ -31,7 +31,10 @@ LIMITS, stated so nobody reads silence as success:
     only there, so the tracked, served copy carries no http:// subresource for the live scans to trip on. Sibling
     scanners (linkcheck.py, headers_tls_check.py, maint_pages.py) are called in process when they are on the branch;
     absent, each is UNKNOWN. A scanner that runs and misses its fault, or flags the control page, is FINDINGS.
-Nothing here installs anything: a missing pa11y-ci, lhci or Playwright is an UNKNOWN that names the install.
+INSTALL. pa11y-ci and @lhci/cli are pinned devDependencies in package.json, installed repo-locally into
+node_modules/ (git-ignored, so the release's clean-tree check still passes): `set PUPPETEER_SKIP_DOWNLOAD=1` then
+`npm ci`. Both drive Python Playwright's Chromium (see chrome_path), so no second browser is downloaded. Nothing here
+installs anything: a missing pa11y-ci, lhci or Playwright is an UNKNOWN that names the install.
 """
 from __future__ import annotations
 
@@ -63,10 +66,10 @@ FIELD_BUDGETS = {"largest_contentful_paint": 2500.0, "interaction_to_next_paint"
                  "cumulative_layout_shift": 0.1}
 SIBLINGS = ("linkcheck.py", "headers_tls_check.py", "maint_pages.py")
 INSTALL = {
-    "pa11y-ci": "no package.json in b4him; the row needs `npm install --save-dev pa11y-ci` in a package.json "
-                "(local, repo-scoped; a ruling) or a global `npm install -g pa11y-ci`",
-    "lhci": "no package.json in b4him; the row needs `npm install --save-dev @lhci/cli` in a package.json "
-            "(local, repo-scoped; a ruling) or a global `npm install -g @lhci/cli`",
+    "pa11y-ci": "not in node_modules/.bin; run `npm ci` in the repo root (package.json pins it; set "
+                "PUPPETEER_SKIP_DOWNLOAD=1 first so no second browser is fetched)",
+    "lhci": "not in node_modules/.bin; run `npm ci` in the repo root (package.json pins @lhci/cli; set "
+            "PUPPETEER_SKIP_DOWNLOAD=1 first so no second browser is fetched)",
     "playwright": "the row needs Python Playwright and its Chromium: `py -m pip install playwright` then "
                   "`py -m playwright install chromium`",
 }
@@ -195,9 +198,33 @@ def receipt(root: Path, row: str, outcome: str, n=None, why="", evidence=None) -
 
 
 # ---------------------------------------------------------------- M1 accessibility (pa11y-ci)
-def a11y_config(root: Path, urls: list[str]) -> dict:
+@functools.lru_cache(maxsize=1)
+def chrome_path() -> str | None:
+    """ONE BROWSER, NO SECOND DOWNLOAD. pa11y-ci (through puppeteer) and lhci (through chrome-launcher) both drive the
+    Chromium that Python Playwright already installed (`py -m playwright install chromium`), instead of each fetching
+    its own. package.json's install ran with PUPPETEER_SKIP_DOWNLOAD=1 (and npm 11 did not run puppeteer's
+    postinstall), so there is no puppeteer browser cache at all. The path is machine-specific, so it is never
+    committed: it is resolved here at run time (CHROME_PATH wins if set) and written only into the generated configs
+    under .maint/ (pa11y: defaults.chromeLaunchConfig.executablePath; lhci: collect.chromePath) and into the child's
+    environment (PUPPETEER_EXECUTABLE_PATH, CHROME_PATH). None -> each scanner falls back to its own lookup and, if it
+    finds no browser, fails with exit 1 / non-zero, which is an UNKNOWN."""
+    if os.environ.get("CHROME_PATH") and Path(os.environ["CHROME_PATH"]).exists():
+        return os.environ["CHROME_PATH"]
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            p = pw.chromium.executable_path
+        return p if p and Path(p).exists() else None
+    except Exception:
+        return None
+
+
+def a11y_config(root: Path, urls: list[str], chrome: str | None = None) -> dict:
     cfg = json.loads((root / ".pa11yci").read_text(encoding="utf-8"))
     cfg["urls"] = list(urls)
+    if chrome:
+        d = cfg.setdefault("defaults", {})
+        d["chromeLaunchConfig"] = {**d.get("chromeLaunchConfig", {}), "executablePath": chrome}
     return cfg
 
 
@@ -260,8 +287,8 @@ def run_pa11y(root: Path, rels: list[str], tag: str) -> tuple[int, dict | None, 
     with serve(root) as base:
         urls = [base + page_path(r) for r in rels]
         cfg_path = work / f"pa11yci.{tag}.json"
-        write_json(cfg_path, a11y_config(root, urls))
-        p = run_cmd([exe, "--config", str(cfg_path), "--json"], cwd=work)
+        write_json(cfg_path, a11y_config(root, urls, chrome_path()))
+        p = run_cmd([exe, "--config", str(cfg_path), "--json"], cwd=work, env=chrome_env())
     rep = parse_pa11y(p.stdout)
     return p.returncode, rep, {"base": base, "urls": urls, "exit": p.returncode,
                                "stderr_tail": (p.stderr or "")[-2000:], "report": rep,
@@ -399,10 +426,12 @@ def cmd_contrast(root: Path) -> dict:
 
 
 # ---------------------------------------------------------------- M2 lab performance (Lighthouse CI)
-def lhci_config(root: Path, rels: list[str], work: Path) -> dict:
+def lhci_config(root: Path, rels: list[str], work: Path, chrome: str | None = None) -> dict:
     cfg = json.loads((root / ".lighthouserc.json").read_text(encoding="utf-8"))["ci"]
     cfg["collect"] = {**cfg["collect"], "staticDistDir": str(root),
                       "url": ["http://localhost" + page_path(r) for r in rels]}
+    if chrome:
+        cfg["collect"]["chromePath"] = chrome
     cfg["upload"] = {**cfg.get("upload", {}), "outputDir": str(work / "reports")}
     return {"ci": cfg}
 
@@ -462,16 +491,12 @@ def judge_perf(med: dict, budgets: dict[str, float], expected: list[str], runs: 
 
 
 def chrome_env() -> dict:
-    """lhci finds Chrome through chrome-launcher, which honours CHROME_PATH; lend it Playwright's Chromium if any."""
-    if os.environ.get("CHROME_PATH"):
-        return {}
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as pw:
-            p = pw.chromium.executable_path
-        return {"CHROME_PATH": p} if p and Path(p).exists() else {}
-    except Exception:
-        return {}
+    """The environment both Node scanners run under: no browser download, and Playwright's Chromium as THE browser."""
+    p = chrome_path()
+    env = {"PUPPETEER_SKIP_DOWNLOAD": "1"}
+    if p:
+        env.update(CHROME_PATH=p, PUPPETEER_EXECUTABLE_PATH=p)
+    return env
 
 
 def cmd_perf(root: Path) -> dict:
@@ -483,7 +508,7 @@ def cmd_perf(root: Path) -> dict:
         rels = served_pages(root)
         work = mdir(root) / "lhci"
         work.mkdir(exist_ok=True)
-        cfg = lhci_config(root, rels, work)
+        cfg = lhci_config(root, rels, work, chrome_path())
         cfg_path = work / "lighthouserc.generated.json"
         write_json(cfg_path, cfg)
         p = run_cmd([exe, "collect", f"--config={cfg_path}"], cwd=work, env=chrome_env(), timeout=3600)

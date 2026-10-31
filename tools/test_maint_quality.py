@@ -80,7 +80,23 @@ def test_pa11y_exit_codes_map_to_outcomes():
 def test_pa11yci_config_is_both_runners_wcag2aa():
     cfg = mq.a11y_config(REPO, ["http://h/"])
     assert cfg["defaults"]["standard"] == "WCAG2AA" and sorted(cfg["defaults"]["runners"]) == ["axe", "htmlcs"]
-    assert cfg["urls"] == ["http://h/"]
+    assert cfg["urls"] == ["http://h/"] and "chromeLaunchConfig" not in cfg["defaults"]
+    with_chrome = mq.a11y_config(REPO, ["http://h/"], "X:/browser/chrome.exe")
+    assert with_chrome["defaults"]["chromeLaunchConfig"]["executablePath"] == "X:/browser/chrome.exe"
+    raw = (REPO / ".pa11yci").read_text(encoding="utf-8")
+    assert "executablePath" not in raw            # the machine path is run-time only, never committed
+
+
+def test_node_scanners_share_one_browser_and_never_download(monkeypatch):
+    monkeypatch.setattr(mq, "chrome_path", lambda: "X:/browser/chrome.exe")
+    env = mq.chrome_env()
+    assert env == {"PUPPETEER_SKIP_DOWNLOAD": "1", "CHROME_PATH": "X:/browser/chrome.exe",
+                   "PUPPETEER_EXECUTABLE_PATH": "X:/browser/chrome.exe"}
+    cfg = mq.lhci_config(REPO, ["index.html"], REPO / ".maint" / "lhci", "X:/browser/chrome.exe")
+    assert cfg["ci"]["collect"]["chromePath"] == "X:/browser/chrome.exe"
+    pkg = json.loads((REPO / "package.json").read_text(encoding="utf-8"))
+    assert pkg["private"] is True and "scripts" not in pkg
+    assert all(not v.startswith(("^", "~")) for v in pkg["devDependencies"].values())     # --save-exact
 
 
 @pytest.mark.parametrize("code,rep,outcome,n", [(0, REP_OK, "PASS", 0), (2, REP_BAD, "FINDINGS", 2),

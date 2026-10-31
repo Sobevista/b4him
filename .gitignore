@@ -15,3 +15,5 @@ tools/capability_inventory/output/
 rack_backup_log.jsonl
 # Maintenance receipts, findings, audits and notes (tools/maint_receipt.py): run outputs, never site content.
 .maint/
+# The maintenance scanners (package.json devDependencies: pa11y-ci, @lhci/cli), installed repo-locally. Never committed.
+node_modules/
