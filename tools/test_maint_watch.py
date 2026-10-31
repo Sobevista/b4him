@@ -369,30 +369,99 @@ def test_d3_pings_fail_only_for_a_new_alarm(env, monkeypatch):
     mr.write_receipt("W1", "PASS", why="ok", tool="t")
     env.schedule = {"state": "missing", "problems": ["scheduled task b4him-maint-run is missing"], "why": "x"}
     fail1, why1 = day(3, True)
-    assert fail1 and "NEW SCHEDULE MISSING" in why1                  # day 1: the alarm is new
+    assert fail1 and "NEW SCHEDULE missing" in why1                  # day 1: the alarm is new
     fail2, why2 = day(4, True)
     assert not fail2 and "standing alarm(s) already reported" in why2   # day 2: same alarm, success ping
     fail3, why3 = day(10, False)                                       # W1 missed its Monday 11-09 + 1 d + 24 h? not yet
     assert not fail3
     fail4, why4 = day(12, False)                                       # day 3: OVERDUE W1 is new -> /fail
-    assert fail4 and "NEW OVERDUE W1" in why4 and "SCHEDULE" not in why4
+    assert fail4 and "NEW W1 overdue" in why4 and "SCHEDULE" not in why4
 
 
 def test_judge_closes_an_assist_row_and_refuses_an_author_where_independence_is_required(env, capsys):
     env.clock.set(2026, 11, 2, 12)
-    mr.write_receipt("M4", "SKIP", why=mr.awaiting_why("M4", "managing-editor", "pack assembled"), tool="maint_pages.py")
-    assert mw.main(["--now", "2026-11-02T12:00:00-05:00", "judge", "M4", "PASS", "--seat", "managing-editor",
+    mr.write_receipt("M4", "SKIP", why=mr.awaiting_why("M4", "managing-editor", "pack assembled"),
+                     evidence=".maint/audits/2026-11-02_reader.md", tool="maint_pages.py")
+    mr.write_receipt("Q2", "SKIP", why=mr.awaiting_why("Q2", "reviewer", "sweep"),
+                     evidence=".maint/audits/2026-11-02_genericize.md", tool="maint_pages.py")
+    assert mw.main(["judge", "M4", "PASS", "--seat", "managing-editor",
                     "--note", "walked the path; all four questions answered"]) == 0
     assert last("M4")["outcome"] == "PASS" and last("M4")["why"].startswith("judged by managing-editor")
+    assert last("M4")["evidence"] == ".maint/audits/2026-11-02_reader.md"     # the pack it judged rides along
     assert mw.main(["judge", "Q2", "PASS", "--seat", "site-maintainer", "--note", "x"]) == 1      # an author
     assert mw.main(["judge", "Q2", "PASS", "--seat", "maintenance-auditor", "--note", "x"]) == 1  # ran the sweep
     assert mw.main(["judge", "Q2", "FINDINGS", "--seat", "reviewer", "--note", "x"]) == 1        # no n
     assert mw.main(["judge", "H1", "PASS", "--seat", "publisher", "--note", "x"]) == 1           # HUMAN: E-number
     assert mw.main(["judge", "M4", "PASS", "--seat", "nobody", "--note", "x"]) == 1
-    assert mw.main(["--now", "2026-11-02T12:00:00-05:00", "judge", "Q2", "FINDINGS", "2", "--seat", "reviewer",
+    assert mw.main(["judge", "Q2", "FINDINGS", "2", "--seat", "reviewer",
                     "--note", "two non-lesson pages need a look"]) == 1
     assert last("Q2")["outcome"] == "FINDINGS" and last("Q2")["n"] == 2
+    assert last("Q2")["evidence"] == ".maint/audits/2026-11-02_genericize.md"
     assert "REFUSED" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ round 3 (exp5): judge only what awaits a person
+def test_judge_refuses_automate_rows_and_the_watch_rows(env, capsys):
+    """exp5 A: a STUCK scanner row (W3, no names file) and D1/D3 were closable by any seat."""
+    env.clock.set(2026, 11, 3, 10, 50)
+    mr.write_receipt("W3", "UNKNOWN", why="names file absent", tool="maint_pages.py")
+    mr.write_receipt("D1", "FINDINGS", n=1, why="MISSING: no line", tool="maint_watch.py")
+    for rid in ("W3", "D1", "D2", "D3", "M1", "Q5", "C1"):
+        assert mw.main(["judge", rid, "PASS", "--seat", "reviewer", "--note", "fine"]) == 1, rid
+    assert last("W3")["outcome"] == "UNKNOWN" and last("D1")["outcome"] == "FINDINGS"     # nothing was written
+    assert "AUTOMATE row" in capsys.readouterr().out
+
+
+def test_judge_refuses_a_row_that_is_not_awaiting(env, capsys):
+    """exp5 B3/B4: Q2 and A2 were judged with no evidence pack behind them."""
+    env.clock.set(2026, 11, 3, 10, 50)
+    assert mw.main(["judge", "Q2", "PASS", "--seat", "reviewer", "--note", "ok"]) == 1          # no receipt at all
+    mr.write_receipt("A2", "SKIP", why=mr.awaiting_why("A2", "managing-editor", "pack"), tool="maint_pages.py")
+    mr.write_receipt("A2", "PASS", why="judged by managing-editor: ok", tool="maint_watch.py")
+    assert mw.main(["judge", "A2", "PASS", "--seat", "reviewer", "--note", "again"]) == 1      # already judged
+    assert "latest receipt is not `awaiting" in capsys.readouterr().out
+    assert [r["row"] for r in mr.read_receipts()] == ["A2", "A2"]
+
+
+def test_judge_and_human_refuse_a_back_dated_clock(env, capsys):
+    """exp5 C: `--now 2026-01-01 judge M1b` wrote a receipt dated in the past."""
+    env.clock.set(2026, 11, 3, 10, 50)
+    mr.write_receipt("M1b", "SKIP", why=mr.awaiting_why("M1b", "site-maintainer", "eye"), tool="maint_quality.py")
+    assert mw.main(["--now", "2026-01-01T09:00:00-05:00", "judge", "M1b", "PASS", "--seat", "site-maintainer",
+                    "--note", "old"]) == 1
+    assert mw.main(["--now", "2026-01-01T09:00:00-05:00", "human", "H1", "E01234"]) == 1
+    assert mr.is_awaiting(last("M1b")) and not [r for r in mr.read_receipts() if r["row"] == "H1"]
+    assert "real clock only" in capsys.readouterr().out
+
+
+def test_d3_a_stuck_row_whose_cause_changes_is_a_new_alarm(env, monkeypatch):
+    """exp5 E: W1 STUCK for 'no network' was reported; it then crashed with KeyError, and D3 said nothing new."""
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/abc")
+    p = small_table(env.tmp, [DAILY, WEEKLY])
+    monkeypatch.setattr(mw, "ROWS_FILE", p)
+
+    def day(d, why):
+        env.clock.set(2026, 12, d, 9, 0)
+        mr.write_receipt("W1", "UNKNOWN", why=why, tool="linkcheck.py")
+        mr.write_receipt("D1", "PASS", why="ok", tool="t")
+        env.clock.set(2026, 12, d, 10, 40)
+        mw.run_d2(now(env))
+        mw.run_d3_watch(now(env))
+        return env.calls[-1].endswith("/fail"), last("D3")["why"]
+    env.clock.set(2026, 12, 6, 9)
+    mr.write_receipt("W1", "UNKNOWN", why="no network", tool="linkcheck.py")
+    fail, why = day(8, "no network")                     # stuck: past W1's 24 h grace
+    assert fail and "NEW W1 stuck-unknown: no network" in why
+    fail, why = day(9, "no network")                     # same cause: standing, success ping
+    assert not fail
+    fail, why = day(10, "linkcheck crashed: KeyError 'pages'")   # a new cause on the same stuck row
+    assert fail and "NEW W1 stuck-unknown: linkcheck crashed" in why
+
+
+def test_cause_class_blurs_numbers_and_keeps_the_first_clause():
+    assert mw.cause_class("expires 2027-09-01 (58 days): the window") == mw.cause_class("expires 2027-09-01 (57 days)")
+    assert mw.cause_class("no network") != mw.cause_class("linkcheck crashed: KeyError")
+    assert mw.alarm_key("W1", "stuck-unknown", "linkcheck crashed: KeyError") == "W1 stuck-unknown: linkcheck crashed"
 
 
 def test_d2_alarms_an_assist_row_only_when_no_judgement_arrives_in_cadence_plus_grace(env):
@@ -490,7 +559,8 @@ def test_human_reminder_fires_once_late_is_recorded_and_e_number_closes(env, cap
     mw.main(["--now", "2027-01-07T09:00:00-05:00", "digest"])
     fired = [r for r in mr.read_receipts() if r["row"] == "A3"]
     assert len(fired) == 1 and "late by 2 day(s)" in fired[0]["why"]
-    assert mw.main(["--now", "2027-01-07T10:00:00-05:00", "human", "A3", "E00999"]) == 0
+    assert mw.main(["--now", "2027-01-07T10:00:00-05:00", "human", "A3", "E00999"]) == 1    # never back-dated
+    assert mw.main(["human", "A3", "E00999"]) == 0                                           # the clock's own time
     assert last("A3")["outcome"] == "PASS" and "E00999" in last("A3")["why"]
     mw.main(["--now", "2027-01-11T09:00:00-05:00", "digest"])
     text = (env.md / "audits" / "2027-01-11_weekly.md").read_text(encoding="utf-8")

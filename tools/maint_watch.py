@@ -366,25 +366,42 @@ def run_d2(now: dt.datetime, rows_file: Path | None = None) -> dict:
                (f"last receipt {fmt(o['last'])}" if o["last"] else "no receipt ever") + \
                f", due {o['due']:%Y-%m-%d}, overdue since {fmt(o['deadline'])}"
         parts.append(f"{o['row']} ({what})")
-        alarms.append(f"OVERDUE {o['row']}")
+        alarms.append(alarm_key(o["row"], "overdue", "awaiting judgement" if (o.get("what") or "").startswith(
+            "awaiting") else ""))
         mr.write_finding("D2", "S2", f"OVERDUE {o['row']}", f"MAINTENANCE OVERDUE: row {o['row']}: {what}",
                          f"Daniel; owning seat: {o['route_to']}")
     for s in stuck:
         what = f"UNKNOWN since {fmt(s['since'])}, past its {fmt(s['until'])} grace: {s['why'][:120]}"
         parts.append(f"{s['row']} STUCK ({what})")
-        alarms.append(f"STUCK UNKNOWN {s['row']}")
+        alarms.append(alarm_key(s["row"], "stuck-unknown", s["why"]))
         mr.write_finding("D2", "S2", f"STUCK UNKNOWN {s['row']}", f"MAINTENANCE STUCK UNKNOWN: row {s['row']}: {what}",
                          f"Daniel; owning seat: {s['route_to']}")
     for p in sched.get("problems", []) if sched.get("state") in ("missing", "stale") else []:
         parts.append(f"SCHEDULE ({p})")
-        alarms.append(f"SCHEDULE {sched['state'].upper()}: {p}")
+        alarms.append(alarm_key("SCHEDULE", sched["state"], p))
         mr.write_finding("D2", "S2", "SCHEDULE " + sched["state"].upper(), p, "Daniel (the paste is his)")
     r = _d2_receipt(table, events, parts, pending, sched, note)
     _save_state(D2_ALARMS, {"at": r["at"], "alarms": alarms})
     return r
 
 
-D2_ALARMS = "d2_alarms.json"          # D2's alarm list for the run whose receipt has this `at` (D3 and W2 read it)
+def cause_class(why: str) -> str:
+    """The short cause of an alarm: the first line of its reason, up to the first ':' or ';', at most 60 chars, with
+    dates and digits blurred so the same cause on another day is the same class. "no network" and "linkcheck
+    crashed: KeyError" are different classes; "expires 2027-09-01 (58 days)" and "(57 days)" are one."""
+    first = (why or "").strip().splitlines()[0] if (why or "").strip() else ""
+    first = re.split(r"[:;]", first, maxsplit=1)[0].strip().lower()
+    return re.sub(r"\d+", "#", first)[:60]
+
+
+def alarm_key(row: str, kind: str, why: str = "") -> str:
+    """D3's newness key: the row, the alarm kind (overdue / stuck-unknown / findings / a schedule state) and the cause
+    class. A stuck row whose cause changes is a NEW alarm and sends /fail."""
+    c = cause_class(why)
+    return f"{row} {kind}" + (f": {c}" if c else "")
+
+
+D2_ALARMS = "d2_alarms.json"         # D2's alarm list for the run whose receipt has this `at` (D3 and W2 read it)
 PING_STATE = "heartbeat_state.json"   # the alarms the last delivered heartbeat already reported
 
 
@@ -490,7 +507,7 @@ def d3_signal(now: dt.datetime) -> tuple[bool, str, list[str]]:
         if e["outcome"] == "UNKNOWN":
             bad.append(f"{r} UNKNOWN")
         elif e["outcome"] == "FINDINGS" and r == "D1":
-            current.append(f"D1 {e['why'][:120]}")
+            current.append(alarm_key("D1", "findings", e["why"].split(": ", 1)[-1]))   # the day prefix is not a cause
         elif e["outcome"] == "FINDINGS":
             st = _load_state(D2_ALARMS)
             if not st or st.get("at") != e["at"]:
@@ -572,6 +589,21 @@ def cmd_judge(a, now: dt.datetime) -> int:
         print(f"REFUSED: {rid} is a HUMAN row; it closes only with Daniel's ledger E-number: "
               f"maint_watch.py human {rid} <E-number>")
         return 1
+    row = table["rows"][rid]
+    if rid in ("D1", "D2", "D3") or str(row.get("mode", "")).startswith("AUTOMATE"):
+        print(f"REFUSED: {rid} is an AUTOMATE row; its own tool judges it, a person does not")
+        return 1
+    try:
+        mine = receipts_of(mr.read_receipts(), rid)
+    except ValueError as e:
+        print(f"REFUSED: cannot read the receipts: {e}")
+        return 1
+    if not mine or not mr.is_awaiting(mine[-1][1]):
+        print(f"REFUSED: {rid}'s latest receipt is not `awaiting ... judgement` "
+              f"({(mine[-1][1]['outcome'] + ' ' + mine[-1][1]['why'][:60]) if mine else 'no receipt'}); run its "
+              f"tool first so there is an evidence pack to judge")
+        return 1
+    awaiting = mine[-1][1]
     if seat not in mp.SEATS:
         print(f"REFUSED: {seat!r} is not a seat ({', '.join(mp.SEATS)})")
         return 1
@@ -589,7 +621,8 @@ def cmd_judge(a, now: dt.datetime) -> int:
         mr.write_finding(rid, "S3", f"{rid} judged by {seat}: {note[:80]}", note, table["rows"][rid].get("route_to", ""))
     else:
         n = 0
-    return show([mr.write_receipt(rid, outcome, n=n, why=f"judged by {seat}: {note}", tool=TOOL)])
+    return show([mr.write_receipt(rid, outcome, n=n, why=f"judged by {seat}: {note}",
+                                  evidence=awaiting.get("evidence"), tool=TOOL)])
 
 
 def show(receipts: list[dict]) -> int:
@@ -989,6 +1022,9 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if a.now and a.cmd in ("judge", "human"):
+        print(f"REFUSED: `{a.cmd}` records a person's act; its receipt is stamped with the real clock only (no --now)")
+        return 1
     if a.now:                                    # a fixed clock for the receipts too (tests, replays)
         now = parse_at(a.now)
         mr.now_utc = lambda: now.astimezone(dt.timezone.utc)
