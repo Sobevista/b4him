@@ -403,8 +403,9 @@ def judge_contrast(g: dict) -> tuple[str, int | None, str]:
         return "UNKNOWN", None, "no text elements were measured"
     if g["unverifiable_causes"]:
         u = "; ".join(f"{v['elements']} element(s) painted over by {k}" for k, v in g["unverifiable_causes"].items())
-        return "UNKNOWN", None, (f"0 AA failures in {g['checked']} measured element(s), but {u}: the number is not the "
-                                 f"rendered contrast, judge by eye (ASSIST)")
+        return "SKIP", None, maint_receipt.awaiting_why(
+            "M1b", "site-maintainer", f"0 AA failures in {g['checked']} measured element(s), but {u}: the number is "
+            f"not the rendered contrast, judge by eye (evidence: the per-page report)")
     return "PASS", 0, f"0 AA failures in {g['checked']} element(s), nothing painted over"
 
 

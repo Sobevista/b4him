@@ -8,8 +8,8 @@ row's receipt; it never rules. A HUMAN row closes only with his ledger E-number 
     py tools/maint_human.py a3     A3  domain registration: RDAP expiry and status, alarm 60 days ahead
     options: --repo <path> (default: this checkout)
 
-RECEIPTS. A pack row (H1, A1) that is due: UNKNOWN "awaiting Daniel's ruling" with the pack as evidence (the
-reminder). Not due: SKIP with its next due date (the pack is still assembled, as a preview). A pack that cannot be
+RECEIPTS. A pack row (H1, A1) that is due: SKIP "awaiting Daniel's ruling" with the pack as evidence (the
+reminder; UNKNOWN is kept for "could not run"). Not due: SKIP with its next due date (the pack is still assembled, as a preview). A pack that cannot be
 assembled: UNKNOWN with why. A3: FINDINGS when the registration expires within 60 days (the calendar's "60 days
 before renewal") or carries a hold / redemption / pending-delete status; SKIP with the expiry date otherwise; UNKNOWN
 when RDAP cannot be read. A3's renewal date is known only to RDAP, so tools/maint_run.py polls it every Monday.
@@ -106,7 +106,7 @@ def receipt_for_pack(row: str, now: dt.datetime, evidence: str, what: str) -> di
     if not s["is_due"]:
         return mr.write_receipt(row, "SKIP", why=f"HUMAN row not due: next due {s['due']:%Y-%m-%d}; {what} assembled "
                                 "as a preview", evidence=evidence, tool=TOOL)
-    return mr.write_receipt(row, "UNKNOWN", why=f"awaiting Daniel's ruling: {what} ready (due {s['due']:%Y-%m-%d}); "
+    return mr.write_receipt(row, "SKIP", why=f"awaiting Daniel's ruling: {what} ready (due {s['due']:%Y-%m-%d}); "
                             f"close with maint_watch.py human {row} <E-number>", evidence=evidence, tool=TOOL)
 
 

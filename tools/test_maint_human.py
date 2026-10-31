@@ -74,7 +74,7 @@ def test_h1_pack_beside_the_d9_reference(md, monkeypatch):
     assert "reference_logo.png" in text and "`--navy-800`" in text and text.count("### ") == 4   # home + 3
     assert "### index.html" in text
     r = mh.cmd_h1(REPO, DUE)
-    assert r["outcome"] == "UNKNOWN" and r["why"].startswith("awaiting Daniel's ruling: H1 pack")
+    assert mr.is_awaiting(r) and r["why"].startswith("awaiting Daniel's ruling: H1 pack")
 
 
 def test_h1_capture_failure_and_failed_check_are_unknown(md, monkeypatch):
@@ -98,7 +98,7 @@ def test_a1_pack_has_pages_automated_results_and_easy_checks(md):
     assert "Define the evaluation scope" in text and "Report the evaluation findings" in text
     assert "| `index.html` |" in text and "Image Alternative Text" in text and "2.5.8 Target Size (Minimum)" in text
     assert (md / "packs" / "A1_2026-11-03" / "automated_axe_pa11y.json").exists()
-    assert mh.cmd_a1(REPO, DUE)["outcome"] == "UNKNOWN"
+    assert mr.is_awaiting(mh.cmd_a1(REPO, DUE))
 
 
 # ------------------------------------------------------------------ A3 RDAP

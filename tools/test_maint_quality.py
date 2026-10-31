@@ -141,7 +141,8 @@ def test_contrast_groups_by_cause_and_judges():
     unver = mq.group_contrast({"index.html": {"checked": 3, "failures": [],
                                               "passingButUnverifiable": [_row("h1", 9, over="body::before")] * 2}})
     out, n, why = mq.judge_contrast(unver)
-    assert out == "UNKNOWN" and "2 element(s) painted over by body::before" in why and "ASSIST" in why
+    assert out == "SKIP" and "2 element(s) painted over by body::before" in why       # ran; awaits the eye
+    assert why.startswith("awaiting site-maintainer judgement") and "judge M1b PASS|FINDINGS" in why
     assert mq.judge_contrast(mq.group_contrast({"index.html": {"checked": 3, "failures": [],
                                                                "passingButUnverifiable": []}}))[0] == "PASS"
     assert mq.judge_contrast(mq.group_contrast({"index.html": {"error": "timeout"}}))[0] == "UNKNOWN"

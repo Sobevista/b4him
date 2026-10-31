@@ -96,6 +96,21 @@ def write_finding(row: str, severity: str, subject: str, detail: str = "", route
     return entry
 
 
+#: An ASSIST row whose tool has assembled its evidence and now waits on a person writes SKIP with this prefix, never
+#: UNKNOWN: UNKNOWN is kept strictly for "could not run". The judgement closes it (maint_watch.py judge); D2 alarms if
+#: none arrives within the row's cadence + grace.
+AWAITING = "awaiting "
+
+
+def awaiting_why(row: str, seat: str, what: str) -> str:
+    return (f"{AWAITING}{seat} judgement: {what}; close with `maint_watch.py judge {row} PASS|FINDINGS <n> "
+            f"--seat {seat} --note <text>`")
+
+
+def is_awaiting(e: dict) -> bool:
+    return e.get("outcome") == "SKIP" and str(e.get("why") or "").startswith(AWAITING)
+
+
 def _read(name: str) -> list[dict]:
     p = maint_dir() / name
     if not p.is_file():

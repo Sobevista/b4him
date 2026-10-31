@@ -284,16 +284,29 @@ def test_q2_sweeps_every_served_file_type_not_only_html(tmp_path):
     assert [e["path"] for e in state["exempted"]] == ["DECISIONS.md"]            # D11's own rule line only
 
 
+def test_q2_scopes_the_voice_rule_token_to_the_lessons(tmp_path):
+    d11 = D11.replace("`Vexmoor-rig` → \"a machine\".", "`Vexmoor-rig` → \"a machine\", Halvard → first person.")
+    repo = make_repo(tmp_path, {"DECISIONS.md": d11,
+                                "notes/plan.md": "Halvard rules this.\nHalvard used Zorblax.\n",
+                                "lessons/alpha/index.html": page("Alpha", "<p>Halvard built it.</p>")})
+    assert mp.d11_voice_tokens(repo) == ["Halvard"]
+    state = mp.genericize_sweep(repo, TODAY)
+    hits = sorted((h["path"], h["line"], tuple(h["tokens"])) for h in state["hits"])
+    assert hits == [("lessons/alpha/index.html", 1, ("Halvard",)),        # kept in the Lessons
+                    ("notes/plan.md", 2, ("Zorblax",))]                    # a real exposure stays a finding
+    assert [(x["path"], x["line"]) for x in state["voice_scoped"]] == [("notes/plan.md", 1)]
+
+
 def test_q2_unknown_until_witnessed_and_witness_rules(tmp_path):
     repo = make_repo(tmp_path)
     r = mp.cmd_genericize(repo, TODAY)[0]
-    assert r["outcome"] == "UNKNOWN" and r["why"].startswith("no witness recorded")
+    assert r["outcome"] == "UNKNOWN" and r["why"].startswith("could not fully run")    # setup debts stay UNKNOWN
     for bad in ("site-maintainer", "managing-editor", "maintenance-auditor", "nobody"):
         with pytest.raises(mp.CouldNotRun):
             mp.cmd_witness(repo, TODAY, bad)
     assert mp.main(["--repo", str(repo), "witness", "site-maintainer"]) == 2
     w = mp.cmd_witness(repo, TODAY, "reviewer")[0]
-    assert w["outcome"] == "UNKNOWN" and "witnessed by reviewer, but" in w["why"]   # client list absent, W3 UNKNOWN
+    assert w["outcome"] == "UNKNOWN" and "client-name list" in w["why"]   # a witness cannot cure a setup debt
     assert "witness: reviewer at" in (repo / ".maint" / "audits" / "2026-10-31_genericize.md").read_text(
         encoding="utf-8")
 
@@ -303,7 +316,8 @@ def test_q2_pass_needs_witness_client_list_and_w3_pass(tmp_path):
     local_names(repo)
     (repo / "data" / "forbidden_tokens.local.json").write_text(json.dumps({"tokens": ["Brindlecorp"]}),
                                                                encoding="utf-8")
-    assert mp.cmd_genericize(repo, TODAY)[0]["outcome"] == "UNKNOWN"
+    r = mp.cmd_genericize(repo, TODAY)[0]
+    assert mr.is_awaiting(r) and "reviewer judgement" in r["why"]           # ran; waiting on the witness
     w = mp.cmd_witness(repo, TODAY, "privacy-safety")[0]
     assert w["outcome"] == "PASS" and "witnessed by privacy-safety" in w["why"]
 
@@ -341,9 +355,9 @@ def test_q1_skip_when_nothing_due(tmp_path):
 def test_q1_findings_n_is_pages_due_with_the_checklist(tmp_path):
     repo = make_repo(tmp_path, {"about/index.html": page("About")})        # no published row carries it
     r = mp.cmd_reread(repo, TODAY)[0]
-    assert r["outcome"] == "FINDINGS" and r["n"] == 1
+    assert mr.is_awaiting(r) and "1 of 5 pages due" in r["why"] and "managing-editor" in r["why"]
     later = mp.cmd_reread(repo, dt.date(2027, 2, 1))[0]
-    assert later["outcome"] == "FINDINGS" and later["n"] == 5
+    assert mr.is_awaiting(later) and "5 of 5 pages due" in later["why"]
     md = (repo / ".maint" / "audits" / "2027-02-01_reread.md").read_text(encoding="utf-8")
     assert md.count("7. [ ] Outcome: `MAINTAINED") == 5 and "W3 has no receipt yet: UNKNOWN" in md
 
@@ -408,7 +422,7 @@ def test_fk_grade_is_an_indicator_that_moves_the_right_way():
 def test_m4_unknown_when_route_is_whole_and_no_jargon(tmp_path):
     repo = make_repo(tmp_path)
     r = mp.cmd_walk(repo, TODAY)[0]
-    assert r["outcome"] == "UNKNOWN" and "await the seat" in r["why"]
+    assert mr.is_awaiting(r) and "managing-editor judgement" in r["why"]   # assembled: SKIP awaiting, not UNKNOWN
     md = (repo / ".maint" / "audits" / "2026-10-31_reader.md").read_text(encoding="utf-8")
     assert "/ -> /lessons/ -> /lessons/find-your-door/ -> /lessons/ -> /lessons/alpha/" in md
     assert md.count("Answer (seat): ____") == 16 and "never a gate" in md and '"Start"' in md
@@ -438,7 +452,7 @@ def test_m4_unknown_when_git_cannot_run(tmp_path):
 def test_a2_inventory_unknown_awaits_the_editor(tmp_path):
     repo = make_repo(tmp_path)
     r = mp.cmd_inventory(repo, TODAY)[0]
-    assert r["outcome"] == "UNKNOWN" and "4 pages inventoried" in r["why"]
+    assert mr.is_awaiting(r) and "4 pages inventoried" in r["why"]
     md = (repo / ".maint" / "audits" / "2026-10-31_content_audit.md").read_text(encoding="utf-8")
     assert "annotate, never erase" in md and "only Daniel rules a removal" in md
     assert "https://example.invalid/lessons/alpha/" in md and md.count("- [ ] Redundant?") == 4

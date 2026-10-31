@@ -455,7 +455,17 @@ def local_tokens(repo: Path) -> tuple[list[str], bool]:
 D11_RULE_LINE = "Genericization is a hard rule"
 
 
-def grep_tokens(repo: Path, tokens: list[str], exempted: list | None = None) -> list[dict]:
+def d11_voice_tokens(repo: Path) -> list[str]:
+    """The D11 tokens whose replacement is the first person ("X → first person"): the voice rule. It binds the
+    Lessons; outside lessons/ it is not a genericization leak, so the non-lesson sweep does not count it."""
+    text = page_text(repo, "DECISIONS.md")
+    m = re.search(r"^## D11\b.*?(?=^## )", text, re.S | re.M)
+    line = next((ln for ln in (m.group(0) if m else "").splitlines() if D11_RULE_LINE in ln), "")
+    return [a or b for a, b, rhs in D11_ARROW.findall(line) if rhs.lower().startswith("first")]
+
+
+def grep_tokens(repo: Path, tokens: list[str], exempted: list | None = None,
+                voice: list[str] | None = None, scoped: list | None = None) -> list[dict]:
     """An independent `git grep` over EVERY served text file at HEAD, whatever its type (html, css, js, svg, md, json,
     txt, xml...: Pages serves them all; `-I` skips binaries, which a grep cannot read). Not people_registry, not the
     author's report. D11's own rule line is the one exemption, appended to `exempted`."""
@@ -475,6 +485,14 @@ def grep_tokens(repo: Path, tokens: list[str], exempted: list | None = None) -> 
             if exempted is not None:
                 exempted.append({"path": path, "line": int(ln), "why": "D11's own rule line names the tokens"})
             continue
+        vl = {v.lower() for v in (voice or [])}
+        if vl and not path.startswith("lessons/"):
+            rest = [t for t in which if t.lower() not in vl]
+            if not rest:                       # only the voice rule's token, outside the Lessons: out of scope
+                if scoped is not None:
+                    scoped.append({"path": path, "line": int(ln)})
+                continue
+            which = rest
         hits.append({"path": path, "line": int(ln), "tokens": which, "text": text.strip()[:200]})
     return hits
 
@@ -505,18 +523,20 @@ def genericize_outcome(state: dict) -> tuple[str, int | None, str]:
         return "FINDINGS", len(state["hits"]), (f"{len(state['hits'])} forbidden-token line(s) on served files: {s1} "
                                                 f"in lessons/ (S1), {len(state['hits']) - s1} elsewhere (S2, D11 scope "
                                                 f"for the witness)")
+    # setup debts: the sweep could not fully run, so it stays UNKNOWN (and D2 calls it STUCK past its grace)
     gaps = []
     if not state["client_list_loaded"]:
         gaps.append("the client-name list (data/forbidden_tokens.local.json) is absent, so D11's one non-negotiable "
                     "token was not searched")
-    if state["w3"]["outcome"] != "PASS":
-        gaps.append(f"W3 is {state['w3']['outcome']} ({state['w3']['why']})")
-    if not state.get("witness"):
-        return "UNKNOWN", None, "no witness recorded (run: maint_pages.py witness <seat>)" + (
-            "; also " + "; ".join(gaps) if gaps else "")
+    if state["w3"]["outcome"] == "UNKNOWN":
+        gaps.append(f"W3 could not fully run ({state['w3']['why'][:160]})")
     if gaps:
-        return "UNKNOWN", None, f"witnessed by {state['witness']['seat']}, but " + "; ".join(gaps)
-    return "PASS", 0, f"0 forbidden tokens, W3 PASS, witnessed by {state['witness']['seat']}"
+        return "UNKNOWN", None, "could not fully run: " + "; ".join(gaps)
+    w3 = "W3 PASS" if state["w3"]["outcome"] == "PASS" else f"W3 {state['w3']['outcome']} (its findings stand in W3)"
+    if not state.get("witness"):
+        return "SKIP", None, mr.awaiting_why("Q2", "reviewer", f"0 forbidden tokens, {w3}; a witness seat that did "
+                                             "not write the pages re-reads the sweep (or `maint_pages.py witness <seat>`)")
+    return "PASS", 0, f"0 forbidden tokens, {w3}, witnessed by {state['witness']['seat']}"
 
 
 def render_genericize(state: dict) -> str:
@@ -533,7 +553,9 @@ def render_genericize(state: dict) -> str:
          f"{state.get('local_count', 0)} (not echoed); client-name list loaded: {state['client_list_loaded']}",
          f"- surface: every tracked text file at HEAD outside `.`/`_` paths, whatever its type (Pages serves them "
          f"all). Not scanned: binary files (images, fonts), which a grep cannot read.",
-         f"- exempt: {len(state.get('exempted') or [])} line(s), D11's own rule line in DECISIONS.md", ""]
+         f"- exempt: {len(state.get('exempted') or [])} line(s), D11's own rule line in DECISIONS.md",
+         f"- out of scope: {len(state.get('voice_scoped') or [])} line(s) outside lessons/ whose only token is the "
+         f"voice rule's (D11 \"→ first person\" binds the Lessons; it is still swept there)", ""]
     if state.get("error"):
         L.append(f"**COULD NOT RUN:** {state['error']}")
     elif not state["hits"]:
@@ -559,8 +581,8 @@ def genericize_sweep(repo: Path, today: dt.date) -> dict:
         d11 = d11_tokens(repo)
         loc, loaded = local_tokens(repo)
         state.update(d11_count=len(d11), local_count=len(loc), client_list_loaded=loaded)
-        state["exempted"] = []
-        state["hits"] = grep_tokens(repo, d11 + loc, state["exempted"])
+        state["exempted"], state["voice_scoped"] = [], []
+        state["hits"] = grep_tokens(repo, d11 + loc, state["exempted"], d11_voice_tokens(repo), state["voice_scoped"])
     except CouldNotRun as e:
         state["error"] = str(e)
     w3 = people_scan(repo)
@@ -711,7 +733,8 @@ def cmd_reread(repo: Path, today: dt.date) -> list[dict]:
     write(ev, "\n".join(L) + "\n")
     evr = rel(repo, ev)
     if due:
-        return [receipt(repo, "Q1", "FINDINGS", len(due), f"{len(due)} of {len(per)} pages due for re-read", evr)]
+        return [receipt(repo, "Q1", "SKIP", None, mr.awaiting_why(
+        "Q1", "managing-editor", f"{len(due)} of {len(per)} pages due for re-read (listed in the evidence)"), evr)]
     nxt = min((x["next_due"] for x in per if x.get("next_due")), default=None)
     return [receipt(repo, "Q1", "SKIP", 0, f"0 of {len(per)} pages due (next due {nxt})", evr)]
 
@@ -916,8 +939,9 @@ def cmd_walk(repo: Path, today: dt.date, lesson: str | None = None) -> list[dict
     if n:
         return [receipt(repo, "M4", "FINDINGS", n, f"{jargon_total} unglossed jargon term(s), {len(broken)} broken "
                                                    f"path segment(s); the four questions await the seat", evr)]
-    return [receipt(repo, "M4", "UNKNOWN", None, "evidence assembled, no mechanical finding; the four walkthrough "
-                                                 "questions await the seat's judgement", evr)]
+    return [receipt(repo, "M4", "SKIP", None, mr.awaiting_why(
+        "M4", "managing-editor", "evidence assembled, no mechanical finding; the four walkthrough questions are the "
+        "seat's to answer"), evr)]
 
 
 # ---------------------------------------------------------------------------------------------------- A2 inventory
@@ -991,8 +1015,9 @@ def cmd_inventory(repo: Path, today: dt.date) -> list[dict]:
     if dups:
         return [receipt(repo, "A2", "FINDINGS", len(dups), f"{len(inv)} pages inventoried; {len(dups)} duplicate "
                                                            f"group(s); ROT judgement awaits the Editor", evr)]
-    return [receipt(repo, "A2", "UNKNOWN", None, f"{len(inv)} pages inventoried, no duplicate; the ROT judgement "
-                                                f"awaits the Editor", evr)]
+    return [receipt(repo, "A2", "SKIP", None, mr.awaiting_why(
+        "A2", "managing-editor", f"{len(inv)} pages inventoried, no duplicate; the ROT (redundant / outdated / "
+        "trivial) judgement is the Editor's"), evr)]
 
 
 # ------------------------------------------------------------------------------------------------------------- CLI

@@ -238,6 +238,51 @@ def run_d1(release_log: Path, day: dt.date, now: dt.datetime) -> dict:
 
 
 # ------------------------------------------------------------------ D2: the calendar watch
+def last_done(mine: list[tuple[dt.datetime, dict]]) -> tuple[dt.datetime | None, dict | None]:
+    """The moment a row's clock restarts from. Every receipt counts, except that a run of `awaiting <seat> judgement`
+    SKIPs counts from its FIRST line: the seat has one cadence + grace from then to judge, and a weekly re-run that is
+    still waiting does not buy it more time."""
+    last, entry, prev_await = None, None, False
+    for t, e in mine:
+        aw = mr.is_awaiting(e)
+        if not (aw and prev_await):
+            last, entry = t, e
+        prev_await = aw
+    return last, entry
+
+
+EXPIRES = re.compile(r"\bexpires (\d{4}-\d{2}-\d{2})\b")
+#: Rows on the RDAP clock (A3: "annually, 60 days before renewal"). Their due date is expiry - 60 days, read from
+#: their own receipts (tools/maint_human.py a3 writes "expires YYYY-MM-DD"), and they are polled every Monday.
+RDAP_ROWS = {"A3": 60}
+
+
+def rdap_overdue(rid: str, row: dict, receipts: list[dict], now: dt.datetime, epoch: dt.date) -> dict | None:
+    """A3 on the RDAP clock: overdue when (a) the Monday poll has stopped (no A3 receipt by the Monday after the last
+    one + 1 day + 24 h), or (b) the 60-day window opened more than the row's grace ago and no PASS (Daniel's close)
+    has arrived since it opened. Weekly SKIPs far from expiry are on time; January is nothing special."""
+    poll = {"id": rid, "kind": "weekly", "grace_hours": 24}
+    mine = receipts_of(receipts, rid)
+    last = mine[-1][0] if mine else None
+    due = due_from(poll, last, epoch, now.tzinfo)
+    dl = deadline_of(poll, due)
+    base = {"row": rid, "last": last, "route_to": row.get("route_to", "")}
+    if now > dl:
+        return {**base, "due": due, "deadline": dl, "what": "RDAP poll stopped" if last else "RDAP never polled"}
+    exp = next((EXPIRES.search(str(e.get("why") or "")) for _, e in reversed(mine)
+                if EXPIRES.search(str(e.get("why") or ""))), None)
+    if not exp:
+        return None                           # an RDAP failure is UNKNOWN, judged by the STUCK rule
+    expires = dt.date.fromisoformat(exp.group(1))
+    opens = midnight(expires - dt.timedelta(days=RDAP_ROWS[rid]), now.tzinfo)
+    deadline = opens + dt.timedelta(hours=row.get("grace_hours") or 0)
+    closed = [t for t, e in mine if e.get("outcome") == "PASS" and t >= opens]
+    if now > deadline and not closed:
+        return {**base, "due": opens, "deadline": deadline,
+                "what": f"expires {expires}; the 60-day window opened {opens:%Y-%m-%d} and Daniel has not closed it"}
+    return None
+
+
 def overdue_rows(table: dict, receipts: list[dict], now: dt.datetime, skip=("D2",)) -> tuple[list, list]:
     over, events = [], []
     for rid, row in table["rows"].items():
@@ -246,12 +291,23 @@ def overdue_rows(table: dict, receipts: list[dict], now: dt.datetime, skip=("D2"
             continue
         if rid in skip:
             continue
-        mine = receipts_of(receipts, rid, {"PASS"} if row.get("check") == "human" else None)
-        last = mine[-1][0] if mine else None
+        if rid in RDAP_ROWS:
+            o = rdap_overdue(rid, row, receipts, now, table["epoch_date"])
+            if o:
+                over.append(o)
+            continue
+        if row.get("check") == "human":
+            mine = receipts_of(receipts, rid, {"PASS"})
+            last, entry = (mine[-1] if mine else (None, None))
+        else:
+            last, entry = last_done(receipts_of(receipts, rid))
         due = due_from(row, last, table["epoch_date"], now.tzinfo)
         dl = deadline_of(row, due)
         if now > dl:
-            over.append({"row": rid, "last": last, "due": due, "deadline": dl, "route_to": row.get("route_to", "")})
+            what = (f"awaiting judgement since {fmt(last)}, none by {fmt(dl)}" if entry and mr.is_awaiting(entry)
+                    else None)
+            over.append({"row": rid, "last": last, "due": due, "deadline": dl, "route_to": row.get("route_to", ""),
+                         "what": what})
     return over, events
 
 
@@ -304,21 +360,49 @@ def run_d2(now: dt.datetime, rows_file: Path | None = None) -> dict:
     except Exception as e:  # noqa: BLE001 - a check that could not run is UNKNOWN, with its reason
         sched = {"state": "unknown", "problems": [], "why": f"{type(e).__name__}: {e}"}
     note = f" (event rows not on the clock: {', '.join(events)})" if events else ""
-    parts = []
+    parts, alarms = [], []
     for o in over:
-        what = (f"last receipt {fmt(o['last'])}" if o["last"] else "no receipt ever") + \
+        what = ((o.get("what") + "; ") if o.get("what") else "") + \
+               (f"last receipt {fmt(o['last'])}" if o["last"] else "no receipt ever") + \
                f", due {o['due']:%Y-%m-%d}, overdue since {fmt(o['deadline'])}"
         parts.append(f"{o['row']} ({what})")
+        alarms.append(f"OVERDUE {o['row']}")
         mr.write_finding("D2", "S2", f"OVERDUE {o['row']}", f"MAINTENANCE OVERDUE: row {o['row']}: {what}",
                          f"Daniel; owning seat: {o['route_to']}")
     for s in stuck:
         what = f"UNKNOWN since {fmt(s['since'])}, past its {fmt(s['until'])} grace: {s['why'][:120]}"
         parts.append(f"{s['row']} STUCK ({what})")
+        alarms.append(f"STUCK UNKNOWN {s['row']}")
         mr.write_finding("D2", "S2", f"STUCK UNKNOWN {s['row']}", f"MAINTENANCE STUCK UNKNOWN: row {s['row']}: {what}",
                          f"Daniel; owning seat: {s['route_to']}")
     for p in sched.get("problems", []) if sched.get("state") in ("missing", "stale") else []:
         parts.append(f"SCHEDULE ({p})")
+        alarms.append(f"SCHEDULE {sched['state'].upper()}: {p}")
         mr.write_finding("D2", "S2", "SCHEDULE " + sched["state"].upper(), p, "Daniel (the paste is his)")
+    r = _d2_receipt(table, events, parts, pending, sched, note)
+    _save_state(D2_ALARMS, {"at": r["at"], "alarms": alarms})
+    return r
+
+
+D2_ALARMS = "d2_alarms.json"          # D2's alarm list for the run whose receipt has this `at` (D3 and W2 read it)
+PING_STATE = "heartbeat_state.json"   # the alarms the last delivered heartbeat already reported
+
+
+def _save_state(name: str, data: dict) -> None:
+    d = mr.maint_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+
+
+def _load_state(name: str) -> dict | None:
+    p = mr.maint_dir() / name
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else None
+    except (OSError, ValueError):
+        return None
+
+
+def _d2_receipt(table, events, parts, pending, sched, note) -> dict:
     if parts:
         tail = (f"; also UNKNOWN, in grace: {', '.join(s['row'] for s in pending)}" if pending else "") + \
                (f"; schedule UNKNOWN: {sched['why']}" if sched.get("state") == "unknown" else "")
@@ -359,7 +443,7 @@ def _scrub(text: str, url: str) -> str:
     return text
 
 
-def run_d3(fail: bool, why_fail: str, now: dt.datetime) -> dict:
+def run_d3(fail: bool, why_fail: str, now: dt.datetime, note: str = "") -> dict:
     drill = armed_drill()
     if drill and drill["skip_date"] == now.date().isoformat():
         return mr.write_receipt("D3", "SKIP", why=f"drill (Q6): the {drill['skip_date']} heartbeat is withheld on "
@@ -384,7 +468,48 @@ def run_d3(fail: bool, why_fail: str, now: dt.datetime) -> dict:
         return mr.write_receipt("D3", "FINDINGS", n=1, why=f"heartbeat ({signal}) HTTP {status} {body[:40]}: not "
                                 "recorded by the service", tool=TOOL)
     return mr.write_receipt("D3", "PASS", why=f"heartbeat {signal} signal delivered, HTTP {status}"
-                            + (f" ({why_fail})" if fail else ""), tool=TOOL)
+                            + (f" ({why_fail})" if fail else "") + note, tool=TOOL)
+
+
+def d3_signal(now: dt.datetime) -> tuple[bool, str, list[str]]:
+    """(fail?, why, the alarms standing now). D3 is a liveness signal, not a second alarm tile:
+      /fail when today's D1 or D2 is missing or UNKNOWN (the watch itself could not judge), or when an alarm is NEW
+      since the last delivered ping; otherwise success. Standing alarms stay on the D2 tile and in the W2 digest.
+    An alarm is a D1 FINDINGS line or one of D2's OVERDUE / STUCK UNKNOWN / SCHEDULE alarms (.maint/d2_alarms.json)."""
+    try:
+        receipts = mr.read_receipts()
+    except ValueError as e:
+        return True, f"cannot read today's D1/D2: {e}", []
+    bad, current = [], []
+    for r in ("D1", "D2"):
+        today = [e for t, e in receipts_of(receipts, r) if t.date() == now.date()]
+        if not today:
+            bad.append(f"{r} no receipt today")
+            continue
+        e = today[-1]
+        if e["outcome"] == "UNKNOWN":
+            bad.append(f"{r} UNKNOWN")
+        elif e["outcome"] == "FINDINGS" and r == "D1":
+            current.append(f"D1 {e['why'][:120]}")
+        elif e["outcome"] == "FINDINGS":
+            st = _load_state(D2_ALARMS)
+            if not st or st.get("at") != e["at"]:
+                bad.append("D2's alarm list does not match its receipt")
+            else:
+                current += st.get("alarms", [])
+    seen = set((_load_state(PING_STATE) or {}).get("alarms", []))
+    new = [a for a in current if a not in seen]
+    why = ", ".join(bad + [f"NEW {a}" for a in new])
+    return bool(bad or new), why, current
+
+
+def run_d3_watch(now: dt.datetime) -> dict:
+    fail, why, current = d3_signal(now)
+    note = f" ({len(current)} standing alarm(s) already reported; see D2 / W2)" if current and not fail else ""
+    r = run_d3(fail, why, now, note)
+    if r["outcome"] == "PASS":                # delivered: these alarms have now been reported once
+        _save_state(PING_STATE, {"at": r["at"], "alarms": current})
+    return r
 
 
 def cmd_daily(a, now: dt.datetime) -> int:
@@ -392,9 +517,7 @@ def cmd_daily(a, now: dt.datetime) -> int:
     rlog = Path(a.release_log) if a.release_log else REPO / "release_log.jsonl"
     d1 = run_d1(rlog, day, now)
     d2 = run_d2(now)
-    bad = [f"{r['row']} {r['outcome']}" for r in (d1, d2) if r["outcome"] != "PASS"]
-    d3 = run_d3(bool(bad), ", ".join(bad), now)
-    return show([d1, d2, d3])
+    return show([d1, d2, run_d3_watch(now)])
 
 
 ONE_ROWS = ("D1", "D2", "D3") + HUMAN_ROWS
@@ -412,18 +535,7 @@ def cmd_one(a, now: dt.datetime) -> int:
     if rid == "D2":
         return show([run_d2(now)])
     if rid == "D3":
-        try:
-            receipts = mr.read_receipts()
-        except ValueError as e:
-            return show([run_d3(True, f"cannot read today's D1/D2: {e}", now)])
-        bad = []
-        for r in ("D1", "D2"):
-            today = [e for t, e in receipts_of(receipts, r) if t.date() == now.date()]
-            if not today:
-                bad.append(f"{r} no receipt today")
-            elif today[-1]["outcome"] != "PASS":
-                bad.append(f"{r} {today[-1]['outcome']}")
-        return show([run_d3(bool(bad), ", ".join(bad), now)])
+        return show([run_d3_watch(now)])
     try:
         table = load_rows()
     except Unknown as e:
@@ -434,9 +546,50 @@ def cmd_one(a, now: dt.datetime) -> int:
                                       (f" (last closed: {s['last_e']})" if s["last_e"] else ""), tool=TOOL)])
     if s["fired"] is None:
         return show(fire_reminders(table, now, only=(rid,)))
-    return show([mr.write_receipt(rid, "UNKNOWN", why=f"awaiting Daniel's ruling: reminder fired {fmt(s['fired'])} for "
+    return show([mr.write_receipt(rid, "SKIP", why=f"awaiting Daniel's ruling: reminder fired {fmt(s['fired'])} for "
                                   f"due {s['due']:%Y-%m-%d}; close with maint_watch.py human {rid} <E-number>",
                                   tool=TOOL)])
+
+
+# ------------------------------------------------------------------ judge: closing an ASSIST row
+#: Rows whose calendar text requires a judge who did not do the work (Q2: "witnessed by a seat that did not write the
+#: pages"; H2: the Independent Reviewer's). The refused seats are maint_pages.AUTHOR_SEATS + the sweep seat.
+INDEPENDENT = {"Q2", "H2"}
+
+
+def cmd_judge(a, now: dt.datetime) -> int:
+    import maint_pages as mp
+    rid, outcome, seat, note = a.row, a.outcome.upper(), a.seat.strip().lower(), (a.note or "").strip()
+    try:
+        table = load_rows()
+    except Unknown as e:
+        print(f"REFUSED: {e}")
+        return 1
+    if rid not in table["rows"] or table["rows"][rid]["kind"] == "event":
+        print(f"REFUSED: {rid} is not a calendar row with a clock")
+        return 1
+    if rid in HUMAN_ROWS:
+        print(f"REFUSED: {rid} is a HUMAN row; it closes only with Daniel's ledger E-number: "
+              f"maint_watch.py human {rid} <E-number>")
+        return 1
+    if seat not in mp.SEATS:
+        print(f"REFUSED: {seat!r} is not a seat ({', '.join(mp.SEATS)})")
+        return 1
+    if rid in INDEPENDENT and seat in (set(mp.AUTHOR_SEATS) | {mp.SWEEP_SEAT}):
+        print(f"REFUSED: {rid} needs a judge who did not do the work; {seat} wrote the pages or ran the sweep")
+        return 1
+    if not note:
+        print("REFUSED: a judgement says what was judged (--note <text>)")
+        return 1
+    if outcome == "FINDINGS":
+        if a.n is None or a.n < 1:
+            print("REFUSED: FINDINGS needs n >= 1 (zero findings is PASS)")
+            return 1
+        n = a.n
+        mr.write_finding(rid, "S3", f"{rid} judged by {seat}: {note[:80]}", note, table["rows"][rid].get("route_to", ""))
+    else:
+        n = 0
+    return show([mr.write_receipt(rid, outcome, n=n, why=f"judged by {seat}: {note}", tool=TOOL)])
 
 
 def show(receipts: list[dict]) -> int:
@@ -500,9 +653,10 @@ def run_check(rid: str, now: dt.datetime, repo: Path | None = None, table: dict 
                                     tool=TOOL)
         return mr.write_receipt(rid, "PASS", why=f"{what} {last_day} found ({where}); next due {due:%Y-%m-%d}",
                                 evidence=evidence, tool=TOOL)
-    if now <= dl:
-        return mr.write_receipt(rid, "UNKNOWN", why=f"awaiting the {what} due {due:%Y-%m-%d} (grace to {fmt(dl)}); "
-                                f"last {last_day or 'never'} ({where})", evidence=evidence, tool=TOOL)
+    if now <= dl:                              # the check ran; it is waiting on a person, not failing to run
+        seat = {"M5": "managing-editor", "H2": "reviewer", "H3": "publisher"}[rid]
+        return mr.write_receipt(rid, "SKIP", why=f"{mr.AWAITING}{seat}: the {what} due {due:%Y-%m-%d} (grace to "
+                                f"{fmt(dl)}); last {last_day or 'never'} ({where})", evidence=evidence, tool=TOOL)
     mr.write_finding(rid, "S3", f"{rid} {what} overdue", f"due {due:%Y-%m-%d}, last {last_day or 'never'}, "
                      f"looked for {where}", row.get("route_to", ""))
     return mr.write_receipt(rid, "FINDINGS", n=1, why=f"{what} overdue: due {due:%Y-%m-%d}, last "
@@ -516,7 +670,7 @@ def human_status(rid: str, table: dict, receipts: list[dict], now: dt.datetime) 
     last = closed[-1][0] if closed else None
     due = due_from(row, last, table["epoch_date"], now.tzinfo)
     dl = deadline_of(row, due)
-    fired = [t for t, e in receipts_of(receipts, rid, {"UNKNOWN"}) if t >= due]
+    fired = [t for t, e in receipts_of(receipts, rid) if t >= due and (mr.is_awaiting(e) or e.get("outcome") == "UNKNOWN")]
     return {"row": row, "last": last, "last_e": closed[-1][1]["why"] if closed else None, "due": due,
             "deadline": dl, "is_due": now >= due, "overdue": now > dl, "fired": fired[0] if fired else None}
 
@@ -528,7 +682,7 @@ def fire_reminders(table: dict, now: dt.datetime, only=HUMAN_ROWS) -> list[dict]
         if s["is_due"] and s["fired"] is None:
             late = (now.date() - s["due"].date()).days
             when = "on time" if late == 0 else f"late by {late} day(s)"
-            out.append(mr.write_receipt(rid, "UNKNOWN", why=f"awaiting Daniel's ruling: reminder fired "
+            out.append(mr.write_receipt(rid, "SKIP", why=f"awaiting Daniel's ruling: reminder fired "
                                         f"{now:%Y-%m-%d} for due {s['due']:%Y-%m-%d} ({when}); close with "
                                         f"maint_watch.py human {rid} <E-number>", tool=TOOL))
     return out
@@ -650,6 +804,13 @@ def cmd_digest(a, now: dt.datetime) -> int:
           for f in opens] or ["0 findings"]
     L += ["", f"## UNKNOWNs by age ({len(unknowns)})"]
     L += [f"- {_age(t, now)} · {rid}: {e['why']}" for rid, t, e in unknowns] or ["0 UNKNOWN"]
+    waiting = sorted({e["row"]: e for e in receipts}.values(), key=lambda e: e["at"])
+    waiting = [e for e in waiting if mr.is_awaiting(e) and "." not in e["row"]]
+    L += ["", f"## Awaiting a judgement ({len(waiting)})"]
+    L += [f"- {e['row']}: {e['why'][:200]}" for e in waiting] or ["- none"]
+    st = _load_state(D2_ALARMS) or {}
+    L += ["", f"## Standing D2 alarms ({len(st.get('alarms', []))}, as of {st.get('at', 'no D2 run yet')})"]
+    L += [f"- {x}" for x in st.get("alarms", [])] or ["- none"]
     L += ["", "## DUE FOR DANIEL"]
     due_any = False
     for rid in HUMAN_ROWS:
@@ -667,7 +828,7 @@ def cmd_digest(a, now: dt.datetime) -> int:
     L += ["", "## Receipts-only checks (M5, H2, H3)"] + [f"- {r_line(c)}" for c in checks]
     h3 = checks[2]
     L += ["", "## H3: the 6-monthly re-read of the calendar and PRODUCTION_PLAN"]
-    if h3["outcome"] in ("UNKNOWN", "FINDINGS"):
+    if h3["outcome"] in ("UNKNOWN", "FINDINGS") or mr.is_awaiting(h3):
         L += ["REMINDER: the re-read is due. Write the amendment proposal or \"no change\" to "
               "`.maint/notes/H3_<YYYY-MM-DD>.md`. Evidence pack:"] + [f"- {p}" for p in evidence_pack()]
     else:
@@ -758,7 +919,7 @@ def cmd_drill(a, now: dt.datetime) -> int:
         return 1
     last_ping = [t for t, e in receipts_of(receipts, "D3", {"PASS"})]
     _drill_append({"event": "armed", "at": now.isoformat(timespec="seconds"), "skip_date": skip.isoformat()})
-    return show([mr.write_receipt("Q6", "UNKNOWN", why=f"awaiting alarm confirmation: the {skip} heartbeat is "
+    return show([mr.write_receipt("Q6", "SKIP", why=f"awaiting alarm confirmation: the {skip} heartbeat is "
                                   f"withheld on purpose; the external alarm should fire about a day plus the check's "
                                   f"grace after the last ping ({fmt(last_ping[-1]) if last_ping else 'none recorded'})"
                                   f". Record it: maint_watch.py confirm <at|never>", evidence=f".maint/{rel}",
@@ -815,6 +976,12 @@ def main(argv=None) -> int:
     s = sub.add_parser("human", help="close a HUMAN row")
     s.add_argument("row")
     s.add_argument("e_number")
+    s = sub.add_parser("judge", help="close an ASSIST row: the seat's judgement")
+    s.add_argument("row")
+    s.add_argument("outcome", choices=["PASS", "FINDINGS", "pass", "findings"])
+    s.add_argument("n", nargs="?", type=int)
+    s.add_argument("--seat", required=True)
+    s.add_argument("--note", required=True)
     s = sub.add_parser("one", help="one row on its own (D1, D2, D3, or a HUMAN row's reminder); maint_run.py uses it")
     s.add_argument("row", choices=ONE_ROWS)
     s.add_argument("--date", help="D1: the release day it judges (default today, local)")
@@ -839,6 +1006,8 @@ def main(argv=None) -> int:
         return show([run_check(a.row, now)])
     if a.cmd == "one":
         return cmd_one(a, now)
+    if a.cmd == "judge":
+        return cmd_judge(a, now)
     return cmd_human(a, now)
 
 

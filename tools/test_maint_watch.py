@@ -300,7 +300,7 @@ def test_m5_board_receipt_pass_unknown_findings(env):
     assert mw.run_check("M5", now(env), repo=env.tmp, table=t)["outcome"] == "PASS"
     env.clock.set(2026, 11, 3, 9)                        # due 11-02, grace to 11-06 00:00
     r = mw.run_check("M5", now(env), repo=env.tmp, table=t)
-    assert r["outcome"] == "UNKNOWN" and "awaiting the board run" in r["why"]
+    assert r["outcome"] == "SKIP" and mr.is_awaiting(r) and "the board run due" in r["why"]   # waiting, not failing
     env.clock.set(2026, 11, 6, 0, 1)
     assert mw.run_check("M5", now(env), repo=env.tmp, table=t)["outcome"] == "FINDINGS"
     assert mr.read_findings()[-1]["route_to"] == "Editor"
@@ -318,7 +318,7 @@ def test_h2_note_skip_unknown_findings_pass(env):
     env.clock.set(2026, 12, 1, 9)
     assert mw.run_check("H2", now(env), table=t)["outcome"] == "SKIP"         # first due 2027-01-04
     env.clock.set(2027, 1, 6, 9)
-    assert mw.run_check("H2", now(env), table=t)["outcome"] == "UNKNOWN"      # in grace to 01-12
+    assert mr.is_awaiting(mw.run_check("H2", now(env), table=t))             # in grace to 01-12: awaiting
     env.clock.set(2027, 1, 12, 0, 1)
     assert mw.run_check("H2", now(env), table=t)["outcome"] == "FINDINGS"
     note(env, "H2", "2027-01-12")
@@ -336,7 +336,7 @@ def test_digest_empty_week_says_0_findings(env):
     assert code == 2                                     # C1 UNKNOWN is never rounded away
 
 
-def test_one_d3_signals_fail_unless_todays_d1_and_d2_passed(env, monkeypatch):
+def test_one_d3_fails_when_d1_or_d2_is_missing_or_unknown(env, monkeypatch):
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/abc")
     env.clock.set(2026, 11, 3, 10, 35)
     mw.main(["--now", "2026-11-03T10:35:00-05:00", "one", "D3"])            # no D1/D2 today -> fail signal
@@ -345,9 +345,96 @@ def test_one_d3_signals_fail_unless_todays_d1_and_d2_passed(env, monkeypatch):
     mr.write_receipt("D2", "PASS", why="ok", tool="t")
     mw.main(["--now", "2026-11-03T10:35:00-05:00", "one", "D3"])
     assert not env.calls[-1].endswith("/fail") and last("D3")["outcome"] == "PASS"
-    mr.write_receipt("D2", "FINDINGS", n=1, why="overdue: W1", tool="t")
+    mr.write_receipt("D2", "UNKNOWN", why="cannot judge", tool="t")
     mw.main(["--now", "2026-11-03T10:35:00-05:00", "one", "D3"])
-    assert env.calls[-1].endswith("/fail") and "D2 FINDINGS" in last("D3")["why"]
+    assert env.calls[-1].endswith("/fail") and "D2 UNKNOWN" in last("D3")["why"]
+
+
+def test_d3_pings_fail_only_for_a_new_alarm(env, monkeypatch):
+    """The re-review: a standing alarm on day 1 sends /fail, day 2 sends success, a new alarm on day 3 sends /fail."""
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/abc")
+    p = small_table(env.tmp, [DAILY, WEEKLY])
+    monkeypatch.setattr(mw, "ROWS_FILE", p)
+
+    def day(d, w1_pass):
+        env.clock.set(2026, 11, d, 10, 0)
+        mr.write_receipt("D1", "PASS", why="ok", tool="t")
+        if w1_pass:
+            mr.write_receipt("W1", "PASS", why="ok", tool="t")
+        env.clock.set(2026, 11, d, 10, 35)
+        mw.run_d2(now(env))
+        mw.run_d3_watch(now(env))                    # what `one D3` runs (main --now would pin the clock)
+        return env.calls[-1].endswith("/fail"), last("D3")["why"]
+    env.clock.set(2026, 11, 1, 9)
+    mr.write_receipt("W1", "PASS", why="ok", tool="t")
+    env.schedule = {"state": "missing", "problems": ["scheduled task b4him-maint-run is missing"], "why": "x"}
+    fail1, why1 = day(3, True)
+    assert fail1 and "NEW SCHEDULE MISSING" in why1                  # day 1: the alarm is new
+    fail2, why2 = day(4, True)
+    assert not fail2 and "standing alarm(s) already reported" in why2   # day 2: same alarm, success ping
+    fail3, why3 = day(10, False)                                       # W1 missed its Monday 11-09 + 1 d + 24 h? not yet
+    assert not fail3
+    fail4, why4 = day(12, False)                                       # day 3: OVERDUE W1 is new -> /fail
+    assert fail4 and "NEW OVERDUE W1" in why4 and "SCHEDULE" not in why4
+
+
+def test_judge_closes_an_assist_row_and_refuses_an_author_where_independence_is_required(env, capsys):
+    env.clock.set(2026, 11, 2, 12)
+    mr.write_receipt("M4", "SKIP", why=mr.awaiting_why("M4", "managing-editor", "pack assembled"), tool="maint_pages.py")
+    assert mw.main(["--now", "2026-11-02T12:00:00-05:00", "judge", "M4", "PASS", "--seat", "managing-editor",
+                    "--note", "walked the path; all four questions answered"]) == 0
+    assert last("M4")["outcome"] == "PASS" and last("M4")["why"].startswith("judged by managing-editor")
+    assert mw.main(["judge", "Q2", "PASS", "--seat", "site-maintainer", "--note", "x"]) == 1      # an author
+    assert mw.main(["judge", "Q2", "PASS", "--seat", "maintenance-auditor", "--note", "x"]) == 1  # ran the sweep
+    assert mw.main(["judge", "Q2", "FINDINGS", "--seat", "reviewer", "--note", "x"]) == 1        # no n
+    assert mw.main(["judge", "H1", "PASS", "--seat", "publisher", "--note", "x"]) == 1           # HUMAN: E-number
+    assert mw.main(["judge", "M4", "PASS", "--seat", "nobody", "--note", "x"]) == 1
+    assert mw.main(["--now", "2026-11-02T12:00:00-05:00", "judge", "Q2", "FINDINGS", "2", "--seat", "reviewer",
+                    "--note", "two non-lesson pages need a look"]) == 1
+    assert last("Q2")["outcome"] == "FINDINGS" and last("Q2")["n"] == 2
+    assert "REFUSED" in capsys.readouterr().out
+
+
+def test_d2_alarms_an_assist_row_only_when_no_judgement_arrives_in_cadence_plus_grace(env):
+    """The re-review's repro: M4 waiting on its seat must not be STUCK four days later; it is overdue only when a
+    whole cadence + grace passes without a judgement, and re-runs that still wait do not buy more time."""
+    p = small_table(env.tmp, [{**MONTHLY, "id": "M4"}])
+    env.clock.set(2026, 11, 2, 11)
+    mr.write_receipt("M4", "SKIP", why=mr.awaiting_why("M4", "managing-editor", "pack"), tool="maint_pages.py")
+    env.clock.set(2026, 11, 6, 11)
+    assert mw.run_d2(now(env), p)["outcome"] == "PASS"               # waiting is not stuck
+    env.clock.set(2026, 12, 7, 11)
+    mr.write_receipt("M4", "SKIP", why=mr.awaiting_why("M4", "managing-editor", "pack"), tool="maint_pages.py")
+    env.clock.set(2026, 12, 11, 0, 1)                                # next first Monday 12-07 + 1 d + 72 h
+    r = mw.run_d2(now(env), p)
+    assert r["outcome"] == "FINDINGS" and "M4 (awaiting judgement since 2026-11-02" in r["why"]
+    mr.write_receipt("M4", "PASS", why="judged by managing-editor: ok", tool="maint_watch.py")
+    assert mw.run_d2(now(env), p)["outcome"] == "PASS"
+
+
+def test_d2_judges_a3_on_the_rdap_clock(env):
+    """The re-review's repro: weekly SKIPs far from expiry are on time; there is no January false alarm."""
+    a3 = {"id": "A3", "kind": "annual", "months": [1], "grace_hours": 336, "check": "human", "route_to": "Daniel"}
+    p = small_table(env.tmp, [a3])
+    for d in (4, 11, 18, 25):
+        env.clock.set(2027, 1, d, 11)
+        mr.write_receipt("A3", "SKIP", why="not due: expires 2027-09-01 (240 days)", tool="maint_human.py")
+    env.clock.set(2027, 1, 26, 11)
+    assert mw.run_d2(now(env), p)["outcome"] == "PASS"
+    env.clock.set(2027, 2, 3, 11)                                    # no poll since 01-25: Monday 02-01 + 1 d + 24 h
+    r = mw.run_d2(now(env), p)
+    assert r["outcome"] == "FINDINGS" and "RDAP poll stopped" in r["why"]
+    for d in (5, 12, 19):                                            # window opens 2027-07-03; grace 14 d
+        env.clock.set(2027, 7, d, 11)
+        mr.write_receipt("A3", "FINDINGS", n=1, why="expires 2027-09-01 (58 days): the 60-day window is open",
+                         tool="maint_human.py")
+    env.clock.set(2027, 7, 16, 11)
+    assert mw.run_d2(now(env), p)["outcome"] == "PASS"               # inside the 14-day grace (to 07-17 00:00)
+    env.clock.set(2027, 7, 20, 11)
+    r = mw.run_d2(now(env), p)
+    assert r["outcome"] == "FINDINGS" and "window opened 2027-07-03" in r["why"]
+    mr.write_receipt("A3", "PASS", why="closed by Daniel's ledger E01234", tool="maint_watch.py")
+    assert mw.run_d2(now(env), p)["outcome"] == "PASS"
 
 
 def test_one_human_row_is_skip_when_not_due_and_a_reminder_when_due(env):
@@ -356,9 +443,9 @@ def test_one_human_row_is_skip_when_not_due_and_a_reminder_when_due(env):
     assert last("H1")["outcome"] == "SKIP" and "next due 2027-01-04" in last("H1")["why"]
     env.clock.set(2027, 1, 4, 9)
     mw.main(["--now", "2027-01-04T09:00:00-05:00", "one", "H1"])
-    assert last("H1")["outcome"] == "UNKNOWN" and "reminder fired 2027-01-04" in last("H1")["why"]
+    assert mr.is_awaiting(last("H1")) and "reminder fired 2027-01-04" in last("H1")["why"]
     mw.main(["--now", "2027-01-04T09:00:00-05:00", "one", "H1"])
-    assert last("H1")["outcome"] == "UNKNOWN" and "awaiting Daniel" in last("H1")["why"]
+    assert mr.is_awaiting(last("H1")) and "awaiting Daniel" in last("H1")["why"]
 
 
 def test_digest_uses_the_c1_readers_receipt_when_there_is_one(env):
@@ -394,7 +481,7 @@ def test_digest_h3_reminder_with_evidence_pack_and_due_for_daniel(env, monkeypat
     assert "**H1** due 2027-01-04" in text and "**A1** due 2027-01-04" in text and "**A3**" in text
     assert "screenshots" in text                         # H1's "what to look at" comes from the row table
     h1 = last("H1")
-    assert h1["outcome"] == "UNKNOWN" and "(on time)" in h1["why"]
+    assert mr.is_awaiting(h1) and "(on time)" in h1["why"]
 
 
 # ------------------------------------------------------------------ HUMAN rows
@@ -422,7 +509,7 @@ def test_drill_skips_one_heartbeat_then_confirm_pass(env, monkeypatch):
     monkeypatch.setenv("MAINT_HEARTBEAT_URL", URL)
     mw.main(["--now", "2027-01-04T09:00:00-05:00", "drill"])
     q = last("Q6")
-    assert q["outcome"] == "UNKNOWN" and q["why"].startswith("awaiting alarm confirmation")
+    assert mr.is_awaiting(q) and q["why"].startswith("awaiting alarm confirmation")
     mw.main(["--now", "2027-01-04T10:40:00-05:00", "daily", "--release-log", str(env.tmp / "none.jsonl")])
     assert last("D3")["outcome"] == "SKIP" and env.calls == []                 # the heartbeat really was withheld
     assert mw.main(["--now", "2027-01-05T13:00:00-05:00", "confirm", "2027-01-05T12:31:00-04:00"]) == 0

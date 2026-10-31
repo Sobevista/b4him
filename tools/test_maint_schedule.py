@@ -44,9 +44,13 @@ def test_main_prints_and_registers_nothing(monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(ms, "RUN", fake({"where": (0, PY, "")}, calls))
     assert ms.main([]) == 0
-    out = capsys.readouterr().out
-    assert out.startswith("schtasks.exe /Create /TN b4him-maint-run /SC DAILY /ST 10:35 /TR ") and "not registered" in out
-    assert calls == [["where", "py"]]
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].startswith("schtasks.exe /Create /TN b4him-maint-run /SC DAILY /ST 10:35 /TR ")
+    assert lines[4].endswith(" /RU %USERDOMAIN%\\%USERNAME% /F")          # the /RU variant: run while signed out
+    assert "<" not in lines[4] and ">" not in lines[4]                  # nothing cmd.exe would read as a redirect
+    assert lines[6] == ms.BATTERY_PS and "DisallowStartIfOnBatteries = $false" in lines[6]
+    assert "Nothing above has been run or registered." in lines[-1]
+    assert calls == [["where", "py"]]                                   # printing never touches the scheduler
 
 
 def test_no_py_is_unknown(monkeypatch, capsys):

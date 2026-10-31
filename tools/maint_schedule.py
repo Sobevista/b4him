@@ -5,7 +5,8 @@ tools/maint_run.py every day at 10:35 local (after D1's 08:30 + 2 h cutoff, so D
 never registers, changes or deletes a task. `--check` reads the task back and says whether it exists and ran lately;
 D2 (tools/maint_watch.py) calls the same check, so a missing or stalled schedule is a D2 alarm.
 
-    py tools/maint_schedule.py                 print the schtasks /Create line (paste it into cmd.exe)
+    py tools/maint_schedule.py                 print the schtasks /Create line (paste it into cmd.exe), the /RU
+                                               variant, and the PowerShell that lets it start on battery
     py tools/maint_schedule.py --repo <path>   ... for another checkout (default: this one)
     py tools/maint_schedule.py --check         read `schtasks /Query /TN b4him-maint-run /V /FO LIST`
 
@@ -60,14 +61,38 @@ def where_py() -> str:
     return lines[0]
 
 
-def create_argv(repo: Path = REPO, py: str | None = None) -> list[str]:
+def create_argv(repo: Path = REPO, py: str | None = None, ru: str | None = None) -> list[str]:
     script = Path(repo) / "tools" / "maint_run.py"
     tr = f'"{py or where_py()}" "{script}"'
-    return ["schtasks.exe", "/Create", "/TN", TASK, "/SC", "DAILY", "/ST", AT, "/TR", tr, "/F"]
+    return (["schtasks.exe", "/Create", "/TN", TASK, "/SC", "DAILY", "/ST", AT, "/TR", tr]
+            + (["/RU", ru] if ru else []) + ["/F"])
 
 
-def command(repo: Path = REPO, py: str | None = None) -> str:
-    return subprocess.list2cmdline(create_argv(repo, py))
+def command(repo: Path = REPO, py: str | None = None, ru: str | None = None) -> str:
+    return subprocess.list2cmdline(create_argv(repo, py, ru))
+
+
+#: Printed, never run. Task Scheduler's DisallowStartIfOnBatteries defaults to True ("the task will not be started if
+#: the computer is running on batteries", learn.microsoft.com/.../taskschd/tasksettings-disallowstartifonbatteries),
+#: and a task made by schtasks /Create gets that default, so on a laptop unplugged at 10:35 the run would not start.
+BATTERY_PS = (f"$t = Get-ScheduledTask -TaskName '{TASK}'; $t.Settings.DisallowStartIfOnBatteries = $false; "
+              f"$t.Settings.StopIfGoingOnBatteries = $false; Set-ScheduledTask -InputObject $t")
+
+
+def guidance(repo: Path = REPO, py: str | None = None, ru: str | None = None) -> list[str]:
+    """Every line a human pastes, in order, as text. Nothing here runs any of them."""
+    py = py or where_py()
+    return [
+        "# 1. Create the task (cmd.exe). Without /RU it runs as you, only while you are signed in:",
+        command(repo, py),
+        "#    Or, to run whether or not you are signed in, name your account with /RU; schtasks then prompts for its",
+        "#    password (learn.microsoft.com/windows-server/administration/windows-commands/schtasks-create, /ru /rp):",
+        command(repo, py, ru or r"%USERDOMAIN%\%USERNAME%"),     # cmd.exe expands these to your own account
+        "# 2. Let it start on battery (PowerShell; Task Scheduler's default is not to start on batteries):",
+        BATTERY_PS,
+        f"# 3. Read it back: schtasks /Query /TN {TASK} /V /FO LIST  ('Task To Run:' must begin with a quote;",
+        "#    'Power Management:' must not say 'No Start On Batteries'). Then: py tools/maint_schedule.py --check",
+    ]
 
 
 def _field(text: str, name: str) -> str | None:
@@ -127,11 +152,12 @@ def main(argv=None) -> int:
         print(json.dumps(r, ensure_ascii=False))
         return {"ok": 0, "missing": 1, "stale": 1, "unknown": 2}[r["state"]]
     try:
-        print(command(Path(a.repo)))
+        lines = guidance(Path(a.repo))
     except Unreadable as e:
         print(f"UNKNOWN: {e}")
         return 2
-    print(f"# not registered. Paste into cmd.exe, then read it back: schtasks /Query /TN {TASK} /V /FO LIST")
+    print("\n".join(lines))
+    print("# Nothing above has been run or registered.")
     return 0
 
 
