@@ -47,7 +47,11 @@ RUN RECORDS (the harness counter's spec, delivered.py @ c06bb63e). Every run of 
 a run_start line as its FIRST write (seconds after launch, before any tool runs) and a run_end line as its LAST, in a
 finally block so a crash still closes the run; neither has a "row" key:
     {"at", "kind": "run_start", "run_id": <uuid4, new per run>, "runner": "tools/maint_run.py",
-     "proc_started": <this process's creation time, GetProcessTimes>, "trigger": "scheduled"|"manual"}
+     "pid": <the process Task Scheduler created>, "proc_started": <that process's creation time, GetProcessTimes>,
+     "trigger": "scheduled"|"manual"}
+pid is this process, unless the py launcher (py.exe) started it, in which case it is the launcher, which is what
+Task Scheduler created (its event 129 ProcessID). tools/maint_schedule.py prints a /TR that runs python.exe itself, so
+on the scheduled path pid and proc_started are this process's own.
     {"at", "kind": "run_end", "run_id", "runner": "tools/maint_run.py", "exit": <the runner's exit code, int>,
      "rows_failed": [<row ids whose runner failed this run>]}
 A crash of the runner itself records exit 1 and the rows that had failed before it.
@@ -429,23 +433,62 @@ RUNNER = "tools/maint_run.py"
 TRIGGER_ENV = "MAINT_TRIGGER"        # set to "scheduled" only by the scheduled task's action (tools/maint_schedule.py)
 
 
-def proc_started() -> str | None:
-    """This process's creation time (GetProcessTimes, Windows), ISO-8601 UTC; None where it cannot be read."""
+LAUNCHERS = {"py.exe", "pyw.exe"}        # the Windows py launcher: Task Scheduler's process when /TR runs py.exe
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
+def process_info(pid: int | None = None) -> tuple[str | None, str | None]:
+    """(image path, creation time ISO-8601 UTC) of `pid`, or of this process when None. (None, None) where the OS
+    will not say (not Windows, the process is gone, access denied)."""
     try:
         import ctypes
         from ctypes import wintypes
         k32 = ctypes.windll.kernel32
         k32.GetCurrentProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
         k32.GetProcessTimes.restype = wintypes.BOOL
-        times = [wintypes.FILETIME() for _ in range(4)]
-        if not k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(t) for t in times]):
-            return None
-        ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime        # 100 ns since 1601-01-01 UTC
-        t = dt.datetime(1601, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(microseconds=ticks // 10)
-        return t.isoformat(timespec="seconds")
+        k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                                   ctypes.POINTER(wintypes.DWORD)]
+        k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        h = k32.GetCurrentProcess() if pid is None else k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return None, None
+        try:
+            buf, size = ctypes.create_unicode_buffer(1024), wintypes.DWORD(1024)
+            image = buf.value if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) else None
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not k32.GetProcessTimes(h, *[ctypes.byref(t) for t in times]):
+                return image, None
+            ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime      # 100 ns since 1601-01-01 UTC
+            t = dt.datetime(1601, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(microseconds=ticks // 10)
+            return image, t.isoformat(timespec="seconds")
+        finally:
+            if pid is not None:
+                k32.CloseHandle(h)
     except (AttributeError, OSError, ImportError):
-        return None
+        return None, None
+
+
+def choose_launch(own: tuple[int, str | None, str | None],
+                  parent: tuple[int, str | None, str | None]) -> dict:
+    """The process Task Scheduler created (its event 129 ProcessID): this one, unless this one was started by the py
+    launcher, in which case the launcher is what Task Scheduler created. Each tuple is (pid, image, created)."""
+    pid, image, created = parent if parent[1] and Path(parent[1]).name.lower() in LAUNCHERS else own
+    return {"pid": pid, "proc_started": created}
+
+
+def launched_process() -> dict:
+    own = (os.getpid(), *process_info())
+    ppid = os.getppid()
+    return choose_launch(own, (ppid, *process_info(ppid)))
+
+
+def proc_started() -> str | None:
+    """The creation time of the process Task Scheduler created (see launched_process)."""
+    return launched_process()["proc_started"]
 
 
 def trigger() -> str:
@@ -458,7 +501,9 @@ def in_run(body) -> int:
     in a finally block, so a crash still closes the run (and the process exits non-zero)."""
     rid = str(uuid.uuid4())
     saved = os.environ.get(mr.RUN_ENV)
-    mr.write_run_marker("run_start", rid, runner=RUNNER, proc_started=proc_started(), trigger=trigger())
+    launch = launched_process()
+    mr.write_run_marker("run_start", rid, runner=RUNNER, pid=launch["pid"], proc_started=launch["proc_started"],
+                        trigger=trigger())
     os.environ[mr.RUN_ENV] = rid
     rows_failed: list[str] = []                # body() fills it: the rows whose runner failed this run
     code = CRASH_EXIT

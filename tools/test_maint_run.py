@@ -180,11 +180,12 @@ def test_run_records_bracket_every_receipt_of_the_run(fakes, md, monkeypatch):
     monkeypatch.setattr(run, "load_table", lambda path=None: list(fakes.values()))
     monkeypatch.delenv("MAINT_TRIGGER", raising=False)
     monkeypatch.delenv("MAINT_RUN_ID", raising=False)
-    monkeypatch.setattr(run, "proc_started", lambda: "2026-10-31T09:00:00+00:00")   # this process is pytest's
+    monkeypatch.setattr(run, "launched_process", lambda: {"pid": 4242, "proc_started": "2026-10-31T09:00:00+00:00"})
     assert run.main(["--row", "R1", "--row", "D2"]) == 0
     log = raw_log(md)
     start, end, body = log[0], log[-1], log[1:-1]
-    assert list(start) == ["at", "kind", "run_id", "runner", "proc_started", "trigger"]
+    assert list(start) == ["at", "kind", "run_id", "runner", "pid", "proc_started", "trigger"]
+    assert start["pid"] == 4242
     assert start["kind"] == "run_start" and start["runner"] == "tools/maint_run.py" and start["trigger"] == "manual"
     assert list(end) == ["at", "kind", "run_id", "runner", "exit", "rows_failed"] and end["kind"] == "run_end"
     assert end["exit"] == 0 and end["rows_failed"] == [] and start["proc_started"] == "2026-10-31T09:00:00+00:00"
@@ -207,6 +208,39 @@ def test_proc_started_is_the_child_process_creation_time():
                   check=True).stdout.strip()
     ps = _dt.datetime.fromisoformat(out)
     assert ps.utcoffset() is not None and before - _dt.timedelta(seconds=2) <= ps <= before + _dt.timedelta(seconds=60)
+
+
+def test_choose_launch_picks_the_py_launcher_when_it_started_us():
+    own = (200, r"C:\Py\Python314\python.exe", "2026-10-31T10:35:01+00:00")
+    launcher = (100, r"C:\Windows\py.exe", "2026-10-31T10:35:00+00:00")
+    shell = (50, r"C:\Windows\System32\cmd.exe", "2026-10-31T09:00:00+00:00")
+    assert run.choose_launch(own, launcher) == {"pid": 100, "proc_started": "2026-10-31T10:35:00+00:00"}
+    assert run.choose_launch(own, shell) == {"pid": 200, "proc_started": "2026-10-31T10:35:01+00:00"}
+    assert run.choose_launch(own, (100, r"C:\Windows\PYW.EXE", "x"))["pid"] == 100
+    assert run.choose_launch(own, (100, None, None))["pid"] == 200          # an unreadable parent is not a launcher
+
+
+def _child_launch(argv):
+    import json as _j
+    import subprocess as _sp
+    code = ("import sys, os, json; sys.path.insert(0, sys.argv[1]); import maint_run; "
+            "print(json.dumps({'me': os.getpid(), 'parent': os.getppid(), **maint_run.launched_process()}))")
+    out = _sp.run([*argv, "-c", code, str(HERE)], capture_output=True, encoding="utf-8", check=True).stdout
+    return _j.loads(out.strip().splitlines()[-1])
+
+
+def test_pid_is_the_process_task_scheduler_would_create():
+    """Run directly with python.exe (what maint_schedule.py prints), pid is the process itself; run through the py
+    launcher, pid is the launcher, which is what Task Scheduler would have created (its event 129 ProcessID)."""
+    import shutil as _sh
+    import sys as _sys
+    direct = _child_launch([_sys.executable])
+    assert direct["pid"] == direct["me"] and direct["proc_started"]
+    py = _sh.which("py")
+    if py is None:
+        pytest.skip("no py launcher on PATH")
+    via = _child_launch([py])
+    assert via["pid"] == via["parent"] != via["me"] and via["proc_started"]
 
 
 def test_run_end_names_the_rows_whose_runner_failed(fakes, md, monkeypatch):

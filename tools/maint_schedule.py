@@ -10,8 +10,11 @@ D2 (tools/maint_watch.py) calls the same check, so a missing or stalled schedule
     py tools/maint_schedule.py --repo <path>   ... for another checkout (default: this one)
     py tools/maint_schedule.py --check         read `schtasks /Query /TN b4him-maint-run /V /FO LIST`
 
-HOW THE LINE IS BUILT (harness LESSONS, "A path containing spaces inside schtasks /TR"): py.exe is resolved with
-`where py`, the /TR value is quoted ("<py>" "<script>") so the stored Task To Run begins with a quote, and the whole
+HOW THE LINE IS BUILT (harness LESSONS, "A path containing spaces inside schtasks /TR"): the interpreter is the full
+path of python.exe itself, resolved with `py -c "import sys;print(sys.executable)"`, not the py.exe launcher, so the
+process Task Scheduler creates (its event 129 ProcessID) IS maint_run's process and run_start's pid / proc_started
+are its own (tools/maint_run.py). The /TR value is quoted ("<python>" "<script>" --scheduled) so the stored Task To
+Run begins with a quote, and the whole
 argv is joined by subprocess.list2cmdline, never by PowerShell string-building. After pasting, read it back:
 `schtasks /Query /TN b4him-maint-run /V /FO LIST` must show "Task To Run:" beginning with ".
 
@@ -53,17 +56,21 @@ def _run(argv: list[str]) -> tuple[int, str, str]:
 RUN = _run
 
 
-def where_py() -> str:
-    code, out, err = RUN(["where", "py"])
+def python_exe() -> str:
+    """The full path of python.exe, as the py launcher resolves it (never py.exe itself: see the docstring)."""
+    code, out, err = RUN(["py", "-c", "import sys;print(sys.executable)"])
     lines = [x.strip() for x in out.splitlines() if x.strip()]
-    if code != 0 or not lines:
-        raise Unreadable(f"`where py` found no py.exe: {(err or out).strip()[:200]}")
-    return lines[0]
+    if code != 0 or not lines or not lines[-1].lower().endswith("python.exe"):
+        raise Unreadable(f"`py -c sys.executable` gave no python.exe: {(err or out).strip()[:200]}")
+    return lines[-1]
+
+
+where_py = python_exe                          # the old name; the line no longer runs the launcher
 
 
 def create_argv(repo: Path = REPO, py: str | None = None, ru: str | None = None) -> list[str]:
     script = Path(repo) / "tools" / "maint_run.py"
-    tr = f'"{py or where_py()}" "{script}" --scheduled'   # run_start records trigger=scheduled (maint_run.py)
+    tr = f'"{py or python_exe()}" "{script}" --scheduled'   # run_start records trigger=scheduled (maint_run.py)
     if len(tr) > 261:
         raise Unreadable(f"the /TR value is {len(tr)} chars; schtasks allows 262")
     return (["schtasks.exe", "/Create", "/TN", TASK, "/SC", "DAILY", "/ST", AT, "/TR", tr]
@@ -81,9 +88,14 @@ BATTERY_PS = (f"$t = Get-ScheduledTask -TaskName '{TASK}'; $t.Settings.DisallowS
               f"$t.Settings.StopIfGoingOnBatteries = $false; Set-ScheduledTask -InputObject $t")
 
 
+HISTORY_LOG = "Microsoft-Windows-TaskScheduler/Operational"
+HISTORY_ON = f"wevtutil sl {HISTORY_LOG} /e:true"
+HISTORY_READBACK = f"wevtutil gl {HISTORY_LOG}"
+
+
 def guidance(repo: Path = REPO, py: str | None = None, ru: str | None = None) -> list[str]:
     """Every line a human pastes, in order, as text. Nothing here runs any of them."""
-    py = py or where_py()
+    py = py or python_exe()
     return [
         "# 1. Create the task (cmd.exe). Without /RU it runs as you, only while you are signed in:",
         command(repo, py),
@@ -94,6 +106,12 @@ def guidance(repo: Path = REPO, py: str | None = None, ru: str | None = None) ->
         BATTERY_PS,
         f"# 3. Read it back: schtasks /Query /TN {TASK} /V /FO LIST  ('Task To Run:' must begin with a quote;",
         "#    'Power Management:' must not say 'No Start On Batteries'). Then: py tools/maint_schedule.py --check",
+        "# 4. Once, ELEVATED (Run as administrator), Daniel: turn on Task Scheduler history. It is off on this",
+        "#    machine, so the harness counter cannot see event 129 (the ProcessID it matches to run_start's pid)",
+        "#    and reads UNKNOWN until it is on:",
+        HISTORY_ON,
+        "#    Read it back (expect the line 'enabled: true'):",
+        HISTORY_READBACK,
     ]
 
 

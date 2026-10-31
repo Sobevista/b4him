@@ -13,8 +13,8 @@ and the repo is public.
          "run_id": "<uuid4 of the tools/maint_run.py run>"|null}
       and, around each run of tools/maint_run.py, two run records (no "row" key; read_receipts() skips them), the
       runner's first and last writes (the harness counter's spec, delivered.py @ c06bb63e):
-        {"at": ISO-UTC, "kind": "run_start", "run_id": <uuid4>, "runner": "tools/maint_run.py",
-         "proc_started": <this process's creation time, ISO-UTC>|null, "trigger": "scheduled"|"manual"}
+        {"at": ISO-UTC, "kind": "run_start", "run_id": <uuid4>, "runner": "tools/maint_run.py", "pid": int,
+         "proc_started": <that process's creation time, ISO-UTC>|null, "trigger": "scheduled"|"manual"}
         {"at": ISO-UTC, "kind": "run_end", "run_id": <uuid4>, "runner": "tools/maint_run.py", "exit": int,
          "rows_failed": [row ids whose runner failed]}
 TOOL AND RUN. `tool` is the writing script's path relative to the repo root (`tools/linkcheck.py`, never a bare

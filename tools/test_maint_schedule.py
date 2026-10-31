@@ -1,5 +1,5 @@
 """Tests for tools/maint_schedule.py: the printed schtasks line and the read-back check. Nothing is registered: every
-schtasks / where call is a fake."""
+schtasks / py call is a fake."""
 import datetime as dt
 import subprocess
 
@@ -7,7 +7,7 @@ import pytest
 
 import maint_schedule as ms
 
-PY = r"C:\Windows\py.exe"
+PY = r"C:\Py\Python314\python.exe"
 NOW = dt.datetime(2026, 11, 3, 11, 0).astimezone()
 
 
@@ -29,20 +29,21 @@ def listing(last="11/3/2026 10:35:02 AM", tr=f'"{PY}" "C:\\x y\\tools\\maint_run
 
 def test_the_line_is_list2cmdline_with_a_quoted_tr_at_10_35(monkeypatch, tmp_path):
     calls = []
-    monkeypatch.setattr(ms, "RUN", fake({"where": (0, PY + "\r\nC:\\other\\py.exe\r\n", "")}, calls))
+    monkeypatch.setattr(ms, "RUN", fake({"py": (0, PY + "\r\n", "")}, calls))
     repo = tmp_path / "Data Import" / "b4him"
     line = ms.command(repo)
     script = repo / "tools" / "maint_run.py"
     assert line == subprocess.list2cmdline(["schtasks.exe", "/Create", "/TN", "b4him-maint-run", "/SC", "DAILY",
                                             "/ST", "10:35", "/TR", f'"{PY}" "{script}" --scheduled', "/F"])
-    assert calls == [["where", "py"]]                       # py resolved by `where py`, the first hit
-    assert '/TR "\\"C:\\Windows\\py.exe\\" \\"' in line      # the stored Task To Run will begin with a quote
+    assert calls == [["py", "-c", "import sys;print(sys.executable)"]]   # python.exe itself, not the launcher
+    assert '/TR "\\"C:\\Py\\Python314\\python.exe\\" \\"' in line   # the Task To Run begins with a quote
+    assert "py.exe" not in line.replace("python.exe", "")              # Task Scheduler starts maint_run's process
     assert all(a[0] != "schtasks" for a in calls)            # printing never touches the scheduler
 
 
 def test_main_prints_and_registers_nothing(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(ms, "RUN", fake({"where": (0, PY, "")}, calls))
+    monkeypatch.setattr(ms, "RUN", fake({"py": (0, PY, "")}, calls))
     assert ms.main([]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[1].startswith("schtasks.exe /Create /TN b4him-maint-run /SC DAILY /ST 10:35 /TR ")
@@ -50,11 +51,17 @@ def test_main_prints_and_registers_nothing(monkeypatch, capsys):
     assert "<" not in lines[4] and ">" not in lines[4]                  # nothing cmd.exe would read as a redirect
     assert lines[6] == ms.BATTERY_PS and "DisallowStartIfOnBatteries = $false" in lines[6]
     assert "Nothing above has been run or registered." in lines[-1]
-    assert calls == [["where", "py"]]                                   # printing never touches the scheduler
+    i = lines.index(ms.HISTORY_ON)                                       # Daniel's elevated one-time step
+    assert ms.HISTORY_ON == "wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true"
+    assert "ELEVATED" in lines[i - 3] and lines[i + 2] == "wevtutil gl Microsoft-Windows-TaskScheduler/Operational"
+    assert "enabled: true" in lines[i + 1]
+    assert calls == [["py", "-c", "import sys;print(sys.executable)"]]  # printing never touches the scheduler
 
 
 def test_no_py_is_unknown(monkeypatch, capsys):
-    monkeypatch.setattr(ms, "RUN", fake({"where": (1, "", "INFO: Could not find files")}))
+    monkeypatch.setattr(ms, "RUN", fake({"py": (1, "", "no launcher")}))
+    assert ms.main([]) == 2
+    monkeypatch.setattr(ms, "RUN", fake({"py": (0, r"C:\Windows\py.exe", "")}))       # never the launcher
     assert ms.main([]) == 2
 
 
