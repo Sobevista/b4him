@@ -4679,3 +4679,187 @@ def test_cite_M4_the_editors_judgement_closes_it(monkeypatch, tmp_path):
     rec = receipt("M4", maint_pages)
     assert rec == prev and code == 1 and (shut["outcome"], shut["n"]) == ("FINDINGS", 1) and hand_close_ok(prev, shut)
 
+
+# ================================================================== round 10: the reviewer's mut12 survivors
+def fatal_git_during(fn, tmp_path):
+    """`fn` (a tool's own public function), wrapped so git fails FATALLY (exit 128: GIT_DIR points nowhere) for
+    exactly that call, and works again after it."""
+    import os
+    nowhere = str(tmp_path / "no-repository-here")
+
+    def wrapped(*args, **kwargs):
+        saved = os.environ.get("GIT_DIR")
+        os.environ["GIT_DIR"] = nowhere                     # every git command now dies with exit 128
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            if saved is None:
+                os.environ.pop("GIT_DIR", None)
+            else:
+                os.environ["GIT_DIR"] = saved
+    return wrapped
+
+
+def test_cite_W1_a_same_named_script_in_another_folder_is_refused(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "linkcheck.py").write_text("raise SystemExit(0)\n", encoding="utf-8")   # same name, other file
+    monkeypatch.setattr(run, "TOOLS_DIR", elsewhere)
+    code = drive("W1", linkcheck)                       # the real linkcheck module is not THAT linkcheck.py
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "the module handed in is not this script" in rec["why"] and code == 2
+
+
+def test_cite_Q2_a_git_grep_that_dies_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    _client(repo)
+    monkeypatch.setattr(maint_pages, "grep_tokens", fatal_git_during(maint_pages.grep_tokens, tmp_path))
+    drive("Q2", maint_pages)
+    rec = receipt("Q2", maint_pages)
+    assert rec["outcome"] == "UNKNOWN", rec
+
+
+def test_cite_A2_a_git_log_that_dies_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setattr(maint_pages, "git_dates", fatal_git_during(maint_pages.git_dates, tmp_path))
+    drive("A2", maint_pages)
+    rec = receipt("A2", maint_pages)
+    assert rec["outcome"] == "UNKNOWN" and "could not run: git log" in rec["why"]
+
+
+def test_cite_M3_a_mixed_content_grep_that_dies_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    import headers_tls_check as h
+    real_grep = h.git_grep_http                             # the real grep, before _tls fakes it
+    _tls(monkeypatch)
+    monkeypatch.setattr(h, "git_grep_http", fatal_git_during(real_grep, tmp_path))
+    drive("M3", headers_tls_check)
+    rec = receipt("M3", headers_tls_check)
+    assert rec["outcome"] == "UNKNOWN" and "mixed content: git grep exit 128" in rec["why"]
+
+
+def test_cite_M1_an_automate_row_cannot_be_judged(monkeypatch, tmp_path):
+    import maint_quality
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _pa11y(monkeypatch, 0, json.dumps({"total": 23, "passes": 23, "errors": 0, "results": {"http://h/": []}}))
+    drive("M1", maint_quality)
+    rec = receipt("M1", maint_quality)
+    plant_awaiting("M1", "maint_quality.py", "awaiting site-maintainer judgement: a pack", "packs/M1/index.md")
+    code, prev, after = close("M1", maint_watch, "judge", "M1", "PASS", "--seat", "site-maintainer", "--note", "ok")
+    assert rec["outcome"] == "PASS" and code == 1 and after == prev     # M1 is AUTOMATE: its tool judges it
+
+
+def test_cite_Q2_an_author_cannot_judge_the_sweep(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    _client(repo)
+    drive("Q2", maint_pages)
+    rec = receipt("Q2", maint_pages)
+    code, prev, after = close("Q2", maint_watch, "judge", "Q2", "PASS", "--seat", "site-maintainer", "--note", "fine")
+    assert rec["outcome"] == "SKIP" and code == 1 and after == prev     # Q2 needs a seat that did not write the pages
+
+
+def test_cite_H1_a_close_needs_a_real_ledger_e_number(monkeypatch, tmp_path):
+    import maint_human
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11, watch=maint_watch)
+    _capture(monkeypatch)
+    drive("H1", maint_human)
+    rec = receipt("H1", maint_human)
+    code, prev, after = close("H1", maint_watch, "human", "H1", "Eh, looks fine")
+    assert rec["outcome"] == "SKIP" and code == 1 and after == prev
+
+
+def test_cite_D3_a_4xx_from_the_heartbeat_is_not_delivered(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _hb(monkeypatch)
+    monkeypatch.setattr(maint_watch, "HTTP_GET", lambda url: (404, "not found"))
+    _d1d2()
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["outcome"] == "FINDINGS" and "HTTP 404" in rec["why"]
+
+
+def test_cite_M4_a_close_needs_the_latest_line_to_be_awaiting(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    pages_repo(monkeypatch, maint_pages, tmp_path)
+    drive("M4", maint_pages)
+    rec = receipt("M4", maint_pages)
+    mr.write_receipt("M4", "SKIP", why="walkthrough not due", evidence=rec["evidence"], tool="maint_pages.py")
+    code, prev, after = close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "ok")
+    assert rec["outcome"] == "SKIP" and code == 1 and after == prev
+
+
+def test_cite_D3_a_missing_d2_receipt_pings_fail(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    calls = _hb(monkeypatch)
+    mr.write_receipt("D1", "PASS", why="ok", tool="maint_watch.py")          # D1 today, D2 never
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["outcome"] == "PASS" and calls[-1].endswith("/fail") and "D2 no receipt today" in rec["why"]
+
+
+def test_cite_D2_a_schedule_check_that_raises_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    _table(monkeypatch, tmp_path, "D1", "D2", "M4")
+    mr.write_receipt("D1", "PASS", why="released", tool="maint_watch.py")
+    mr.write_receipt("M4", "PASS", why="judged by managing-editor: ok", tool="maint_watch.py")
+
+    def broken(now):
+        raise RuntimeError("Task Scheduler did not answer")
+    monkeypatch.setattr(maint_watch, "SCHEDULE_CHECK", broken)
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "schedule UNKNOWN: RuntimeError: Task Scheduler did not answer" in rec["why"]
+
+
+#: A child that starts a grandchild (no pipes shared) and then outlives its timeout.
+CHILD_WITH_GRANDCHILD = ("import pathlib, subprocess, sys, time\n"
+                         "here = pathlib.Path(sys.argv[0]).parent\n"
+                         "subprocess.Popen([sys.executable, str(here / 'grandchild.py')], stdin=subprocess.DEVNULL,\n"
+                         "                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+                         "time.sleep(60)\n")
+#: The grandchild: appends a byte to ../beats/heartbeat.txt every 0.05 s for 20 s, while it lives.
+GRANDCHILD = ("import pathlib, sys, time\n"
+              "beat = pathlib.Path(sys.argv[0]).parent.parent / 'beats' / 'heartbeat.txt'\n"
+              "beat.parent.mkdir(exist_ok=True)\n"
+              "for i in range(400):\n"
+              "    with open(beat, 'a') as f:\n"
+              "        f.write('x')\n"
+              "    time.sleep(0.05)\n")
+
+
+def test_cite_W1_a_timed_out_child_is_stopped_with_its_children(monkeypatch, tmp_path):
+    import linkcheck
+    import time
+    md, _ = world(monkeypatch, tmp_path)
+    d = child_tool(monkeypatch, tmp_path, "W1", CHILD_WITH_GRANDCHILD, timeout=3)
+    (d / "grandchild.py").write_text(GRANDCHILD, encoding="utf-8")
+    drive_real("W1")
+    rec = receipt("W1", linkcheck)
+    beat = tmp_path / "beats" / "heartbeat.txt"          # written by the grandchild alone
+    time.sleep(0.5)
+    before = beat.stat().st_size if beat.exists() else 0
+    time.sleep(1.5)                                      # a live grandchild writes a byte every 0.05 s
+    after = beat.stat().st_size if beat.exists() else 0
+    assert rec.get("outcome") == "UNKNOWN" and "timed out after 3 s" in rec["why"]
+    assert before > 0 and after == before                # it ran, and it was stopped with its parent
+
