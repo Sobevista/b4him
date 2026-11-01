@@ -4568,6 +4568,45 @@ def test_cite_D1_the_release_day_is_the_calendar_zone_s(monkeypatch, tmp_path):
     assert rec["outcome"] == "PASS" and rec["why"].startswith("2026-11-02: 08:35 PUBLISHED")
 
 
+def far_east(monkeypatch, clock, *when):
+    """The calendar's zone pinned to +09:00 (never this machine's), and the clock set to a wall time there."""
+    import maint_receipt as mr
+    monkeypatch.setattr(mr, "LOCAL_TZ", FAR_EAST)
+    clock.t = dt.datetime(*when, tzinfo=FAR_EAST)
+
+
+def test_cite_D2_cadence_runs_on_the_calendar_zone_s_days(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    _table(monkeypatch, tmp_path, "D2", "D1")
+    far_east(monkeypatch, clock, 2026, 11, 2, 8, 40)                    # 08:40 on 11-02 here = 11-01 23:40Z
+    mr.write_receipt("D1", "PASS", why="released", tool="maint_watch.py")
+    far_east(monkeypatch, clock, 2026, 11, 3, 5, 0)                     # D1's next 10:30 here is still ahead
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "PASS" and "none UNKNOWN" in rec["why"]
+
+
+def test_cite_W2_the_digest_s_week_ends_on_the_calendar_zone_s_day(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    far_east(monkeypatch, clock, 2026, 11, 2, 11, 0)                    # 02:00Z: the US day is still 11-01
+    drive("W2", maint_watch)
+    rec = receipt("W2", maint_watch)
+    assert rec["outcome"] == "PASS" and "week to 2026-11-02" in _digest(md, rec)
+
+
+def test_cite_Q6_the_drill_withholds_the_calendar_zone_s_today(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
+    far_east(monkeypatch, clock, 2026, 11, 2, 11, 0)                    # 02:00Z: the US day is still 11-01
+    drive("Q6", maint_watch)
+    rec = receipt("Q6", maint_watch)
+    assert rec["outcome"] == "SKIP" and "the 2026-11-02 heartbeat is withheld" in rec["why"]
+
+
 # ================================================================== round 9: D2's owed-judgement clock (A17, A18)
 def _owed_m4(clock, later_outcome, later_why):
     """M4 awaiting a judgement since 2026-11-02, then (on 2027-01-05) a line that is NOT a close; D2 runs 2027-01-06."""
