@@ -7363,3 +7363,139 @@ def test_cite_M3_what_counts_as_a_mixed_content_subresource(monkeypatch, tmp_pat
     assert [(x["path"], x["line"]) for x in hits] == [("home.html", 3), ("a.css", 9), ("b.html", 4), ("c.css", 1),
                                                       ("g.html", None)]
     assert len(hits[-1]["match"]) == 160 and owns("M3", headers_tls_check)
+
+
+# ================================================================== sweep: maint_human, line by line
+class RunGit:
+    """`git(repo, *args)` through maint_run's own process runner (a shared tool), for rows whose tool has no git."""
+    def git(self, repo, *args):
+        import maint_run as run
+        code, out, err = run.run_process(["git", "-C", str(repo), *args], 60)
+        return code, out
+def test_cite_H1_the_capture_s_geometry(monkeypatch, tmp_path):
+    import maint_human as mh
+    import pytest
+    assert (mh.WIDTHS, mh.SCALE, mh.TILE_CSS, mh.MAX_DEVICE_PX) == ((1280, 390), 2, 2000, 16384)
+    assert mh.tile_plan(4500) == [(0, 2000), (2000, 2000), (4000, 500)] and mh.tile_plan(1) == [(0, 1)]
+    with pytest.raises(mh.PackError, match="page height is 0"):
+        mh.tile_plan(0)
+    with pytest.raises(mh.PackError, match="not under 16384 device px"):
+        mh.tile_plan(100, tile_css=8192)
+    assert mh.tile_plan(100, tile_css=8191) == [(0, 100)] and owns("H1", mh)
+
+
+def test_cite_H1_each_tile_is_measured_and_the_page_covered_once(monkeypatch, tmp_path):
+    import maint_human as mh
+    import pytest
+    plan = mh.tile_plan(4500)
+    good = [png(tmp_path / f"t{i}.png", 2560, h * 2) for i, (_, h) in enumerate(plan)]
+    assert mh.check_tiles(good, plan, 1280, 4500) == []
+    assert mh.png_size(good[0]) == (2560, 4000)
+    gap = [(0, 2000), (2100, 2000), (4100, 400)]
+    probs = mh.check_tiles([png(tmp_path / f"g{i}.png", 2560, h * 2) for i, (_, h) in enumerate(gap)], gap, 1280, 4500)
+    assert "g1.png: starts at 2100, expected 2000 (gap or overlap)" in probs and "tiles cover 4500 of 4500 css px" \
+        not in probs
+    tall = [(0, 8192)]
+    probs = mh.check_tiles([png(tmp_path / "tall.png", 2560, 16384)], tall, 1280, 8192)
+    assert "tall.png: 16384 device px is not under 16384" in probs
+    short = mh.check_tiles(good[:2], plan[:2], 1280, 4500)
+    assert "tiles cover 4000 of 4500 css px" in short
+    (tmp_path / "not.png").write_bytes(b"GIF89a" + b"0" * 30)
+    with pytest.raises(mh.PackError, match="not.png is not a PNG"):
+        mh.png_size(tmp_path / "not.png")
+    assert owns("H1", mh)
+
+
+def test_cite_H1_the_d9_reference_and_its_absence(monkeypatch, tmp_path):
+    import maint_human as mh
+    md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
+    rows = "".join(f"| r{i} | v{i} |\n" for i in range(15))
+    d9 = "## D8 — X. LOCKED 2026-07-01\n\nText.\n\n## D9 — Look. LOCKED 2026-07-02\n\n" + rows + \
+         "\n## D90 — Not it\n\n| no | no |\n\n## D10 — End\n"
+    repo = site_repo(RunGit(), tmp_path, decisions=d9)
+    table = mh.d9_reference(repo, tmp_path)
+    assert table == [f"| r{i} | v{i} |" for i in range(12)]
+    bare = site_repo(RunGit(), tmp_path / "bare", decisions="## D90 — Not it\n\n| a |\n\n## D10 — End\n")
+    _capture(monkeypatch)
+    drive("H1", mh, "--repo", str(bare))
+    rec = receipt("H1", mh)
+    assert rec["outcome"] == "UNKNOWN" and "DECISIONS.md has no D9 section" in rec["why"] and owns("H1", mh)
+
+
+def test_cite_H1_a_tree_with_no_home_page_and_a_failing_capture(monkeypatch, tmp_path):
+    import maint_human as mh
+    md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
+    repo = site_repo(RunGit(), tmp_path, {"index.html": None})
+    _capture(monkeypatch)
+    drive("H1", mh, "--repo", str(repo))
+    rec = receipt("H1", mh)
+    assert rec["outcome"] == "UNKNOWN" and "no home page (index.html) in the served pages" in rec["why"]
+
+    def broken(repo, rels, out):
+        raise RuntimeError("chromium died " + "c" * 400)
+    monkeypatch.setattr(mh, "CAPTURE", broken)
+    drive("H1", mh)
+    rec = receipt("H1", mh)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("H1 screenshots failed: RuntimeError: chromium died")
+    assert rec["why"].count("c") <= 200 and owns("H1", mh)
+
+
+def test_cite_A3_the_rdap_server_for_the_tld(monkeypatch, tmp_path):
+    import maint_human as mh
+    md, _ = world(monkeypatch, tmp_path)
+    boot = {"services": [[["net"], ["https://n.example/"]], [["COM", "org"], ["http://plain.example/", "https://c.example/"]],
+                         [["io"], ["http://only.example/"]]]}
+    monkeypatch.setattr(mh, "GET_JSON", lambda url: boot)
+    assert mh.rdap_base("b4him.com") == "https://c.example/" and mh.rdap_base("x.io") == "http://only.example/"
+    monkeypatch.setattr(mh, "GET_JSON", lambda url: boot if url == mh.BOOTSTRAP else {"events": []})
+    drive("A3", mh)
+    rec = receipt("A3", mh)
+    assert rec["outcome"] == "UNKNOWN"
+    monkeypatch.setattr(mh, "GET_JSON", lambda url: {"services": [[["net"], ["https://n.example/"]]]})
+    drive("A3", mh)
+    rec = receipt("A3", mh)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("RDAP not read: LookupError: the IANA RDAP bootstrap "
+                                                                 "lists no server for .com")
+
+
+def test_cite_A3_a_close_on_the_window_s_first_day_counts(monkeypatch, tmp_path):
+    import maint_human as mh
+    md, clock = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+    _rdap(monkeypatch, "2026-12-20T00:00:00Z")                # opens 2026-10-21
+    clock.set(2026, 10, 21, 0, 0, 0)
+    mr.write_receipt("A3", "PASS", why="closed by Daniel's ledger E05555", tool="maint_watch.py")
+    clock.set(2026, 11, 2, 11)
+    drive("A3", mh)
+    rec = receipt("A3", mh)
+    assert rec["outcome"] == "SKIP" and "closed for this window (2026-10-21)" in rec["why"] and owns("A3", mh)
+
+
+def test_cite_A3_the_runner_s_exit_by_outcome(monkeypatch, tmp_path):
+    import maint_human as mh
+    md, _ = world(monkeypatch, tmp_path)
+    for expires, status, want in (("2027-07-19T00:00:00Z", (), 0), ("2027-07-19T00:00:00Z", ("client hold",), 1)):
+        _rdap(monkeypatch, expires, status)
+        assert mh.main(["a3"]) == want, status
+    monkeypatch.setattr(mh, "GET_JSON", lambda url: (_ for _ in ()).throw(OSError("down")))
+    assert mh.main(["a3"]) == 2 and owns("A3", mh)
+
+
+def test_cite_A3_the_rdap_fetch(monkeypatch, tmp_path):
+    import contextlib
+    import maint_human as mh
+    import urllib.request
+    seen = []
+
+    class Reply:
+        def read(self, n=-1):
+            seen.append(("read", n))
+            return b'{"ok": 1}'
+
+    def urlopen(req, timeout=None):
+        seen.append((req.full_url, timeout, req.get_header("Accept")))
+        return contextlib.nullcontext(Reply())
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    assert mh.GET_JSON("https://rdap.example/x") == {"ok": 1}
+    assert seen == [("https://rdap.example/x", 30, "application/rdap+json, application/json"), ("read", 2_000_000)]
+    assert owns("A3", mh)
