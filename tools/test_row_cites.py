@@ -2875,6 +2875,19 @@ def test_cite_D1_a_line_break_inside_a_value_is_not_a_new_line(monkeypatch, tmp_
     assert rec["outcome"] == "PASS" and rec["tool"] == "tools/maint_watch.py"     # one line, read whole
 
 
+def test_cite_D1_a_release_line_stamped_past_the_clock_skew_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, 2026, 11, 2, 10, watch=maint_watch)   # 10:00 local = 15:00Z
+    _release(monkeypatch, tmp_path, dict(LINE, at="2026-11-02T15:09:00+00:00"))    # 9 min ahead: clock skew, fine
+    drive("D1", maint_watch)
+    near = receipt("D1", maint_watch)
+    _release(monkeypatch, tmp_path, dict(LINE, at="2026-11-02T15:11:00+00:00"))    # 11 min ahead: a future line
+    drive("D1", maint_watch)
+    rec = receipt("D1", maint_watch)
+    assert near["outcome"] == "PASS"
+    assert rec["outcome"] == "UNKNOWN" and "is in the future" in rec["why"]
+
+
 def test_cite_D2_an_empty_row_table_is_unknown(monkeypatch, tmp_path):
     import maint_watch
     md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
