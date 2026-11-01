@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-maint_cite_mutants.py: proves the row cites in tools/test_row_cites.py DISCRIMINATE. For every row it applies one
+maint_cite_mutants.py: proves the row cites in _maint_cites/test_row_cites.py DISCRIMINATE. For every row it applies one
 gutting mutant per facet of the row's task to the row's tool (a one-line edit that switches the facet off), runs that
 row's cites, and records which fail. A mutant that no cite kills means a cite is missing.
 
@@ -17,6 +17,7 @@ finally block), but a crash of this script could leave one edited. Never on the 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -271,10 +272,16 @@ def counts(stdout: str) -> dict:
     return out
 
 
+#: The cite file: outside tools/, so no conftest.py of tools/ is in its chain (the gate lints every one, whole).
+CITES = Path("_maint_cites") / "test_row_cites.py"
+
+
 def pytest(repo: Path, k: str | None = None) -> tuple[dict, str]:
-    argv = [sys.executable, "-m", "pytest", str(repo / "tools" / "test_row_cites.py"), "-q", "--tb=no", "-rf",
-            "-p", "no:cacheprovider", "--rootdir", str(repo)] + (["-k", k] if k else [])
-    p = subprocess.run(argv, capture_output=True, encoding="utf-8", errors="replace", cwd=str(repo))
+    argv = [sys.executable, "-m", "pytest", str(repo / CITES), "-q", "--tb=no", "-rf",
+            "-p", "no:cacheprovider", "--rootdir", str(repo), "--confcutdir", str(repo / CITES.parent)] + \
+        (["-k", k] if k else [])
+    env = {**os.environ, "PYTHONPATH": str(repo / "tools")}     # the tools, as the gate's broker serves them
+    p = subprocess.run(argv, capture_output=True, encoding="utf-8", errors="replace", cwd=str(repo), env=env)
     return counts(p.stdout), p.stdout
 
 
@@ -308,7 +315,7 @@ def main(argv=None) -> int:
         print(f"{len(MUTANTS)} mutants apply")
         return 0
     # the gate: every cite passes on the unmutated tree, none skipped, none erroring; otherwise no mutant is judged
-    n_cites = len(re.findall(r"^def test_\w+\(", (repo / "tools" / "test_row_cites.py").read_text(encoding="utf-8"),
+    n_cites = len(re.findall(r"^def test_\w+\(", (repo / CITES).read_text(encoding="utf-8"),
                              re.M))
     c, out = pytest(repo)
     if c["passed"] != n_cites or c["failed"] or c["skipped"] or c["error"]:

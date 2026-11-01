@@ -1,5 +1,9 @@
 """The harness scope lock's cite tests for the 28 b4him maintenance-baseline rows (C1 .. A4).
 
+This file lives in _maint_cites/, not tools/: the gate lints every conftest.py on a cite's directory chain, whole, and
+tools/conftest.py is the release tests' (it imports release and binding). The tools are imported by module name (the
+gate's broker serves them; run locally with PYTHONPATH=tools). Jekyll never serves a folder that starts with "_".
+
 Each row has a CLEAN-WORLD fixture (everything right: the row's quiet outcome) and one cite per FACET of its calendar
 task (each thing the row must catch). Every cite names its row as a literal, drives the row through
 `maint_run.py --row <id>` (in process: run.RUN calls the row's tool's own main(); only the network and the clock are
@@ -2295,7 +2299,8 @@ def test_cite_A4_the_contrast_hit_must_be_the_planted_one(monkeypatch, tmp_path)
 from hypothesis import HealthCheck, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
-PROPS = settings(max_examples=6, deadline=None, derandomize=True,
+PROPS = settings(max_examples=6, deadline=None, derandomize=True, database=None,   # writes nothing
+                
                  suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
 KINDS = st.sampled_from(["empty", "garbage", "not_json", "future", "foreign_tz"])
 GARBAGE = st.binary(min_size=1, max_size=24).filter(lambda b: b.strip() and not b.strip().startswith((b"{", b"[")))
