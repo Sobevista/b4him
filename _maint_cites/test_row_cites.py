@@ -8028,3 +8028,64 @@ def test_cite_H1_d9_is_read_from_its_own_heading_only(monkeypatch, tmp_path):
           "| r | v |\n\n## D10 — End\n")
     repo = site_repo(RunGit(), tmp_path, decisions=d9)
     assert mh.d9_reference(repo, tmp_path) == ["| r | v |"] and owns("H1", mh)
+
+
+def test_cite_W1_a_pass_counts_zero(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    _net(monkeypatch)
+    drive("W1", linkcheck)
+    assert (receipt("W1", linkcheck)["outcome"], receipt("W1", linkcheck)["n"]) == ("PASS", 0)
+
+
+def test_cite_M3_a_pass_counts_zero(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    _tls(monkeypatch)
+    drive("M3", headers_tls_check)
+    assert (receipt("M3", headers_tls_check)["outcome"], receipt("M3", headers_tls_check)["n"]) == ("PASS", 0)
+
+
+def test_cite_M1_a_pass_counts_zero(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    _pa11y(monkeypatch, 0, json.dumps({"total": 23, "passes": 23, "errors": 0, "results": {"http://h/": []}}))
+    drive("M1", maint_quality)
+    assert (receipt("M1", maint_quality)["outcome"], receipt("M1", maint_quality)["n"]) == ("PASS", 0)
+
+
+def test_cite_M2b_a_pass_counts_zero(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    _crux(monkeypatch, 200, crux_body())
+    drive("M2b", maint_quality)
+    assert (receipt("M2b", maint_quality)["outcome"], receipt("M2b", maint_quality)["n"]) == ("PASS", 0)
+
+
+def test_cite_Q1_nothing_due_counts_zero(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    _today(monkeypatch, "2026-11-02")
+    drive("Q1", maint_pages)
+    assert (receipt("Q1", maint_pages)["outcome"], receipt("Q1", maint_pages)["n"]) == ("SKIP", 0)
+
+
+def test_cite_D2_a_board_row_s_clock_restarts_from_its_latest_pass(monkeypatch, tmp_path):
+    import maint_watch
+    mw = maint_watch
+    now = local_at(2026, 11, 10, 12)
+    passes = [rec_at("M5", "PASS", local_at(2026, 8, 3, 11), why="board run found"),
+              rec_at("M5", "PASS", local_at(2026, 11, 3, 11), why="board run found")]
+    over, _events = mw.overdue_rows(one_row_table(mw, "M5"), passes, now)
+    assert over == [] and owns("D2", mw)
+
+
+def test_cite_M4_a_closed_row_cannot_be_judged_again(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("M4", "maint_pages.py", "awaiting managing-editor judgement: the walk", "audits/walk.md")
+    code, _prev, first = close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "walked")
+    assert code == 0 and first["outcome"] == "PASS"
+    code, _prev, after = close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "again")
+    assert code == 1 and after == first and owns("M4", maint_pages)
