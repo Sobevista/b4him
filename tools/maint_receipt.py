@@ -56,6 +56,11 @@ def now_utc() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
+#: The calendar's local zone for every maintenance tool. None = the machine's local zone (DST-aware); tests pin a
+#: fixed zone here, in the one module every tool shares (maint_watch.LOCAL_TZ, when set, still wins for maint_watch).
+LOCAL_TZ = None
+
+
 RUN_ENV = "MAINT_RUN_ID"
 
 

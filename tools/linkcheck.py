@@ -37,6 +37,7 @@ import os
 import posixpath
 import re
 import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -67,7 +68,8 @@ IGNORED_SCHEMES = ("mailto:", "tel:", "javascript:", "data:")
 
 
 def _now() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    """The shared maintenance clock (maint_receipt.now_utc), so a receipt's stamp and the cache's ages agree."""
+    return maint_receipt.now_utc()
 
 
 def _iso(t: dt.datetime) -> str:
@@ -83,6 +85,23 @@ def _parse(s: str | None) -> dt.datetime | None:
 
 
 # ---------------------------------------------------------------- the served tree
+def git(repo: Path, *args: str) -> tuple[int, str]:
+    """`git -C <repo> <args>` -> (exit code, stdout). linkcheck's own git call (the checked tree's HEAD); the page
+    list and the case-sensitive link rule stay site_pages' and release's."""
+    try:
+        p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
+    except OSError as e:
+        return 127, f"git could not start: {e}"
+    return p.returncode, p.stdout.decode("utf-8", "replace")
+
+
+def head_sha(repo: Path) -> str:
+    code, out = git(repo, "rev-parse", "HEAD")
+    if code:
+        raise release.ReleaseError(f"git rev-parse HEAD failed in {repo} (exit {code})")
+    return out.strip()
+
+
 def unserved(rel: str) -> bool:
     """Jekyll (GitHub Pages' legacy build) never serves a path with a part starting with '.' or '_' (site_pages)."""
     return not site_pages.is_served(rel)
@@ -369,7 +388,7 @@ def _run(root: Path, live_ref: str, fetcher: Fetcher | None, now: dt.datetime | 
            "pages": [], "internal": {"error": None, "broken": []}, "outbound": [], "ignored_links": 0}
     internal_error = None
     try:
-        rep["repo_head"] = release.git("rev-parse", "HEAD").strip()
+        rep["repo_head"] = head_sha(root)
         pages = served_pages(root)
         if not pages:                          # zero served pages where pages are expected: not a clean site
             raise release.ReleaseError("zero served pages where pages are expected")

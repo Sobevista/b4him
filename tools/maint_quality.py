@@ -63,6 +63,7 @@ import maint_receipt  # noqa: E402
 import site_pages  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
+TOOL = "maint_quality.py"
 ORIGIN = "https://b4him.com"
 CRUX_ENDPOINT = "https://chromeuxreport.googleapis.com/v1/records:queryRecord"
 #: p75 "good" bounds the calendar routes on (row M2b): LCP 2.5 s, INP 200 ms, CLS 0.1.
@@ -203,7 +204,7 @@ def run_cmd(argv: list[str], cwd: Path | None = None, env: dict | None = None, t
 
 def receipt(root: Path, row: str, outcome: str, n=None, why="", evidence=None) -> dict:
     with _receipts_into(root):
-        return maint_receipt.write_receipt(row, outcome, n=n, why=why, evidence=evidence, tool="maint_quality.py")
+        return maint_receipt.write_receipt(row, outcome, n=n, why=why, evidence=evidence, tool=TOOL)
 
 
 # ---------------------------------------------------------------- M1 accessibility (pa11y-ci)

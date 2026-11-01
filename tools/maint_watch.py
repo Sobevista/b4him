@@ -98,7 +98,8 @@ class Unknown(Exception):
 
 # ------------------------------------------------------------------ time
 def local(d: dt.datetime) -> dt.datetime:
-    return d.astimezone(LOCAL_TZ) if LOCAL_TZ else d.astimezone()
+    tz = LOCAL_TZ or mr.LOCAL_TZ
+    return d.astimezone(tz) if tz else d.astimezone()
 
 
 def now_local() -> dt.datetime:
