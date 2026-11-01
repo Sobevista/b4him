@@ -356,7 +356,7 @@ def local_names(repo, names=("Quillon",), role="client"):
         json.dumps({"people": [{"label": "PERSON-X", "role": role, "names": list(names)}]}), encoding="utf-8")
 
 
-def site_repo(tool, tmp_path, files=None, queue=None):
+def site_repo(tool, tmp_path, files=None, queue=None, decisions=None):
     """A throwaway b4him-shaped git repo, committed with the row's own tool's public `git(repo, *args)` (maint_pages
     and linkcheck each define one: the test starts no process itself). Same shape as tools/test_maint_pages.make_repo."""
     repo = tmp_path / "site"
@@ -366,7 +366,7 @@ def site_repo(tool, tmp_path, files=None, queue=None):
     base = {
         ".gitignore": ".maint/\ndata/people_names.local.json\ndata/forbidden_tokens.local.json\n",
         "CNAME": "example.invalid\n",
-        "DECISIONS.md": D11,
+        "DECISIONS.md": decisions or D11,
         "index.html": page("Home", '<a href="/lessons/">Lessons</a>'),
         "lessons/index.html": page("Lessons", '<a href="/lessons/find-your-door/">Take the quiz</a>'
                                    '<h2 id="lessons-list">Tier One</h2><a class="mod" href="/lessons/alpha/">Alpha</a>'),
@@ -400,9 +400,9 @@ def site_repo(tool, tmp_path, files=None, queue=None):
     return repo
 
 
-def pages_repo(monkeypatch, mp, tmp_path, files=None, names=False, queue=None):
+def pages_repo(monkeypatch, mp, tmp_path, files=None, names=False, queue=None, decisions=None):
     """The fixture site as maint_pages' tree (`mp` is maint_pages, imported by the test)."""
-    repo = site_repo(mp, tmp_path, files, queue)
+    repo = site_repo(mp, tmp_path, files, queue, decisions)
     if names:
         local_names(repo)
     monkeypatch.setattr(mp, "REPO", repo)
@@ -6615,6 +6615,7 @@ def test_cite_M4_syllables_and_the_reading_grade(monkeypatch, tmp_path):
     assert fk("One sentence without a stop") == {"words": 5, "sentences": 1, "syllables": 7, "grade": 2.9}
     assert fk("Ends here. And here? Yes!")["sentences"] == 3 and fk("x")["grade"] == -3.4
     assert (maint_pages.READING_AGE_TARGET, maint_pages.FK_GRADE_TARGET) == (9, 4)          # reading age 9 = grade 4
+    assert owns("M4", maint_pages)
 
 
 def test_cite_W3_the_site_chrome_and_title_words(monkeypatch, tmp_path):
@@ -6626,7 +6627,7 @@ def test_cite_W3_the_site_chrome_and_title_words(monkeypatch, tmp_path):
                                                   "<h1x>Not A Heading</h1x>"}) == ["gentle harbor", "gentle harbor again"]
     pair = maint_pages.CAP_PAIR.match
     assert pair("Quillon Mistlewood") and not pair("Quillon Mistlewood Jr") and not pair("quillon Mistlewood")
-    assert maint_pages.PAGE_ROW == "W3.page"
+    assert maint_pages.PAGE_ROW == "W3.page" and owns("W3", maint_pages)
 
 
 def test_cite_W3_each_page_s_own_line(monkeypatch, tmp_path):
@@ -6635,9 +6636,10 @@ def test_cite_W3_each_page_s_own_line(monkeypatch, tmp_path):
     pages_repo(monkeypatch, maint_pages, tmp_path, {"about/index.html": "<p>i met Quillon there.</p>"}, names=True)
     drive("W3", maint_pages)
     rec = receipt("W3", maint_pages)
-    lines = {e["why"].split(":")[0]: e for e in receipts_any() if e["row"] == maint_pages.PAGE_ROW}
-    assert rec["outcome"] == "FINDINGS" and lines["about/index.html"]["outcome"] == "FINDINGS"
-    assert lines["about/index.html"]["n"] == 1 and lines["index.html"]["outcome"] == "PASS"
+    lines = [e for e in receipts_any() if e["row"] == maint_pages.PAGE_ROW]
+    hit = [e for e in lines if e["outcome"] == "FINDINGS"]
+    assert rec["outcome"] == "FINDINGS" and len(hit) == 1 and hit[0]["n"] == 1 and hit[0]["why"].startswith("about/")
+    assert len(lines) >= 5 and all(e["outcome"] == "PASS" for e in lines if e is not hit[0])
 
 
 def test_cite_W3_a_people_registry_that_cannot_load_is_unknown_on_every_page(monkeypatch, tmp_path):
@@ -6694,7 +6696,8 @@ def test_cite_Q1_due_and_owner_rules(monkeypatch, tmp_path):
         [("C-1", "90 days since last review")]
     assert [(r["id"], w) for r, w in maint_pages.rows_due(rows, dt.date(2026, 9, 28))] == []
     assert maint_pages.owner_of("lessons/alpha/index.html", rows) == (["C-1"], "managing-editor (content line)")
-    assert maint_pages.owner_of("index.html", rows) == ([], "unowned in the queue [ASSUMED: managing-editor]")
+    assert maint_pages.owner_of("about/team.html", rows) == ([], "unowned in the queue [ASSUMED: managing-editor]")
+    assert owns("Q1", maint_pages)
 
 
 def test_cite_Q1_later_rulings_since_a_date(monkeypatch, tmp_path):
@@ -6702,7 +6705,7 @@ def test_cite_Q1_later_rulings_since_a_date(monkeypatch, tmp_path):
     md, _ = world(monkeypatch, tmp_path)
     d = ("## D11 — Genericization. LOCKED 2026-07-21\n\nText.\n\n## D12 — Later. LOCKED 2026-09-01\n\n"
          "see the note ## D13 — Mid-line. LOCKED 2026-12-01\n\n## D14 — End. LOCKED 2026-07-21\n")
-    repo = pages_repo(monkeypatch, maint_pages, tmp_path, {"DECISIONS.md": d})
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, decisions=d)
     assert maint_pages.later_rulings(repo, "2026-07-21") == ["D12 — Later. LOCKED 2026-09-01"]
     assert maint_pages.later_rulings(repo, None) == ["D11 — Genericization. LOCKED 2026-07-21",
                                                      "D12 — Later. LOCKED 2026-09-01",
@@ -6723,7 +6726,7 @@ def test_cite_Q2_d11_must_be_there_and_parse(monkeypatch, tmp_path):
                             "consistently.** nothing to replace.\n\n## D12 — End\n",
                             "no 'X → replacement' token parsed from D11")):
         repo = pages_repo(monkeypatch, maint_pages, tmp_path / why[:10].replace(" ", "_") / str(len(decisions)),
-                          {"DECISIONS.md": decisions}, names=True)
+                          names=True, decisions=decisions)
         _client(repo)
         drive("Q2", maint_pages)
         rec = receipt("Q2", maint_pages)
@@ -6736,7 +6739,7 @@ def test_cite_Q2_d11_ends_at_the_next_heading_line(monkeypatch, tmp_path):
     decisions = ("## D11 — Publishing. LOCKED 2026-07-21\n\n- **Genericization is a hard rule, applied "
                  "consistently.** Zorblax → \"a tool\". a note ## here is not a heading. Quendrith → "
                  "\"a teammate\".\n\n## D12 — Later.\n\nVexmoor → \"a machine\".\n\n## D13 — End\n")
-    repo = pages_repo(monkeypatch, maint_pages, tmp_path, {"DECISIONS.md": decisions})
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, decisions=decisions)
     toks = maint_pages.d11_tokens(repo)
     assert "Zorblax" in toks and "Quendrith" in toks and "Vexmoor" not in toks and owns("Q2", maint_pages)
 
