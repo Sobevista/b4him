@@ -648,7 +648,7 @@ def test_digest_h3_reminder_with_evidence_pack_and_due_for_daniel(env, monkeypat
 
 
 # ------------------------------------------------------------------ HUMAN rows
-def test_human_close_needs_the_packs_awaiting_line_and_carries_its_evidence(env, capsys):
+def test_human_close_needs_the_packs_awaiting_line_and_carries_its_evidence(env, capsys, monkeypatch):
     env.clock.set(2027, 1, 7, 9)
     assert mw.main(["human", "A3", "E00999"]) == 1                          # nothing awaits Daniel yet
     (env.md / "audits").mkdir(parents=True, exist_ok=True)
@@ -656,6 +656,9 @@ def test_human_close_needs_the_packs_awaiting_line_and_carries_its_evidence(env,
     mr.write_receipt("A3", "SKIP", why="awaiting Daniel's ruling: expires 2027-03-01 (53 days)",
                      evidence=".maint/audits/2027-01-07_rdap.json", tool="maint_human.py")
     assert mw.main(["--now", "2027-01-07T10:00:00-05:00", "human", "A3", "E00999"]) == 1    # never back-dated
+    led = env.md.parent / "ledger.jsonl"                                                     # an APPROVE ruling
+    led.write_text(json.dumps({"id": "E00999", "kind": "RULING", "body": {"verdict": "APPROVE"}}) + "\n", encoding="utf-8")
+    monkeypatch.setenv(mw.LEDGER_ENV, str(led))
     assert mw.main(["human", "A3", "E00999"]) == 0                                           # the clock's own time
     close = last("A3")
     assert close["outcome"] == "PASS" and "E00999" in close["why"]

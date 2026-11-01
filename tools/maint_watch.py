@@ -824,8 +824,40 @@ def cmd_human(a, now: dt.datetime) -> int:
     if aw is None:
         print(f"REFUSED: {why}")
         return 1
-    return show([mr.write_receipt(rid, "PASS", why=f"closed by Daniel's ledger {e} (recorded here; the ledger itself "
-                                  "is not read by this tool)", evidence=aw["evidence"], tool=TOOL)])
+    state, why = ledger_ruling(e)
+    if state == "unknown":
+        print(f"UNKNOWN: {e} could not be checked ({why}); nothing recorded, {rid} still awaits Daniel")
+        return 2
+    if state == "refused":
+        print(f"REFUSED: {why}")
+        return 1
+    return show([mr.write_receipt(rid, "PASS", why=f"closed by Daniel's ledger {e} (an APPROVE ruling in the ledger)",
+                                  evidence=aw["evidence"], tool=TOOL)])
+
+
+#: The harness's session ledger (an append-only JSONL file), read only: set to its path on the machine that runs the
+#: calendar. A HUMAN close is checked against it; it is never written here.
+LEDGER_ENV = "MAINT_LEDGER_PATH"
+
+
+def ledger_ruling(e: str) -> tuple[str, str]:
+    """("approved", "") when ledger entry `e` is a RULING whose verdict is APPROVE; ("refused", why) when it is absent
+    or is not an approval; ("unknown", why) when the ledger cannot be read."""
+    p = os.environ.get(LEDGER_ENV, "").strip()
+    if not p:
+        return "unknown", f"no {LEDGER_ENV}: the ledger cannot be read"
+    try:
+        entries = mi.read_jsonl(Path(p), "the ledger")
+    except mi.InputUnknown as ex:
+        return "unknown", str(ex)
+    hits = [x for x in entries if x.get("id") == e]
+    if not hits:
+        return "refused", f"{e} is not in the ledger"
+    x = hits[-1]
+    verdict = (x.get("body") or {}).get("verdict") if isinstance(x.get("body"), dict) else None
+    if x.get("kind") != "RULING" or verdict != "APPROVE":
+        return "refused", f"{e} is a {x.get('kind')} entry with verdict {verdict!r}, not an APPROVE ruling"
+    return "approved", ""
 
 
 def cmd_witness(a, now: dt.datetime) -> int:
