@@ -6826,3 +6826,232 @@ def test_cite_Q3_findings_close_by_status_and_age(monkeypatch, tmp_path):
     drive("Q3", maint_pages)
     rec = receipt("Q3", maint_pages)
     assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1) and "| 91 | STALE |" in evidence_text(rec)
+
+
+# ================================================================== sweep: linkcheck, line by line
+class ScriptedFetch:
+    """A Fetcher stand-in: answers HEAD and GET from a script; records each request's method and read size."""
+    def setup(self, head, get):
+        self.answers, self.seen = {"HEAD": head, "GET": get}, []
+        return self
+
+    def request(self, url, method, read=0):
+        self.seen.append((method, read))
+        code = self.answers[method]
+        if isinstance(code, str):
+            return {"code": None, "final_url": url, "body": b"", "error": code}
+        return {"code": code, "final_url": url, "body": b"", "error": None if code < 400 else f"HTTP {code}"}
+
+
+def test_cite_W1_an_outbound_answer_s_lines(monkeypatch, tmp_path):
+    import linkcheck
+    u = "https://example.org/p"
+
+    def verdict(head, get):
+        f = ScriptedFetch().setup(head, get)
+        r = linkcheck.check_url(u, f)
+        return r["status"], r["method"], f.seen
+    assert verdict(200, None) == ("OK", "HEAD", [("HEAD", 0)])
+    assert verdict(399, None) == ("OK", "HEAD", [("HEAD", 0)])
+    assert verdict(400, 200) == ("OK", "GET", [("HEAD", 0), ("GET", 1024)])
+    assert verdict(199, 399) == ("OK", "GET", [("HEAD", 0), ("GET", 1024)])
+    assert verdict(405, 404)[:2] == ("DEAD", "GET") and verdict(405, 410)[:2] == ("DEAD", "GET")
+    for code in (199, 400, 403, 409, 411, 500):
+        assert verdict(405, code)[0] == "UNKNOWN", code
+    status, method, _ = verdict("URLError: no route", "URLError: no route")
+    r = linkcheck.check_url(u, ScriptedFetch().setup("URLError: x", "URLError: no route"))
+    assert (status, r["code"]) == ("UNKNOWN", None) and "GET failed on the network" in r["why"]
+    assert linkcheck.check_url("https:///nohost", ScriptedFetch().setup(200, 200))["status"] == "DEAD"
+    assert linkcheck.DEAD_CODES == {404, 410} and owns("W1", linkcheck)
+
+
+def test_cite_W1_the_fetcher_s_politeness_and_answers(monkeypatch, tmp_path):
+    import linkcheck
+    import urllib.error
+    t = {"now": 100.0}
+    slept = []
+
+    def opener(req, timeout=None):
+        assert timeout == 15
+        if req.full_url.endswith("/gone"):
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+        if req.full_url.endswith("/down"):
+            raise urllib.error.URLError("no route")
+        r = Answer()
+        r.code, r.url, r.body = 200, req.full_url, b"x" * 5000
+        return r
+    f = linkcheck.Fetcher(opener=opener, sleep=slept.append, clock=lambda: t["now"])
+    a = f.request("https://a.example/ok", "GET", read=1024)
+    assert (a["code"], a["error"], a["body"]) == (200, None, b"x" * 5000)
+    t["now"] = 100.4
+    b = f.request("https://a.example/gone", "GET")
+    assert (b["code"], b["error"]) == (404, "HTTP 404") and slept == [pytest_approx(0.6)]
+    t["now"] = 102.0
+    c = f.request("https://a.example/down", "HEAD")
+    assert c["code"] is None and c["error"] == "str: no route" and slept == [pytest_approx(0.6)]
+    f.request("https://b.example/ok", "HEAD")
+    t["now"] = 102.0
+    f.request("https://a.example/ok", "HEAD")                    # 0 s after a.example's last request
+    assert len(slept) == 2 and slept[1] == pytest_approx(1.0) and f.requests == 5
+    assert (linkcheck.TIMEOUT, linkcheck.MIN_INTERVAL) == (15, 1.0) and owns("W1", linkcheck)
+
+
+def pytest_approx(x):
+    import pytest
+    return pytest.approx(x)
+
+
+def test_cite_W1_a_cached_answer_s_age_lines(monkeypatch, tmp_path):
+    import linkcheck
+    now = dt.datetime(2026, 11, 2, 16, tzinfo=dt.timezone.utc)
+
+    def entry(at, status="OK"):
+        return {"status": status, "checked_at": at.isoformat()}
+    fresh = linkcheck.fresh
+    assert fresh(entry(now - dt.timedelta(days=7) + dt.timedelta(seconds=1)), now, ("OK", "DEAD"))
+    assert not fresh(entry(now - dt.timedelta(days=7)), now, ("OK", "DEAD"))                 # 7 days is stale
+    assert fresh(entry(now + dt.timedelta(minutes=10)), now, ("OK", "DEAD"))                  # inside the skew
+    assert not fresh(entry(now + dt.timedelta(minutes=10, seconds=1)), now, ("OK", "DEAD"))
+    assert not fresh(entry(now, "UNKNOWN"), now, ("OK", "DEAD")) and not fresh(None, now, ("OK", "DEAD"))
+    assert linkcheck.MAX_AGE == dt.timedelta(days=7) and owns("W1", linkcheck)
+
+
+def test_cite_W1_definite_answers_are_cached_and_unknown_ones_are_not(monkeypatch, tmp_path):
+    import linkcheck
+    now = dt.datetime(2026, 11, 2, 16, tzinfo=dt.timezone.utc)
+    cache = {"links": {}, "wayback": {}}
+    urls = {"https://example.org/ok": ["a.html"], "https://example.org/gone": ["a.html"],
+            "https://example.org/odd": ["b.html"]}
+
+    class F:
+        def request(self, url, method, read=0):
+            code = {"ok": 200, "gone": 404, "odd": 503}[url.rsplit("/", 1)[1]]
+            return {"code": code, "final_url": url, "body": b"", "error": None if code < 400 else f"HTTP {code}"}
+    out = linkcheck.outbound_check(urls, cache, F(), now)
+    assert {o["url"].rsplit("/", 1)[1]: o["status"] for o in out} == {"ok": "OK", "gone": "DEAD", "odd": "UNKNOWN"}
+    assert sorted(cache["links"]) == ["https://example.org/gone", "https://example.org/ok"]
+    again = linkcheck.outbound_check(urls, cache, F(), now)
+    assert {o["url"].rsplit("/", 1)[1]: o["source"] for o in again} == {"ok": "cache", "gone": "cache",
+                                                                        "odd": "fetched"}
+    assert owns("W1", linkcheck)
+
+
+def test_cite_W1b_the_archive_s_answers(monkeypatch, tmp_path):
+    import linkcheck
+    near = dt.datetime(2026, 10, 1, 12, tzinfo=dt.timezone.utc)
+
+    class F:
+        body, code, seen = b"", 200, None
+
+        def request(self, url, method, read=0):
+            self.seen = (url, read)
+            return {"code": self.code, "final_url": url, "body": self.body, "error": None if self.code == 200 else "x"}
+    f = F()
+    f.body = json.dumps({"archived_snapshots": {"closest": {"available": True, "url": "http://web.archive.org/x",
+                                                            "timestamp": "20261001", "status": "200"}}}).encode()
+    r = linkcheck.wayback("https://example.org/p", f, near)
+    assert r["status"] == "FOUND" and r["replacement"] == "http://web.archive.org/x" and f.seen[1] == 65536
+    assert "timestamp=20261001120000" in f.seen[0] and "to 20261001, when the link was last seen alive" in r["why"]
+    f.body = b"<html>not json</html>"
+    assert linkcheck.wayback("https://example.org/p", f)["status"] == "UNKNOWN"
+    f.body = json.dumps({"archived_snapshots": {}}).encode()
+    assert linkcheck.wayback("https://example.org/p", f)["status"] == "NONE"
+    f.body = json.dumps({"archived_snapshots": {"closest": {"available": True, "url": "u", "status": "404"}}}).encode()
+    assert linkcheck.wayback("https://example.org/p", f)["status"] == "NONE"
+    f.code = 503
+    assert linkcheck.wayback("https://example.org/p", f)["status"] == "UNKNOWN"
+    cache = {"links": {}, "wayback": {}}
+    now = dt.datetime(2026, 11, 2, 16, tzinfo=dt.timezone.utc)
+    dead = [{"url": "https://example.org/u"}, {"url": "https://example.org/n"}]
+
+    class G:
+        def request(self, url, method, read=0):
+            if "u%3A%2F%2F" in url or "%2Fu" in url:
+                return {"code": 503, "final_url": url, "body": b"", "error": "HTTP 503"}
+            return {"code": 200, "final_url": url, "body": json.dumps({"archived_snapshots": {}}).encode(), "error": None}
+    linkcheck.wayback_check(dead, cache, G(), now)
+    assert [d["wayback"]["status"] for d in dead] == ["UNKNOWN", "NONE"] and list(cache["wayback"]) == \
+        ["https://example.org/n"]                                           # only a definite archive answer is kept
+    found = [{"url": "https://example.org/f"}]
+    cache["wayback"]["https://example.org/f"] = {"status": "FOUND", "replacement": "r", "checked_at": now.isoformat()}
+    linkcheck.wayback_check(found, cache, G(), now)
+    assert found[0]["wayback"]["source"] == "cache" and owns("W1b", linkcheck)
+
+
+def test_cite_W1_the_cache_file_and_the_report_name(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    c, why = linkcheck.load_cache(tmp_path / "none.json")
+    assert c == {"version": 1, "links": {}, "wayback": {}} and why == "no cache yet"
+    bad = tmp_path / "bad.json"
+    bad.write_text("[1, 2]", encoding="utf-8")
+    c, why = linkcheck.load_cache(bad)
+    assert c["version"] == 1 and why.startswith("unreadable, ignored")
+    p1 = linkcheck.report_path(dt.date(2026, 11, 2))
+    p1.write_text("{}", encoding="utf-8")
+    p2 = linkcheck.report_path(dt.date(2026, 11, 2))
+    p2.write_text("{}", encoding="utf-8")
+    p3 = linkcheck.report_path(dt.date(2026, 11, 2))
+    assert [p1.name, p2.name, p3.name] == ["2026-11-02_links.json", "2026-11-02_links-2.json", "2026-11-02_links-3.json"]
+    assert linkcheck.exit_code([{"outcome": "PASS"}, {"outcome": "UNKNOWN"}]) == 2
+    assert linkcheck.exit_code([{"outcome": "FINDINGS"}, {"outcome": "PASS"}]) == 1
+    assert linkcheck.exit_code([{"outcome": "PASS"}, {"outcome": "SKIP"}]) == 0 and owns("W1", linkcheck)
+
+
+def test_cite_W1_what_a_page_links_to(monkeypatch, tmp_path):
+    import linkcheck
+    d = tmp_path / "site"
+    d.mkdir()
+    (d / "a.html").write_text('<a href="https://ex.org/x#frag">1</a><a href="//ex.org/y">2</a>'
+                              '<a href="https://ex.org/x">3</a><a href="mailto:me@ex.org">m</a><a href="#top">t</a>'
+                              '<a href="https://www.b4him.com/lessons/">s</a><a href="https://b4him.com/x">s2</a>'
+                              '<a href="/lessons/">r</a><a href="alpha/">rel</a>', encoding="utf-8")
+    (d / "b.html").write_text('<a href="https://ex.org/x">again</a>', encoding="utf-8")
+    found = linkcheck.scan(d, ["a.html", "b.html"])
+    assert found["outbound"] == {"https://ex.org/x": ["a.html", "b.html"], "https://ex.org/y": ["a.html"]}
+    assert found["ignored"] == 2 and len(found["self"]) == 2 and found["root"] == [("a.html", "/lessons/")]
+    assert found["relative"] == [("a.html", "alpha/")]
+    assert linkcheck.SELF_HOSTS == {"b4him.com", "www.b4him.com"}
+    served = {"lessons/index.html", "about.html", "_hidden/x.html"}
+    r = linkcheck.resolves
+    assert r("/lessons/", served) and r("/about.html", served) and not r("/about/", served)
+    assert not r("/_hidden/x.html", served) and r("/lessons", served) and owns("W1", linkcheck)
+
+
+def test_cite_W1_a_site_with_no_page_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    _net(monkeypatch)
+    repo = site_repo(linkcheck, tmp_path, {"index.html": None, "lessons/index.html": None,
+                                          "lessons/find-your-door/index.html": None, "lessons/alpha/index.html": None})
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    assert rec["outcome"] == "UNKNOWN" and "zero served pages where pages are expected" in rec["why"]
+
+
+def test_cite_W1_a_page_list_git_cannot_read_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    _net(monkeypatch)
+    repo = site_repo(linkcheck, tmp_path)
+    idx = repo / ".git" / "index"
+    idx.chmod(0o666)
+    idx.write_bytes(b"DIRC not an index")                                # HEAD resolves; the index does not
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    assert rec["outcome"] == "UNKNOWN" and "internal check could not run (ReleaseError: git ls-files" in rec["why"]
+
+
+def test_cite_W1_without_the_live_tree_every_broken_link_is_treated_as_live(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    _net(monkeypatch)
+    repo = site_repo(linkcheck, tmp_path, {"about/index.html": '<a href="/nowhere/">x</a>',
+                                           "tools/tool-page.html": '<a href="/also-nowhere/">y</a>'})
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    ev = evidence(rec)
+    f = [x for x in findings("W1") if "about/index.html" in x["subject"]][0]
+    assert rec["outcome"] == "FINDINGS" and ev["internal"]["note"].startswith("live ref origin/main unreadable")
+    assert f["detail"].endswith("live state UNKNOWN, treated as live") and f["severity"] == "S2"
+    assert ev["skipped_by_broken_links"] == ["tools/tool-page.html"]
