@@ -478,7 +478,7 @@ def fail_url(url: str) -> str:
 
 
 def _scrub(text: str, url: str) -> str:
-    for s in {url, fail_url(url), urllib.parse.urlsplit(url).path.strip("/")}:
+    for s in sorted({url, fail_url(url), urllib.parse.urlsplit(url).path.strip("/")}, key=len, reverse=True):
         if s:
             text = text.replace(s, "<MAINT_HEARTBEAT_URL>")
     return text
