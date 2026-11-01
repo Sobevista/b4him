@@ -317,7 +317,7 @@ def names_file_words(repo: Path) -> tuple[set[str], set[str]]:
 
 #: A capitalised run of ANY length (one word or many, middle initials, hyphens and possessives included). Every such
 #: hit is checked against the names file, word by word: a run that holds a known name, or any word of one, is never
-#: exempted. (The name CAP_PAIR is kept: exempt()'s test line reads it as before.)
+#: exempted.
 CAP_PAIR = re.compile(r"^[A-Z][\w'’.-]*(?:\s+[\w'’.-]+)*$")
 
 
