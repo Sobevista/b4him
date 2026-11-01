@@ -7055,3 +7055,308 @@ def test_cite_W1_without_the_live_tree_every_broken_link_is_treated_as_live(monk
     assert rec["outcome"] == "FINDINGS" and ev["internal"]["note"].startswith("live ref origin/main unreadable")
     assert f["detail"].endswith("live state UNKNOWN, treated as live") and f["severity"] == "S2"
     assert ev["skipped_by_broken_links"] == ["tools/tool-page.html"]
+
+
+# ================================================================== sweep: headers_tls_check, line by line
+def test_cite_Q4_the_documented_pages_addresses(monkeypatch, tmp_path):
+    import headers_tls_check
+    assert headers_tls_check.PAGES_A == {"185.199.108.153", "185.199.109.153", "185.199.110.153", "185.199.111.153"}
+    assert headers_tls_check.PAGES_AAAA == {"2606:50c0:8000::153", "2606:50c0:8001::153", "2606:50c0:8002::153",
+                                            "2606:50c0:8003::153"}
+    assert owns("Q4", headers_tls_check)
+
+
+def test_cite_M3_volatile_headers_are_kept_but_never_diffed(monkeypatch, tmp_path):
+    import headers_tls_check as h
+    vol = {"date", "age", "expires", "last-modified", "etag", "x-served-by", "x-cache", "x-cache-hits", "x-timer",
+           "x-github-request-id", "x-fastly-request-id", "via", "x-proxy-cache", "content-length", "cf-ray"}
+    assert h.VOLATILE == vol
+    old = {k: "1" for k in vol} | {"server": "GitHub.com", "x-frame-options": "DENY"}
+    new = {k: "2" for k in vol} | {"server": "nginx", "strict-transport-security": "max-age=1"}
+    assert h.diff_headers(old, new) == [{"header": "server", "was": "GitHub.com", "now": "nginx"},
+                                        {"header": "strict-transport-security", "was": None, "now": "max-age=1"},
+                                        {"header": "x-frame-options", "was": "DENY", "now": None}]
+    assert h.CERT_S1_DAYS == 14 and owns("M3", h)
+
+
+def test_cite_C1_monitor_states_by_code(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    assert headers_tls_check.UR_STATUS == {0: "paused", 1: "not checked yet", 2: "up", 8: "seems down", 9: "down"}
+    for status, want in ((8, "FINDINGS"), (9, "FINDINGS"), (7, "UNKNOWN"), (1, "UNKNOWN"), (2, "PASS")):
+        _monitors(monkeypatch, [dict(MONS[0], status=status), MONS[1]])
+        drive("C1", headers_tls_check)
+        rec = receipt("C1", headers_tls_check)
+        assert rec["outcome"] == want, status
+        if status == 7:
+            assert "is unknown code 7" in rec["why"]
+    _monitors(monkeypatch, [dict(MONS[0], custom_uptime_ratio="99.912-100.000"), MONS[1]])
+    drive("C1", headers_tls_check)
+    assert "last 7 days uptime 99.912%" in receipt("C1", headers_tls_check)["why"]
+
+
+def test_cite_C1_an_unreachable_uptime_service_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setenv("UPTIMEROBOT_API_KEY", "ur-test")
+
+    def down(*a, **k):
+        raise OSError("no route")
+    monkeypatch.setattr(headers_tls_check, "http_post", down)
+    drive("C1", headers_tls_check)
+    rec = receipt("C1", headers_tls_check)
+    assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "uptimerobot unreachable: OSError")
+
+
+def test_cite_Q5_an_unreachable_observatory_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setenv("MAINT_OBSERVATORY_OK", "1")
+
+    def down(*a, **k):
+        raise OSError("no route")
+    monkeypatch.setattr(headers_tls_check, "http_post", down)
+    drive("Q5", headers_tls_check)
+    rec = receipt("Q5", headers_tls_check)
+    assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "observatory unreachable: OSError")
+    monkeypatch.setattr(headers_tls_check, "http_post", lambda *a, **k: (502, b"<html>" + b"z" * 400))
+    drive("Q5", headers_tls_check)
+    rec = receipt("Q5", headers_tls_check)
+    ev = evidence(rec)
+    assert rec["outcome"] == "UNKNOWN" and ev["error"] == "non-json" and len(ev["message"]) == 200
+
+
+def test_cite_M3_the_certificate_probe_on_port_443(monkeypatch, tmp_path):
+    import headers_tls_check
+    import pytest
+    seen = {}
+
+    def gai(host, port, *a, **k):
+        seen["gai"] = (host, port)
+        raise socket.gaierror("no such host")
+    monkeypatch.setattr(socket, "getaddrinfo", gai)
+    with pytest.raises(headers_tls_check.LocalNetworkError, match="cannot resolve b4him.com"):
+        headers_tls_check.probe_cert("b4him.com")
+    assert seen["gai"] == ("b4him.com", 443)
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [])
+
+    def conn(addr, timeout=None):
+        seen["conn"] = (addr, timeout)
+        raise OSError("refused")
+    monkeypatch.setattr(socket, "create_connection", conn)
+    with pytest.raises(OSError, match="refused"):
+        headers_tls_check.probe_cert("b4him.com")
+    assert seen["conn"] == (("b4him.com", 443), 15) and owns("M3", headers_tls_check)
+
+
+class FakeHTTPConnection:
+    """http.client's connection, faked: records what it was asked; answers a 301 with a repeated header."""
+    made = []
+
+    def setup(self, host, port, timeout):
+        FakeHTTPConnection.made.append((type(self).kind, host, port, timeout))
+        self.asked = None
+        return self
+
+    def request(self, method, path, headers=None):
+        FakeHTTPConnection.made.append(("request", method, path))
+
+    def getresponse(self):
+        r = Answer()
+        r.status = 301
+        r.getheaders = lambda: [("Location", "https://b4him.com/"), ("Set-Cookie", "a"), ("set-cookie", "b")]
+        r.read = lambda: b""
+        return r
+
+    def close(self):
+        return None
+
+
+def conn_class(kind):
+    class C(FakeHTTPConnection):
+        pass
+    C.kind = kind
+    return lambda host, port=None, timeout=None: C().setup(host, port, timeout)
+
+
+def test_cite_M3_one_http_request_without_following_redirects(monkeypatch, tmp_path):
+    import headers_tls_check
+    import http.client
+    import pytest
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [])
+    monkeypatch.setattr(http.client, "HTTPSConnection", conn_class("https"))
+    monkeypatch.setattr(http.client, "HTTPConnection", conn_class("http"))
+    FakeHTTPConnection.made = []
+    r = headers_tls_check.probe_http("http://b4him.com/")
+    s = headers_tls_check.probe_http("https://b4him.com/x", method="GET")
+    assert FakeHTTPConnection.made == [("http", "b4him.com", None, 20), ("request", "HEAD", "/"),
+                                       ("https", "b4him.com", None, 20), ("request", "GET", "/x")]
+    assert r == {"status": 301, "headers": {"location": "https://b4him.com/", "set-cookie": "a, b"}} and s["status"] == 301
+
+    def gai(*a, **k):
+        raise socket.gaierror("no such host")
+    monkeypatch.setattr(socket, "getaddrinfo", gai)
+    with pytest.raises(headers_tls_check.LocalNetworkError, match="cannot resolve b4him.com"):
+        headers_tls_check.probe_http("https://b4him.com/")
+    assert owns("M3", headers_tls_check)
+
+
+def test_cite_Q5_the_api_calls_post_and_get(monkeypatch, tmp_path):
+    import headers_tls_check
+    import contextlib
+    import urllib.request
+    seen = []
+
+    class Reply:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+    def urlopen(req, timeout=None):
+        seen.append((req.get_method(), req.data, timeout, req.get_header("Content-type")))
+        return contextlib.nullcontext(Reply())
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    assert headers_tls_check.http_post("https://x.example/a", None, {"Content-Type": "a/b"}) == (200, b"{}")
+    assert headers_tls_check.http_get("https://x.example/b") == (200, b"{}")
+    assert seen == [("POST", b"", 60, "a/b"), ("GET", None, 60, None)] and owns("Q5", headers_tls_check)
+
+
+def q4_with(monkeypatch, headers_tls_check, extra=None, wildcard=None):
+    """Q4 over the good DNS table with `extra` answers; `wildcard` (A, CNAME) answers the random-label probe."""
+    good = good_dns(headers_tls_check)
+    table = {**good, **(extra or {})}
+
+    def resolve(name, rtype):
+        if name.startswith("maint-"):
+            return (wildcard or (("nxdomain", []), ("nxdomain", [])))[0 if rtype == "A" else 1]
+        return table.get((name, rtype), ("nxdomain", []))
+    monkeypatch.setattr(headers_tls_check, "resolve", resolve)
+    monkeypatch.setattr(headers_tls_check, "gh_pages", lambda slug: ("ok", PAGES_OK))
+    drive("Q4", headers_tls_check)
+    return receipt("Q4", headers_tls_check)
+
+
+def test_cite_Q4_the_apex_s_records(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    for st in ("nxdomain", "noanswer"):
+        rec = q4_with(monkeypatch, headers_tls_check, {("b4him.com", "A"): (st, [])})
+        assert rec["outcome"] == "FINDINGS" and "S1 b4him.com has no A record" in rec["why"], st
+    upper = {("b4him.com", "AAAA"): ("ok", [x.upper() for x in sorted(headers_tls_check.PAGES_AAAA)])}
+    assert q4_with(monkeypatch, headers_tls_check, upper)["outcome"] == "PASS"            # case is not a stray
+    rec = q4_with(monkeypatch, headers_tls_check, {("b4him.com", "CNAME"): ("ok", ["elsewhere.example."])})
+    assert "S2 b4him.com apex carries a CNAME (elsewhere.example.)" in rec["why"]
+    assert q4_with(monkeypatch, headers_tls_check, {("b4him.com", "CNAME"): ("ok", [])})["outcome"] == "PASS"
+
+
+def test_cite_Q4_the_www_name_s_records(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    pages = sorted(headers_tls_check.PAGES_A)
+    rec = q4_with(monkeypatch, headers_tls_check, {("www.b4him.com", "CNAME"): ("ok", ["sobevista.github.io"])})
+    assert rec["outcome"] == "PASS"                                         # the trailing dot does not matter
+    rec = q4_with(monkeypatch, headers_tls_check, {("www.b4him.com", "CNAME"): ("ok", ["old.github.io."])})
+    assert "S1 www.b4him.com CNAME points at old.github.io., not sobevista.github.io" in rec["why"]
+    for st in ("nxdomain", "noanswer"):
+        rec = q4_with(monkeypatch, headers_tls_check, {("www.b4him.com", "CNAME"): (st, []),
+                                                       ("www.b4him.com", "A"): ("ok", pages)})
+        assert "S3 www.b4him.com uses A records, not the documented CNAME" in rec["why"], st
+    rec = q4_with(monkeypatch, headers_tls_check, {("www.b4him.com", "CNAME"): ("nxdomain", []),
+                                                   ("www.b4him.com", "A"): ("ok", ["203.0.113.9"])})
+    assert "S1 www.b4him.com A points outside GitHub Pages: 203.0.113.9" in rec["why"]
+    rec = q4_with(monkeypatch, headers_tls_check, {("www.b4him.com", "CNAME"): ("nxdomain", []),
+                                                   ("www.b4him.com", "A"): ("nxdomain", [])})
+    assert "S3 www.b4him.com does not exist" in rec["why"]
+    rec = q4_with(monkeypatch, headers_tls_check, {("www.b4him.com", "CNAME"): ("nxdomain", []),
+                                                   ("www.b4him.com", "A"): ("noanswer", [])})
+    assert rec["outcome"] == "PASS"
+
+
+def test_cite_Q4_the_wildcard_probe_and_the_txt(monkeypatch, tmp_path):
+    import headers_tls_check
+    import re as _re
+    md, _ = world(monkeypatch, tmp_path)
+    for wild in ((("ok", ["1.2.3.4"]), ("nxdomain", [])), (("nxdomain", []), ("ok", ["x.example."]))):
+        rec = q4_with(monkeypatch, headers_tls_check, wildcard=wild)
+        assert rec["outcome"] == "FINDINGS" and "S1 wildcard record: random label maint-" in rec["why"]
+    for wild in ((("error", ["Timeout"]), ("nxdomain", [])), (("nxdomain", []), ("error", ["Timeout"]))):
+        rec = q4_with(monkeypatch, headers_tls_check, wildcard=wild)
+        assert rec["outcome"] == "UNKNOWN" and "wildcard probe: Timeout" in rec["why"]
+    rec = q4_with(monkeypatch, headers_tls_check, wildcard=(("noanswer", []), ("noanswer", [])))
+    assert rec["outcome"] == "PASS"
+    probe = evidence(rec)["wildcard_probe"]["name"]
+    assert _re.fullmatch(r"maint-[0-9a-f]{12}\.b4him\.com", probe)
+    for st in ("nxdomain", "noanswer"):
+        rec = q4_with(monkeypatch, headers_tls_check, {("_github-pages-challenge-sobevista.b4him.com", "TXT"): (st, [])})
+        assert "S2 verification TXT _github-pages-challenge-sobevista.b4him.com is missing" in rec["why"], st
+    rec = q4_with(monkeypatch, headers_tls_check)
+    recs = evidence(rec)["records"]
+    assert recs["_github-pages-challenge-sobevista.b4him.com TXT"]["values"] == 1                 # a count, not the value
+    assert recs["b4him.com A"]["values"] == sorted(headers_tls_check.PAGES_A)
+
+
+def test_cite_M3_the_certificate_s_failures(monkeypatch, tmp_path):
+    import headers_tls_check as h
+    import ssl
+    md, _ = world(monkeypatch, tmp_path)
+    _tls(monkeypatch)
+    long = "z" * 300
+    for err, subject in ((ssl.SSLError(1, long), "HTTPS failing: TLS handshake did not verify"),
+                         (OSError(long), "HTTPS failing: cannot connect on 443")):
+        def bad(host, e=err):
+            raise e
+        monkeypatch.setattr(h, "probe_cert", bad)
+        drive("M3", h)
+        rec = receipt("M3", h)
+        f = [x for x in findings("M3") if x["subject"] == subject][-1]
+        assert rec["outcome"] == "FINDINGS" and f["severity"] == "S1" and f["detail"].count("z") == \
+            min(300, 200 - (len(str(err)) - 300)), subject
+
+    def bad_get(url, method="HEAD", timeout=20):
+        if url.startswith("https://"):
+            raise OSError(long)
+        return {"status": 301, "headers": {"location": "https://b4him.com/"}}
+    _tls(monkeypatch)
+    monkeypatch.setattr(h, "probe_http", bad_get)
+    drive("M3", h)
+    f = [x for x in findings("M3") if x["subject"] == "HTTPS failing: GET / did not complete"][-1]
+    assert len(f["detail"]) == 200
+
+
+def test_cite_M3_the_redirect_s_status(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    for code, want in ((301, "PASS"), (308, "PASS"), (302, "FINDINGS"), (307, "FINDINGS"), (309, "FINDINGS")):
+        _tls(monkeypatch, redirect=code)
+        drive("M3", headers_tls_check)
+        assert receipt("M3", headers_tls_check)["outcome"] == want, code
+
+
+def test_cite_M3_days_left_and_the_previous_snapshot(monkeypatch, tmp_path):
+    import headers_tls_check as h
+    md, _ = world(monkeypatch, tmp_path)
+    now = dt.datetime(2026, 11, 2, 16, tzinfo=dt.timezone.utc)
+    monkeypatch.setattr(h, "probe_cert", lambda host: {"not_after": "Nov 12 04:00:00 2026 GMT", "issuer": "O=X"})
+    monkeypatch.setattr(h, "probe_http", lambda url, method="HEAD", timeout=20: (
+        {"status": 301, "headers": {"location": "https://b4him.com/"}} if url.startswith("http://")
+        else {"status": 200, "headers": {"server": "GitHub.com"}}))
+    monkeypatch.setattr(h, "git_grep_http", lambda root: [])
+    rec = h.run_tls(day=dt.date(2026, 11, 2), now=now)
+    assert evidence(rec)["cert"]["days_left"] == 9.5 and "cert 9.5 days left" in rec["why"]
+    d = md / "headers"
+    for day in ("2026-10-01", "2026-10-20", "2026-11-05", "notes"):
+        (d / f"{day}.json").write_text(json.dumps({"headers": {"server": day}}), encoding="utf-8")
+    assert h.previous_snapshot(d, dt.date(2026, 11, 2)).stem == "2026-10-20" and owns("M3", h)
+
+
+def test_cite_M3_what_counts_as_a_mixed_content_subresource(monkeypatch, tmp_path):
+    import headers_tls_check
+    lines = ['index.html:3:<img src="http://ex.org/a.png">', 'a.css:9:body{background:url( "http://ex.org/b.png")}',
+             'b.html:4:<link rel="stylesheet" href="http://ex.org/c.css">', 'c.css:1:@import "http://ex.org/d.css";',
+             'd.html:2:<p data-xsrc="http://ex.org/e">x</p>', 'e.html:2:<linkish href="http://ex.org/f">',
+             '_hidden/f.html:1:<img src="http://ex.org/g.png">', 'g.html:x:<img src="' + "q" * 300 + 'http://ex.org/">']
+    hits = headers_tls_check.mixed_content(lines)
+    assert [(x["path"], x["line"]) for x in hits] == [("index.html", 3), ("a.css", 9), ("b.html", 4), ("c.css", 1),
+                                                      ("g.html", None)]
+    assert len(hits[-1]["match"]) == 160 and owns("M3", headers_tls_check)
