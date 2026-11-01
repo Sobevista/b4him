@@ -8657,3 +8657,22 @@ def test_cite_M2b_a_miss_beside_a_missing_metric_is_filed_alone(monkeypatch, tmp
     drive("M2b", maint_quality)
     assert [f["detail"] for f in findings("M2b")] == ["largest_contentful_paint p75 3100 > 2500"]
     assert owns("M2b", maint_quality)
+
+
+def test_cite_W1_each_request_waits_15_seconds_at_most(monkeypatch, tmp_path):
+    import linkcheck
+    seen = []
+
+    def opener(req, timeout=None):
+        seen.append(timeout)
+        r = Answer()
+        r.code, r.url, r.body = 200, req.full_url, b""
+        return r
+    linkcheck.Fetcher(opener=opener, sleep=lambda s: None).request("https://example.org/a", "HEAD")
+    assert seen == [15] and owns("W1", linkcheck)
+
+
+def test_cite_D2_the_standards_watch_runner_has_five_minutes(monkeypatch, tmp_path):
+    import maint_run as run
+    import maint_watch
+    assert run.RUNNERS["E3"] == ("standards_watch.py", (), 300) and owns("D2", maint_watch)
