@@ -8746,3 +8746,18 @@ def test_cite_H1_a_ledger_that_cannot_be_read_is_unknown_and_records_nothing(mon
     code, prev, after = close("H1", maint_watch, "human", "H1", "E00002")
     out = capsys.readouterr().out
     assert code == 2 and after == prev and "the ledger line 2 is not JSON" in out and owns("H1", maint_human)
+
+
+def test_cite_D3_a_failed_success_ping_is_scrubbed_whole(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_watch as mw
+    _hb(monkeypatch)
+
+    def refuse(url):
+        raise OSError(f"refused {url}")
+    monkeypatch.setattr(mw, "HTTP_GET", refuse)
+    _d1d2()
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["why"] == "heartbeat (success) not delivered: OSError: refused <MAINT_HEARTBEAT_URL>"
