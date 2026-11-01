@@ -6626,7 +6626,8 @@ def test_cite_W3_the_site_chrome_and_title_words(monkeypatch, tmp_path):
     assert maint_pages.site_vocabulary({"a.html": "<title>Gentle Harbor</title><h1>Gentle Harbor Again</h1>"
                                                   "<h1x>Not A Heading</h1x>"}) == ["gentle harbor", "gentle harbor again"]
     pair = maint_pages.CAP_PAIR.match
-    assert pair("Quillon Mistlewood") and not pair("Quillon Mistlewood Jr") and not pair("quillon Mistlewood")
+    assert pair("Quillon Mistlewood") and pair("Quillon Mistlewood Jr") and pair("Quillon")      # any length
+    assert pair("Quillon T. Mistlewood-Vane's") and not pair("quillon Mistlewood")
     assert maint_pages.PAGE_ROW == "W3.page" and owns("W3", maint_pages)
 
 
@@ -8089,3 +8090,37 @@ def test_cite_M4_a_closed_row_cannot_be_judged_again(monkeypatch, tmp_path):
     assert code == 0 and first["outcome"] == "PASS"
     code, _prev, after = close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "again")
     assert code == 1 and after == first and owns("M4", maint_pages)
+
+
+def test_cite_W3_a_name_of_any_shape_in_the_names_file_is_never_exempt(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    repo = site_repo(mp, tmp_path)
+    local_names(repo, names=("Quillon Mistlewood", "Ardith Vane-Corrow"))
+    names = mp.names_file_words(repo)
+    vocab = lambda w: True                                          # every hit is in this page's own title
+
+    def kept(text):
+        out = mp.exempt({"exit": 1, "outcome": "FINDINGS", "status": "REFUSED", "known_names_loaded": True,
+                         "findings": [{"kind": "unknown-name", "text": text}]}, vocab, names)
+        return out["outcome"] == "FINDINGS" and out["exempted"] == []
+    for text in ("Quillon Mistlewood Ashby",                       # three words, the full name inside
+                 "Doctor Quillon Mistlewood Ashby",                # four words
+                 "Quillon T. Mistlewood",                          # a middle initial
+                 "Ardith Vane-Corrow", "Bel Corrow",               # a hyphenated surname, and one part of it
+                 "Quillon Mistlewood's Garden",                    # a possessive
+                 "Mistlewood"):                                    # one word of a known name
+        assert kept(text), text
+    assert not kept("Garden Tools") and owns("W3", mp)              # a title that names nobody is still exempt
+
+
+def test_cite_M1b_findings_still_name_the_pages_that_errored(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setattr(mq, "audit_contrast", lambda root, rels: {
+        HOME: {"checked": 5, "failures": [contrast_row("p.a", 2.0)], "passingButUnverifiable": []},
+        "guides/" + HOME: {"error": "timeout"}, "about/" + HOME: {"error": "crashed"}})
+    drive("M1b", mq)
+    rec = receipt("M1b", mq)
+    assert rec["outcome"] == "FINDINGS" and rec["why"].endswith(
+        "; also 2 page(s) could not be audited: about/" + HOME + ", guides/" + HOME)
