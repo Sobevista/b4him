@@ -948,6 +948,15 @@ def c1_monitor_line(now: dt.datetime) -> dict:
                             "uptime` (needs UPTIMEROBOT_API_KEY); status not read", tool=TOOL)
 
 
+def _show_written(pre: list[dict], last: dict) -> int:
+    """Print the digest's lines; its exit code follows only the receipts THIS run wrote. The C1 line is the uptime
+    reader's own receipt when one exists: quoted, not written here, so its FINDINGS is not the digest's exit."""
+    quoted = [r for r in pre[:1] if r.get("tool") != f"tools/{TOOL}"]
+    for r in quoted:
+        print(json.dumps(r, ensure_ascii=False))
+    return show(pre[len(quoted):] + [last])
+
+
 def cmd_digest(a, now: dt.datetime) -> int:
     try:
         table = load_rows()
@@ -1014,7 +1023,7 @@ def cmd_digest(a, now: dt.datetime) -> int:
     p.write_text("\n".join(L) + "\n", encoding="utf-8", newline="\n")
     w2 = mr.write_receipt("W2", "PASS", why=f"digest written: {len(opens)} open finding(s), {len(unknowns)} UNKNOWN",
                           evidence=f".maint/{rel}", tool=TOOL)
-    return show(pre + [w2])
+    return _show_written(pre, w2)
 
 
 # ------------------------------------------------------------------ Q6: the alarm fire drill

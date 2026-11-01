@@ -5785,3 +5785,605 @@ def test_cite_C1_the_launch_is_the_py_launcher_s_when_it_started_the_run(monkeyp
     assert run.choose_launch(own, (22, None, None))["pid"] == 11
     assert run.RUNNERS["C1"][0] == headers_tls_check.TOOL                      # C1's runs carry this launch record
 
+
+# ================================================================== sweep: maint_watch's clock, line by line
+def owns(row, tool):
+    """`tool` (the module a cite imported) is the script maint_run.py runs for `row`."""
+    import maint_run as run
+    return run.RUNNERS[row][0] == tool.TOOL
+
+
+def local_at(*when):
+    """A wall time in the cites' calendar zone (TZ)."""
+    return dt.datetime(*when, tzinfo=TZ)
+
+
+def real_row(watch, rid):
+    """The calendar's own row `rid` (tools/maint_rows.json, through maint_watch's public load_rows)."""
+    return watch.load_rows()["rows"][rid]
+
+
+def one_row_table(watch, *rids):
+    return {"rows": {r: real_row(watch, r) for r in rids}, "epoch_date": dt.date(2026, 10, 20)}
+
+
+def rec_at(row, outcome, when, why="x", tool="maint_watch.py", **kw):
+    """A receipt line as a tool writes it, stamped `when` (aware)."""
+    return {"at": when.isoformat(timespec="seconds"), "row": row, "outcome": outcome,
+            "n": 1 if outcome == "FINDINGS" else None, "why": why, "evidence": None, "tool": f"tools/{tool}",
+            "run_id": None, **kw}
+
+
+def test_cite_D1_the_release_window_is_08_25_to_10_30_inclusive(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    day, now = dt.date(2026, 11, 2), local_at(2026, 11, 2, 11, 0)
+
+    def judged(*at):
+        return maint_watch.judge_release_day([dict(LINE, at=local_at(*at).isoformat())], day, now)
+    for at, inside in (((2026, 11, 2, 8, 25, 0), True), ((2026, 11, 2, 8, 24, 59), False),
+                       ((2026, 11, 2, 10, 30, 0), True), ((2026, 11, 2, 10, 30, 1), False)):
+        v = judged(*at)
+        assert bool(v["scheduled"]) is inside and (v["problems"] == []) is inside, at
+        if not inside:
+            assert v["problems"][0].startswith("MISSING: no line from the 08:30 run by 10:30"), at
+    skip = maint_watch.judge_release_day([dict(LINE, outcome="SKIP")], day, now)
+    assert skip["problems"] == [] and skip["scheduled"]                  # a SKIP release is a fine day
+    assert owns("D1", maint_watch)                           # this is D1's runner's logic
+
+
+def test_cite_D1_pending_until_10_30_exactly(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    day = dt.date(2026, 11, 2)
+    before = maint_watch.judge_release_day([], day, local_at(2026, 11, 2, 10, 29, 59))
+    at = maint_watch.judge_release_day([], day, local_at(2026, 11, 2, 10, 30, 0))
+    assert before["pending"] and before["problems"] == []
+    assert not at["pending"] and at["problems"][0].startswith("MISSING")
+    fail = maint_watch.judge_release_day([dict(LINE, outcome="FAIL", at=local_at(2026, 11, 2, 12, 0).isoformat())],
+                                         day, local_at(2026, 11, 2, 13, 0))
+    assert fail["problems"][0].startswith("MISSING") and "FAIL" in fail["problems"][1]   # MISSING comes first
+    assert owns("D1", maint_watch)                           # this is D1's runner's logic
+
+
+def test_cite_D1_a_release_day_in_the_future_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    import pytest
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    with pytest.raises(maint_watch.Unknown, match="is in the future"):
+        maint_watch.judge_release_day([], dt.date(2026, 11, 3), local_at(2026, 11, 2, 11, 0))
+    assert maint_watch.RELEASE_RUN_AT == dt.time(8, 30) and "D1" in maint_watch.ONE_ROWS
+
+
+def test_cite_D2_each_kind_s_next_occurrence(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    occ = maint_watch.occ_on_or_after
+    d1, w2, m4, q6, h1, a2 = (real_row(maint_watch, r) for r in ("D1", "W2", "M4", "Q6", "H1", "A2"))
+    assert occ(d1, local_at(2026, 11, 2, 8, 0)) == local_at(2026, 11, 2, 8, 30)
+    assert occ(d1, local_at(2026, 11, 2, 8, 30)) == local_at(2026, 11, 2, 8, 30)          # on the minute: that one
+    assert occ(d1, local_at(2026, 11, 2, 8, 31)) == local_at(2026, 11, 3, 8, 30)
+    assert occ(w2, local_at(2026, 11, 4, 0, 0)) == local_at(2026, 11, 9)                 # Wednesday -> Monday
+    assert occ(w2, local_at(2026, 11, 9, 0, 0)) == local_at(2026, 11, 9)                 # Monday midnight itself
+    assert occ(w2, local_at(2026, 11, 9, 0, 1)) == local_at(2026, 11, 16)
+    assert occ(m4, local_at(2026, 11, 2, 0, 0)) == local_at(2026, 11, 2)                 # first Monday of November
+    assert occ(m4, local_at(2026, 11, 2, 0, 1)) == local_at(2026, 12, 7)
+    assert occ(m4, local_at(2026, 12, 8, 0, 0)) == local_at(2027, 1, 4)                  # over the year end
+    assert occ(q6, local_at(2026, 11, 3, 0, 0)) == local_at(2027, 1, 4)
+    assert occ(q6, local_at(2027, 1, 5, 0, 0)) == local_at(2027, 4, 5)
+    assert occ(h1, local_at(2027, 1, 5, 0, 0)) == local_at(2027, 7, 5)
+    assert occ(a2, local_at(2026, 11, 3, 0, 0)) == local_at(2027, 1, 4)
+    assert occ(a2, local_at(2027, 1, 4, 0, 0)) == local_at(2027, 1, 4)
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D2_a_row_with_no_clock_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    import pytest
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    t = local_at(2026, 11, 2)
+    for row, why in (({"id": "X1", "kind": "fortnightly"}, "has no clock"),
+                     ({"id": "X2", "kind": "quarterly", "months": []}, "has no clock"),
+                     ({"id": "X3", "kind": "quarterly", "months": [13]}, "no occurrence found")):
+        with pytest.raises(maint_watch.Unknown, match=why):
+            maint_watch.occ_on_or_after(row, t)
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D2_deadlines_by_kind(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    d1, m4 = real_row(maint_watch, "D1"), real_row(maint_watch, "M4")
+    assert maint_watch.deadline_of(d1, local_at(2026, 11, 3, 8, 30)) == local_at(2026, 11, 3, 10, 30)   # due + 2 h
+    assert maint_watch.deadline_of(m4, local_at(2026, 12, 7)) == local_at(2026, 12, 11)                 # + 1 d + 72 h
+    assert maint_watch.due_from(d1, None, dt.date(2026, 10, 20), TZ) == local_at(2026, 10, 20, 8, 30)
+    assert maint_watch.due_from(m4, local_at(2026, 11, 2, 13, 0), dt.date(2026, 10, 20), TZ) == local_at(2026, 12, 7)
+    assert maint_watch.first_monday(2026, 11) == dt.date(2026, 11, 2) and maint_watch.first_monday(2027, 2) == \
+        dt.date(2027, 2, 1)
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D2_overdue_starts_just_after_the_deadline(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    table = one_row_table(maint_watch, "D1")
+    recs = [rec_at("D1", "PASS", local_at(2026, 11, 2, 9, 0))]           # next due 11-03 08:30, deadline 10:30
+    at, after = local_at(2026, 11, 3, 10, 30), local_at(2026, 11, 3, 10, 30, 1)
+    assert maint_watch.overdue_rows(table, recs, at) == ([], [])
+    over, _ = maint_watch.overdue_rows(table, recs, after)
+    assert [o["row"] for o in over] == ["D1"] and over[0]["deadline"] == at and over[0]["last"] == \
+        local_at(2026, 11, 2, 9, 0)
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D2_a_board_or_note_row_is_closed_only_by_a_pass(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    for rid in ("M5", "H2"):
+        table = one_row_table(maint_watch, rid)
+        old_pass = local_at(2026, 10, 20, 9, 0)
+        recs = [rec_at(rid, "PASS", old_pass), rec_at(rid, "FINDINGS", local_at(2027, 2, 20, 9, 0)),
+                rec_at(rid, "UNKNOWN", local_at(2027, 2, 21, 9, 0))]
+        over, _ = maint_watch.overdue_rows(table, recs, local_at(2027, 3, 1))
+        assert [o["row"] for o in over] == [rid] and over[0]["last"] == old_pass, rid
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D2_an_unknown_streak_runs_from_its_first_line(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    table = one_row_table(maint_watch, "D1")
+    first = local_at(2026, 11, 3, 9, 0)
+    recs = [rec_at("D1", "PASS", local_at(2026, 11, 2, 9, 0)), rec_at("D1", "UNKNOWN", first, why="no log"),
+            rec_at("D1", "UNKNOWN", local_at(2026, 11, 3, 9, 30), why="still no log")]
+    stuck, pending = maint_watch.unknown_rows(table, recs, local_at(2026, 11, 3, 11, 0))          # first + 2 h
+    assert stuck == [] and [(p["row"], p["since"], p["until"], p["why"]) for p in pending] == \
+        [("D1", first, local_at(2026, 11, 3, 11, 0), "still no log")]
+    stuck, pending = maint_watch.unknown_rows(table, recs, local_at(2026, 11, 3, 11, 0, 1))
+    assert pending == [] and [s["row"] for s in stuck] == ["D1"]
+    only = [rec_at("D1", "UNKNOWN", first, why="no log")]                                         # a streak of one
+    assert maint_watch.unknown_rows(table, only, local_at(2026, 11, 3, 10, 0))[1][0]["since"] == first
+    fine = recs + [rec_at("D1", "PASS", local_at(2026, 11, 3, 10, 0))]
+    assert maint_watch.unknown_rows(table, fine, local_at(2026, 11, 9)) == ([], [])
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_W2_unknown_streaks_by_age(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    a, b = local_at(2026, 11, 3, 9, 0), local_at(2026, 11, 1, 9, 0)
+    recs = [rec_at("D1", "PASS", local_at(2026, 11, 2, 9, 0)), rec_at("D1", "UNKNOWN", a, why="one"),
+            rec_at("D1", "UNKNOWN", local_at(2026, 11, 3, 9, 30), why="two"),
+            rec_at("M4", "UNKNOWN", b, why="m4"), rec_at("C1", "PASS", a)]
+    out = maint_watch.unknown_streaks(recs)
+    assert [(r, t, e["why"]) for r, t, e in out] == [("M4", b, "m4"), ("D1", a, "two")]
+    assert owns("W2", maint_watch)                           # this is W2's runner's logic
+
+
+def test_cite_W2_open_findings_are_the_latest_run_s(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    r1, r2 = local_at(2026, 11, 2, 9, 0), local_at(2026, 11, 3, 9, 0)
+    recs = [rec_at("W1", "FINDINGS", r1), rec_at("W1", "FINDINGS", r2)]
+
+    def f(subject, t):
+        return {"at": t.isoformat(), "row": "W1", "severity": "S2", "subject": subject, "detail": "", "route_to": "x"}
+    finds = [f("old", r1), f("at the previous run", r1), f("this run", local_at(2026, 11, 3, 8, 0)),
+             f("at the latest run", r2), f("after the latest run", local_at(2026, 11, 3, 10, 0))]
+    got = [x["subject"] for x in maint_watch.open_findings(recs, finds)]
+    assert got == ["this run", "at the latest run"]
+    assert owns("W2", maint_watch)                           # this is W2's runner's logic
+
+
+def test_cite_D2_the_rdap_clock_and_its_window(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    row = real_row(maint_watch, "A3")
+    epoch = dt.date(2026, 10, 20)
+    poll = local_at(2026, 11, 2, 11, 0)                                     # a Monday poll
+    recs = [rec_at("A3", "SKIP", poll, why="awaiting Daniel's ruling: expires 2026-12-20 (48 days)",
+                   tool="maint_human.py")]
+    opens = local_at(2026, 10, 21)                                          # 60 days before 12-20
+    deadline = opens + dt.timedelta(hours=row["grace_hours"])               # 336 h: 11-04 00:00
+    assert deadline == local_at(2026, 11, 4)
+    assert maint_watch.rdap_overdue("A3", row, recs, deadline, epoch) is None
+    now = deadline + dt.timedelta(seconds=1)
+    late = maint_watch.rdap_overdue("A3", row, recs, now, epoch)
+    assert late["due"] == opens and late["deadline"] == deadline and "the 60-day window opened 2026-10-21" in late["what"]
+    closed = recs + [rec_at("A3", "PASS", opens, tool="maint_watch.py")]  # a close at the very opening counts
+    assert maint_watch.rdap_overdue("A3", row, closed, now, epoch) is None
+    early = recs + [rec_at("A3", "PASS", opens - dt.timedelta(seconds=1), tool="maint_watch.py")]
+    assert maint_watch.rdap_overdue("A3", row, early, now, epoch) is not None
+    for why in ("awaiting: reexpires 2026-12-20", "awaiting: expires 2026-12-201"):   # the words, whole
+        odd = [rec_at("A3", "SKIP", poll, why=why, tool="maint_human.py")]
+        assert maint_watch.rdap_overdue("A3", row, odd, now, epoch) is None, why
+    quiet = [rec_at("A3", "SKIP", poll, why="not due", tool="maint_human.py")]
+    poll_deadline = local_at(2026, 11, 11)                                  # next Monday 11-09 + 1 d + 24 h
+    assert maint_watch.rdap_overdue("A3", row, quiet, poll_deadline, epoch) is None
+    stopped = maint_watch.rdap_overdue("A3", row, quiet, poll_deadline + dt.timedelta(seconds=1), epoch)
+    assert stopped is not None and stopped["what"] == "RDAP poll stopped"
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D2_a_human_row_s_status_at_its_lines(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    table = one_row_table(maint_watch, "H1")
+    due = local_at(2027, 1, 4)                                           # first due after the epoch
+    dl = due + dt.timedelta(days=1, hours=168)
+    st = maint_watch.human_status
+    assert st("H1", table, [], due - dt.timedelta(seconds=1))["is_due"] is False
+    assert st("H1", table, [], due)["is_due"] is True
+    assert st("H1", table, [], dl)["overdue"] is False and st("H1", table, [], dl + dt.timedelta(seconds=1))["overdue"]
+    before = [rec_at("H1", "SKIP", due - dt.timedelta(seconds=1), why="awaiting Daniel's ruling: H1 pack",
+                     tool="maint_human.py")]
+    at = [rec_at("H1", "SKIP", due, why="awaiting Daniel's ruling: H1 pack", tool="maint_human.py")]
+    assert st("H1", table, before, due)["fired"] is None and st("H1", table, at, due)["fired"] == due
+    unk = [rec_at("H1", "UNKNOWN", due, why="pack failed", tool="maint_human.py")]
+    assert st("H1", table, unk, due)["fired"] == due                      # a failed pack still fired the reminder
+    closes = [rec_at("H1", "PASS", local_at(2026, 12, 1), why="closed by E00001"),
+              rec_at("H1", "PASS", local_at(2027, 1, 5), why="closed by E00002")]
+    s = st("H1", table, closes, local_at(2027, 2, 1))
+    assert s["last"] == local_at(2027, 1, 5) and s["last_e"] == "closed by E00002" and s["due"] == local_at(2027, 7, 5)
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D2_reminders_say_how_late_they_fired(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, 2027, 1, 4, 9, watch=maint_watch)
+    table = one_row_table(maint_watch, "H1")
+    first = maint_watch.fire_reminders(table, local_at(2027, 1, 4, 9, 0), only=("H1",))
+    assert [(r["outcome"], "(on time)" in r["why"]) for r in first] == [("SKIP", True)]
+    assert maint_watch.fire_reminders(table, local_at(2027, 1, 4, 10, 0), only=("H1",)) == []     # fired once
+    md2, _ = world(monkeypatch, tmp_path / "late", 2027, 1, 7, 9, watch=maint_watch)
+    late = maint_watch.fire_reminders(table, local_at(2027, 1, 7, 9, 0), only=("H1",))
+    assert len(late) == 1 and "(late by 3 day(s))" in late[0]["why"] and mr_awaiting(late[0])
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def mr_awaiting(e):
+    import maint_receipt as mr
+    return mr.is_awaiting(e)
+
+
+def test_cite_A3_maint_watch_one_for_a_human_row(monkeypatch, tmp_path):
+    import maint_human
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, 2026, 11, 2, 11, watch=maint_watch)
+    code = maint_watch.main(["one", "A1"])
+    rec = snap("A1")[-1]
+    assert code == 0 and rec["outcome"] == "SKIP" and rec["why"].startswith("HUMAN row not due: next due 2027-01-04")
+    clock.set(2027, 1, 4, 11)
+    maint_watch.main(["one", "A1"])
+    fired = snap("A1")[-1]
+    assert mr_awaiting(fired) and "reminder fired 2027-01-04" in fired["why"]
+    maint_watch.main(["one", "A1"])
+    again = snap("A1")[-1]
+    assert mr_awaiting(again) and again["why"].startswith("awaiting Daniel's ruling: reminder fired 2027-01-04")
+    bad = tmp_path / "rows.json"
+    bad.write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(maint_watch, "ROWS_FILE", bad)
+    maint_watch.main(["one", "A3"])
+    assert snap("A3")[-1]["outcome"] == "UNKNOWN" and maint_human.TOOL == "maint_human.py"
+
+
+def write_note(md, name, text):
+    d = md / "notes"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(text, encoding="utf-8")
+
+
+def test_cite_H2_the_check_s_clock_at_its_lines(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    table = one_row_table(maint_watch, "H2")
+    due = local_at(2027, 1, 4)
+    dl = due + dt.timedelta(days=1, hours=168)
+    r = maint_watch.run_check("H2", due - dt.timedelta(seconds=1), table=table)
+    assert r["outcome"] == "SKIP" and r["why"].startswith("not yet scheduled: first due 2027-01-04 (.maint/notes/H2_<date>.md)")
+    r = maint_watch.run_check("H2", due, table=table)
+    assert mr_awaiting(r) and "the review note due 2027-01-04" in r["why"]
+    r = maint_watch.run_check("H2", dl, table=table)
+    assert mr_awaiting(r)
+    r = maint_watch.run_check("H2", dl + dt.timedelta(seconds=1), table=table)
+    assert (r["outcome"], r["n"]) == ("FINDINGS", 1) and r["why"].startswith("review note overdue: due 2027-01-04")
+
+
+def test_cite_H2_a_note_s_values_must_carry_content(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    good = GOOD_NOTE.format(d="2027-01-05")
+    write_note(md, "H2_2027-01-05.md", good)
+    p = md / "notes" / "H2_2027-01-05.md"
+    assert maint_watch.note_problems(p, "H2", dt.date(2027, 1, 5), dt.date(2027, 1, 6)) == []
+    for old, new, part in (("Reviewed: the publication gate", "Reviewed: ab", "Reviewed:"),
+                           ("Reviewed: the publication gate", "Reviewed: tbd", "Reviewed:"),
+                           ("Reviewed: the publication gate", "Reviewed: n/a", "Reviewed:"),
+                           ("Reviewed: the publication gate", "xReviewed: the gate", "Reviewed:")):
+        p.write_text(good.replace(old, new), encoding="utf-8")
+        assert any(m.startswith(part) for m in maint_watch.note_problems(p, "H2", dt.date(2027, 1, 5),
+                                                                          dt.date(2027, 1, 6))), new
+    p.write_text(good.replace("Reviewed: the publication gate", "Reviewed: abc"), encoding="utf-8")
+    assert maint_watch.note_problems(p, "H2", dt.date(2027, 1, 5), dt.date(2027, 1, 6)) == []      # 3 chars: content
+    p.write_text(good.replace("Date: 2027-01-05", "Date: 2027-01-05T09:00-05:00"), encoding="utf-8")
+    assert maint_watch.note_problems(p, "H2", dt.date(2027, 1, 5), dt.date(2027, 1, 6)) == []      # a time, read
+    p.write_text(good.replace("Reviewer: reviewer", "Reviewer: Reviewer"), encoding="utf-8")
+    assert maint_watch.note_problems(p, "H2", dt.date(2027, 1, 5), dt.date(2027, 1, 6)) == []      # any case
+
+
+def test_cite_H2_only_a_dated_md_file_is_a_note(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    write_note(md, "H2_2027-01-05.md", GOOD_NOTE.format(d="2027-01-05"))
+    write_note(md, "H2_2027-01-07.md.bak", GOOD_NOTE.format(d="2027-01-07"))
+    write_note(md, "xH2_2027-01-08.md", GOOD_NOTE.format(d="2027-01-08"))
+    write_note(md, "H2_2027-01-06_draft.md", GOOD_NOTE.format(d="2027-01-06"))
+    write_note(md, "H2_2027-01-06_a.md", GOOD_NOTE.format(d="2027-01-06"))
+    assert maint_watch.newest_note("H2") == (dt.date(2027, 1, 6), ".maint/notes/H2_2027-01-06_draft.md")
+
+
+def test_cite_M5_the_board_stamp_s_lines(monkeypatch, tmp_path):
+    import maint_watch
+    import pytest
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    b = tmp_path / "PRODUCTION_BOARD.md"
+    core = "*Generated 2026-11-02 by `tools/production_board.py`"
+    b.write_text("# PRODUCTION BOARD\n" + core + "*\n", encoding="utf-8")
+    assert maint_watch.board_date(tmp_path, dt.date(2026, 11, 2)) == dt.date(2026, 11, 2)       # today is fine
+    with pytest.raises(maint_watch.Unknown, match="in the future"):
+        maint_watch.board_date(tmp_path, dt.date(2026, 11, 1))
+    pad = 2000 - len(core)
+    b.write_text("#" + "x" * (pad - 2) + "\n" + core, encoding="utf-8")        # the stamp ends on char 2000
+    assert maint_watch.board_date(tmp_path, dt.date(2026, 11, 2)) == dt.date(2026, 11, 2)
+    b.write_text("#" + "x" * (pad - 1) + "\n" + core, encoding="utf-8")        # one char past the head
+    with pytest.raises(maint_watch.Unknown, match="carries no"):
+        maint_watch.board_date(tmp_path, dt.date(2026, 11, 2))
+    assert owns("M5", maint_watch)                           # this is M5's runner's logic
+
+
+def test_cite_D2_a_command_s_exit_code_follows_its_receipts(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    show = maint_watch.show
+    assert show([{"outcome": "PASS"}, {"outcome": "SKIP"}]) == 0 and show([]) == 0
+    assert show([{"outcome": "UNKNOWN"}, {"outcome": "PASS"}]) == 2
+    assert show([{"outcome": "FINDINGS"}, {"outcome": "UNKNOWN"}]) == 1
+    assert owns("D2", maint_watch)                           # this is D2's runner's logic
+
+
+def test_cite_D3_an_alarm_s_cause_class(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    cc = maint_watch.cause_class
+    assert cc("linkcheck crashed: KeyError 'pages'\nTraceback ...") == "linkcheck crashed: keyerror 'pages'"
+    assert cc("linkcheck crashed: KeyError: 'pages'") == "linkcheck crashed: keyerror"
+    assert cc("pa11y failed on 3 pages (b4him)") == "pa11y failed on # pages (b4him)"
+    assert cc("x" * 200) == "x" * 80 and cc("") == "" and cc("  \n  ") == ""
+    assert maint_watch.alarm_key("D1", "findings", "") == "D1 findings"
+    assert maint_watch.alarm_key("D2", "overdue", "W1 late; more") == "D2 overdue: w1 late"
+    assert owns("D3", maint_watch)                           # this is D3's runner's logic
+
+
+def test_cite_D3_the_heartbeat_s_status_lines(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _hb(monkeypatch)
+    _d1d2()
+    for status, want in ((199, "FINDINGS"), (200, "PASS"), (299, "PASS"), (300, "FINDINGS")):
+        monkeypatch.setattr(maint_watch, "HTTP_GET", lambda url, s=status: (s, "OK"))
+        drive("D3", maint_watch)
+        rec = receipt("D3", maint_watch)
+        assert rec["outcome"] == want and (rec["n"] == 1 if want == "FINDINGS" else True), status
+
+
+def test_cite_D3_a_refusal_quotes_the_service_briefly_and_never_the_url(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _hb(monkeypatch)
+    _d1d2()
+    url = "https://hc-ping.example.invalid/5a1b9c3e-0f4d-4e2a-9b7c-1d2e3f4a5b6c"
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", url)
+    secret = url.rsplit("/", 1)[1]
+    for leak in (url, url + "/fail", "token " + secret):
+        body = leak + " " + "y" * 300
+        monkeypatch.setattr(maint_watch, "HTTP_GET", lambda u, b=body: (404, b))
+        drive("D3", maint_watch)
+        rec = receipt("D3", maint_watch)
+        f = findings("D3")[-1]
+        assert rec["outcome"] == "FINDINGS" and secret not in rec["why"] and secret not in f["detail"], leak
+        assert "<MAINT_HEARTBEAT_URL>" in rec["why"] and "<MAINT_HEARTBEAT_URL>" in f["detail"], leak
+    body = url + " " + "y" * 300                                     # the service's words: 80 chars in the receipt,
+    monkeypatch.setattr(maint_watch, "HTTP_GET", lambda u: (404, body))   # 120 in the finding
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["why"].count("y") == 80 - len(url) - 1 and findings("D3")[-1]["detail"].count("y") == 120 - len(url) - 1
+
+
+def test_cite_D3_a_ping_that_could_not_be_sent_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _hb(monkeypatch)
+    _d1d2()
+
+    def down(url):
+        raise OSError("connection refused by " + url)
+    monkeypatch.setattr(maint_watch, "HTTP_GET", down)
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "not delivered" in rec["why"] and "hc-ping.example.invalid" not in rec["why"]
+    monkeypatch.setattr(maint_watch, "HTTP_GET", lambda url: (200, "Hello"))
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "not 'OK': delivery unproven" in rec["why"]
+
+
+def test_cite_D3_today_s_latest_d1_line_is_the_one_read(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    calls = _hb(monkeypatch)
+    mr.write_receipt("D1", "FINDINGS", n=1, why="2026-11-02: MISSING: no line", tool="maint_watch.py")
+    clock.set(2026, 11, 2, 11, 5)
+    mr.write_receipt("D1", "PASS", why="2026-11-02: 08:31 PUBLISHED", tool="maint_watch.py")
+    mr.write_receipt("D2", "PASS", why="ok", tool="maint_watch.py")
+    fail, why, current = maint_watch.d3_signal(maint_watch.local(clock.now()))
+    assert (fail, current) == (False, [])
+    mr.write_receipt("D1", "FINDINGS", n=1, why="2026-11-02: 10:31 FAIL content", tool="maint_watch.py")
+    fail, why, current = maint_watch.d3_signal(maint_watch.local(clock.now()))
+    assert fail and current == ["D1 findings: #: # fail content"] and "NEW D1 findings" in why
+    assert owns("D3", maint_watch)                           # this is D3's runner's logic
+
+
+def test_cite_W2_the_digest_s_week_and_lists(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    clock.set(2026, 10, 26, 11, 0, 0)
+    mr.write_receipt("Q3", "PASS", why="a week ago to the second", tool="maint_pages.py")
+    clock.set(2026, 10, 26, 11, 0, 1)
+    mr.write_receipt("Q4", "PASS", why="inside the week", tool="headers_tls_check.py")
+    mr.write_receipt("D3", "UNKNOWN", why="older ping", tool="maint_watch.py")
+    clock.set(2026, 11, 1, 9, 0)
+    mr.write_receipt("D3", "PASS", why="heartbeat success signal delivered", tool="maint_watch.py")
+    mr.write_receipt("W3.page", "SKIP", why="awaiting site-maintainer judgement: a page line", tool="maint_pages.py")
+    mr.write_receipt("M4", "SKIP", why="awaiting managing-editor judgement: the walkthrough", tool="maint_pages.py")
+    clock.set(2026, 11, 2, 11, 0)
+    drive("W2", maint_watch)
+    rec = receipt("W2", maint_watch)
+    text = _digest(md, rec)
+    week = text.split("## Receipts of the week")[1]
+    assert "inside the week" in week and "a week ago to the second" not in week
+    assert "- D3 heartbeat: " in text and "heartbeat success signal delivered" in text.split("- D3 heartbeat: ")[1].split("\n")[0]
+    waits = text.split("## Awaiting a judgement")[1].split("##")[0]
+    assert "- M4: awaiting" in waits and "W3.page" not in waits
+
+
+def test_cite_W2_the_h3_reminder_carries_the_evidence_pack(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, 2027, 1, 5, 11, watch=maint_watch)
+    a = md / "audits"
+    a.mkdir(parents=True)
+    for i in range(30):
+        (a / f"2026-10-{i + 1:02d}_x.md").write_text("x", encoding="utf-8")
+    drive("W2", maint_watch)
+    rec = receipt("W2", maint_watch)
+    text = _digest(md, rec)
+    pack = text.split("## H3")[1]
+    assert "REMINDER: the re-read is due" in pack
+    listed = pack.split(".maint/audits/: ")[1].split("\n")[0].split(", ")
+    assert len(listed) == 26 and listed[0] == "2026-10-05_x.md"                # the newest 26 audits
+
+
+def test_cite_W2_the_c1_line_takes_the_reader_s_last_week_only(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    clock.set(2026, 10, 26, 11, 0, 0)
+    mr.write_receipt("C1", "PASS", why="exactly a week old", tool="headers_tls_check.py")
+    clock.set(2026, 11, 2, 11, 0)
+    line = maint_watch.c1_monitor_line(maint_watch.local(clock.now()))
+    assert line["outcome"] == "UNKNOWN" and line["why"].startswith("no C1 reader receipt in the last 7 days")
+    clock.set(2026, 10, 30, 9, 0)
+    mr.write_receipt("C1", "PASS", why="older", tool="headers_tls_check.py")
+    mr.write_receipt("C1", "FINDINGS", n=1, why="newest", tool="headers_tls_check.py")
+    mr.write_receipt("C1", "PASS", why="not the reader", tool="maint_watch.py")
+    clock.set(2026, 11, 2, 11, 0)
+    assert maint_watch.c1_monitor_line(maint_watch.local(clock.now()))["why"] == "newest"
+    drive("W2", maint_watch)
+    assert receipt("W2", maint_watch)["outcome"] == "PASS"
+
+
+def test_cite_W2_an_unreadable_row_table_is_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    bad = tmp_path / "rows.json"
+    bad.write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(maint_watch, "ROWS_FILE", bad)
+    drive("W2", maint_watch)
+    rec = receipt("W2", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and "cannot read the row table" in rec["why"]
+
+
+def test_cite_Q6_retire_candidates_over_four_quarters(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    now = local_at(2027, 11, 2, 11, 0)
+    since = now - dt.timedelta(days=365)
+    table = one_row_table(maint_watch, "M4", "M3", "Q1", "Q2", "Q3", "A2")
+
+    def find(row, t, subject="x"):
+        return {"at": t.isoformat(), "row": row, "severity": "S2", "subject": subject, "detail": "", "route_to": ""}
+    recs = [rec_at("M4", "PASS", since), rec_at("M3", "PASS", since + dt.timedelta(seconds=1)),
+            rec_at("Q1", "PASS", since), rec_at("Q1", "FINDINGS", since),
+            rec_at("Q2", "PASS", since), rec_at("Q3", "PASS", since), rec_at("A2", "PASS", since)]
+    finds = [find("Q2", since), find("D2", since, "OVERDUE Q3"), find("A2", since - dt.timedelta(seconds=1))]
+    out = "\n".join(maint_watch.retire_candidates(table, recs, finds, now))
+    assert "**M4**: zero findings and zero alarms in 4 quarters" in out
+    assert "- M3: zero findings and zero alarms so far, but history only since" in out
+    assert "Q1" not in out and "Q2" not in out and "Q3" not in out          # a finding or an alarm in the year
+    assert "**A2**" in out                                                  # its finding was before the year
+    assert owns("Q6", maint_watch)                           # this is Q6's runner's logic
+
+
+def test_cite_Q6_a_drill_after_today_s_ping_withholds_tomorrow_s(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
+    clock.set(2026, 11, 1, 10, 31)
+    mr.write_receipt("D3", "PASS", why="heartbeat success signal delivered", tool="maint_watch.py")
+    clock.set(2026, 11, 2, 10, 31)
+    mr.write_receipt("D3", "SKIP", why="drill", tool="maint_watch.py")       # a withheld ping is not a ping
+    clock.set(2026, 11, 2, 11, 0)
+    drive("Q6", maint_watch)
+    rec = receipt("Q6", maint_watch)
+    assert "the 2026-11-02 heartbeat is withheld" in rec["why"] and "(2026-11-01 10:31)" in rec["why"]
+    md2, clock2 = world(monkeypatch, tmp_path / "pinged", watch=maint_watch)
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
+    clock2.set(2026, 11, 2, 10, 31)
+    mr.write_receipt("D3", "PASS", why="heartbeat success signal delivered", tool="maint_watch.py")
+    clock2.set(2026, 11, 2, 11, 0)
+    drive("Q6", maint_watch)
+    assert "the 2026-11-03 heartbeat is withheld" in receipt("Q6", maint_watch)["why"]
+
+
+def test_cite_Q6_a_drill_log_is_disarmed_only_by_its_own_confirmation(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    md.mkdir(parents=True, exist_ok=True)
+    log = md / "drills.jsonl"
+    log.write_text(json.dumps({"event": "armed", "skip_date": "2026-11-02"}) + "\n"
+                   + json.dumps({"event": "confirmed", "skip_date": "2026-11-01"}) + "\n", encoding="utf-8")
+    assert maint_watch.armed_drill()["skip_date"] == "2026-11-02"
+    log.write_text(log.read_text(encoding="utf-8") + json.dumps({"event": "confirmed", "skip_date": "2026-11-02"})
+                   + "\n", encoding="utf-8")
+    assert maint_watch.armed_drill() is None and snap("Q6") == []
+
+
+def test_cite_Q6_a_confirmation_s_time_window(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    for word in ("never", "None", "FAIL"):
+        mdw, clock = world(monkeypatch, tmp_path / word, watch=maint_watch)
+        first = _armed_q6(monkeypatch, maint_watch)
+        code, prev, shut = close("Q6", maint_watch, "confirm", word)
+        assert first["outcome"] == "SKIP" and (code, shut["outcome"], shut["n"]) == (1, "FINDINGS", 1), word
+    mdt, clock = world(monkeypatch, tmp_path / "times", watch=maint_watch)
+    _armed_q6(monkeypatch, maint_watch)                                    # skip 2026-11-02, now 11:00
+    assert refused("Q6", maint_watch, "confirm", "2026-11-01T23:59:59-05:00")       # before the skipped day
+    assert refused("Q6", maint_watch, "confirm", "2026-11-02T11:05:01-05:00")       # more than 5 min ahead
+    code, prev, shut = close("Q6", maint_watch, "confirm", "2026-11-02T11:05:00-05:00")
+    assert code == 0 and shut["outcome"] == "PASS" and "alarm fired at 11:05 on 2026-11-02" in shut["why"]
+    mdm, clock = world(monkeypatch, tmp_path / "midnight", watch=maint_watch)
+    _armed_q6(monkeypatch, maint_watch)
+    code, prev, shut = close("Q6", maint_watch, "confirm", "00:00")
+    assert code == 0 and shut["outcome"] == "PASS"
+
+
+def test_cite_D2_no_hand_act_takes_a_fixed_clock(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    assert refused("H1", maint_watch, "--now", "2026-11-02T10:00:00+00:00", "human", "H1", "E01234")
+    assert refused("Q2", maint_watch, "--now", "2026-11-02T10:00:00+00:00", "witness", "privacy-safety")
+    assert snap("D2") == []
