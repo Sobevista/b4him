@@ -5779,7 +5779,7 @@ def test_cite_C1_the_launch_is_the_py_launcher_s_when_it_started_the_run(monkeyp
     for launcher in ("py.exe", "pyw.exe", "PY.EXE"):
         parent = (22, "C:\\Windows\\" + launcher, "2026-11-02T15:59:59+00:00")
         assert run.choose_launch(own, parent) == {"pid": 22, "proc_started": "2026-11-02T15:59:59+00:00"}, launcher
-    for other in ("python.exe", "cmd.exe", "__sweep__", "py.exe.bak"):
+    for other in ("python.exe", "cmd.exe", "python3.exe", "py.exe.bak"):
         parent = (22, "C:\\Windows\\" + other, "2026-11-02T15:59:59+00:00")
         assert run.choose_launch(own, parent) == {"pid": 11, "proc_started": "2026-11-02T16:00:00+00:00"}, other
     assert run.choose_launch(own, (22, None, None))["pid"] == 11
@@ -8124,3 +8124,536 @@ def test_cite_M1b_findings_still_name_the_pages_that_errored(monkeypatch, tmp_pa
     rec = receipt("M1b", mq)
     assert rec["outcome"] == "FINDINGS" and rec["why"].endswith(
         "; also 2 page(s) could not be audited: about/" + HOME + ", guides/" + HOME)
+
+
+# ================================================================== sweep round 13: calibration error paths and more
+def test_cite_A4_the_calibration_s_pa11y_and_contrast_wrappers(monkeypatch, tmp_path):
+    import pytest
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    s = mq.default_scanners(repo_root())
+    base = f"http://127.0.0.1:1/{mq.FIXTURES}/"
+    for code, rep, why in ((1, {"results": {}}, "pa11y-ci exit 1, no readable report"),
+                           (0, None, "pa11y-ci exit 0, no readable report")):
+        monkeypatch.setattr(mq, "run_pa11y", lambda root, rels, tag, c=code, r=rep: (c, r, {}))
+        with pytest.raises(mq.Unavailable, match=why):
+            s["pa11y-ci"]()
+    rep = {"results": {base + "a/": [{"code": "image-alt"}, "not an issue"], base + "b.html": [], base: [{"code": "x"}]}}
+    for code in (0, 2):
+        monkeypatch.setattr(mq, "run_pa11y", lambda root, rels, tag, c=code: (c, rep, {}))
+        assert s["pa11y-ci"]() == {"a/" + HOME: ["pa11y:image-alt"], "b.html": [], HOME: ["pa11y:x"]}
+    monkeypatch.setattr(mq, "audit_contrast", lambda root, rels: {
+        f"{mq.FIXTURES}/c.html": {"failures": [{"selector": "p.low", "ratio": 1.2}]}})
+    assert s["contrast-audit.js"]() == {"c.html": ["contrast:p.low:1.2"]}
+    monkeypatch.setattr(mq, "audit_contrast", lambda root, rels: {f"{mq.FIXTURES}/c.html": {"error": "no load"}})
+    with pytest.raises(mq.Unavailable, match="contrast-audit could not load c.html: no load"):
+        s["contrast-audit.js"]()
+    assert owns("A4", mq)
+
+
+def test_cite_A4_a_scratch_repo_git_cannot_build_is_unavailable(monkeypatch, tmp_path):
+    import pytest
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+
+    class NoGit:
+        """maint_quality's subprocess, where every git command fails."""
+        @staticmethod
+        def run(argv, **kw):
+            return proc(1)
+    monkeypatch.setattr(mq, "subprocess", NoGit)
+    with pytest.raises(mq.Unavailable, match="scratch repo: git init -q failed"):
+        mq.scratch_site(repo_root())
+    assert owns("A4", mq)
+
+
+def test_cite_A4_a_sibling_scanner_that_is_absent_unknown_or_broken(monkeypatch, tmp_path):
+    import pytest
+    import maint_quality as mq
+    with pytest.raises(mq.Unavailable, match="linkcheck.py is not on this branch"):
+        mq.sibling_module(tmp_path, "linkcheck.py")
+    with pytest.raises(mq.Unavailable, match="maint_run.py is not on this branch"):
+        mq.sibling_module(repo_root(), "maint_run.py")                # present, but not a calibration scanner
+
+    def broken():
+        raise ImportError("half a module")
+    monkeypatch.setitem(mq.TOOL_MODULES, "linkcheck.py", broken)
+    with pytest.raises(mq.Unavailable, match="linkcheck.py would not import: ImportError: half a module"):
+        mq.sibling_module(repo_root(), "linkcheck.py")
+    assert owns("A4", mq)
+
+
+def test_cite_M1b_an_audit_that_cannot_run_is_unknown(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+
+    def gone(root, rels):
+        raise mq.Unavailable("headless Chromium would not start: gone")
+    monkeypatch.setattr(mq, "audit_contrast", gone)
+    drive("M1b", mq)
+    rec = receipt("M1b", mq)
+    assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "headless Chromium would not start: gone")
+
+
+def test_cite_M2b_an_unreachable_api_is_unknown_and_never_shows_the_key(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setenv("CRUX_API_KEY", "k-123")
+
+    def down(origin, key, opener=None):
+        raise OSError(f"refused for {key}")
+    monkeypatch.setattr(mq, "crux_query", down)
+    drive("M2b", mq)
+    rec = receipt("M2b", mq)
+    assert (rec["outcome"], rec["why"]) == ("UNKNOWN", "CrUX API unreachable: OSError: refused for <key>")
+
+
+def test_cite_D2_run_markers_are_read_apart_from_receipts(monkeypatch, tmp_path):
+    import pytest
+    import maint_receipt as mr
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    mr.write_run_marker("run_start", "r1")
+    mr.write_receipt("D2", "PASS", why="ok", tool="maint_watch.py")
+    mr.write_run_marker("run_end", "r1", exit=0)
+    assert [e["kind"] for e in mr.read_run_markers()] == ["run_start", "run_end"]
+    assert [e["row"] for e in mr.read_receipts()] == ["D2"]
+    with pytest.raises(ValueError, match="time with no zone"):
+        maint_watch.parse_at("2026-11-02T11:00:00")
+    assert owns("D2", maint_watch)
+
+
+def test_cite_Q6_a_receipt_log_that_cannot_be_read_stops_the_drill(monkeypatch, tmp_path):
+    import maint_receipt as mr
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    md.mkdir(parents=True, exist_ok=True)
+    (md / mr.LOG_NAME).write_text("{not json\n", encoding="utf-8")
+    maint_watch.main(["drill"])
+    q6 = [e for e in receipts_any() if e.get("row") == "Q6"]
+    assert q6[-1]["outcome"] == "UNKNOWN" and q6[-1]["why"].startswith("cannot run the drill: ") and owns("Q6", maint_watch)
+
+
+def test_cite_W3_a_registry_that_raises_is_could_not_run(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+
+    def boom(*a, **k):
+        raise mp.pr.RegistryError("registry unreadable")
+    monkeypatch.setattr(mp.pr, "check_text", boom)
+    got = mp.people_page("Some text.", None)
+    assert (got["exit"], got["outcome"], got["status"]) == (2, "UNKNOWN", "COULD NOT RUN: registry unreadable")
+    assert owns("W3", mp)
+
+
+def test_cite_W3_a_name_in_the_site_chrome_is_caught_once(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    pages_repo(monkeypatch, maint_pages, tmp_path,
+               {"about/index.html": page("About", "<nav><a href=\"/\">Home</a> <span>Quillon</span></nav><p>x.</p>")},
+               names=True)
+    drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    chrome = [e for e in receipts_any() if e["row"] == maint_pages.PAGE_ROW and "(site chrome)" in e["why"]]
+    assert rec["outcome"] == "FINDINGS" and len(chrome) == 1 and chrome[0]["outcome"] == "FINDINGS"
+
+
+def test_cite_Q1_the_reread_quotes_the_latest_w1_and_w3_lines(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_receipt as mr
+    md, clock = world(monkeypatch, tmp_path, 2027, 1, 18, 11)
+    pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    _today(monkeypatch, "2027-01-18")                                 # every page 90 days old: due
+    mr.write_receipt("W1", "PASS", n=0, why="links fine", tool="linkcheck.py")
+    mr.write_receipt("W3", "SKIP", why="no names file", tool="maint_pages.py")
+    drive("Q1", maint_pages)
+    text = evidence_text(receipt("Q1", maint_pages))
+    assert "Latest W1 PASS 0 at " in text and "Latest W3 SKIP at " in text
+
+
+def test_cite_Q2_a_refused_witness_is_exit_2_and_no_receipt(monkeypatch, tmp_path, capsys):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path)
+    code = maint_pages.main(["--repo", str(repo), "witness", "managing-editor"])
+    assert code == 2 and "REFUSED" in capsys.readouterr().out and snap("Q2") == [] and owns("Q2", maint_pages)
+
+
+def test_cite_H1_a_file_missing_at_head_cannot_be_read(monkeypatch, tmp_path):
+    import pytest
+    import maint_human as mh
+    repo = site_repo(RunGit(), tmp_path)
+    with pytest.raises(mh.PackError, match="cannot read missing.md at HEAD"):
+        mh.head_file(repo, "missing.md")
+    assert owns("H1", mh)
+
+
+def test_cite_Q4_a_wildcard_finding_quotes_200_characters(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    vals = [f"203.0.113.{i}" for i in range(40)]
+    rec = q4_with(monkeypatch, headers_tls_check, wildcard=(("ok", vals), ("nxdomain", [])))
+    detail = [f["detail"] for f in findings("Q4") if f["subject"].startswith("wildcard record")][0]
+    assert rec["outcome"] == "FINDINGS" and detail == ", ".join(vals)[:200]
+
+
+def test_cite_C1_a_missing_lesson_monitor_quotes_300_characters(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    mons = [dict(MONS[0], friendly_name=f"home {i}", url=f"https://b4him.com/?copy={i}") for i in range(30)]
+    _monitors(monkeypatch, mons)
+    drive("C1", headers_tls_check)
+    detail = [f["detail"] for f in findings("C1") if f["subject"].startswith("no monitor watches")][0]
+    assert detail.endswith("found: " + ", ".join(m["url"] for m in mons)[:300]) and owns("C1", headers_tls_check)
+
+
+def test_cite_H1_a_failed_capture_check_quotes_500_characters(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
+    _capture(monkeypatch, ["t.png: " + "w" * 120])
+    drive("H1", maint_human)
+    detail = [f["detail"] for f in findings("H1") if f["subject"] == "H1 capture check failed"][0]
+    assert len(detail) == 500 and detail.startswith(HOME + " @1280: t.png: www") and owns("H1", maint_human)
+
+
+def test_cite_M1_an_issue_with_no_code_is_named_by_60_characters_of_its_message(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    msg = "m" * 70
+    _pa11y(monkeypatch, 2, json.dumps({"total": 1, "passes": 0, "errors": 1,
+                                       "results": {"http://h/": [{"message": msg, "runner": "axe"}]}}))
+    drive("M1", maint_quality)
+    assert [f["subject"] for f in findings("M1")] == [msg[:60]] and owns("M1", maint_quality)
+
+
+ROUND_FOUR = "<p>cat dog sun hat run top big red box cup map happy funny sunny window garden.</p>"   # FK grade 4.0
+
+
+def test_cite_M4_the_walk_report_s_steps_and_reading_levels(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    route = "/ -> /lessons/ -> /lessons/find-your-door/ -> /lessons/ -> /lessons/alpha/"
+    for body, alpha in ((ROUND_FOUR, "| 26 | 2 | 4.0 | at/below |"), (JARGON, "| 27 | 2 | 4.5 | above |")):
+        pages_repo(monkeypatch, maint_pages, tmp_path / alpha[2:4], {"lessons/alpha/index.html": page("Alpha", body)})
+        drive("M4", maint_pages)
+        walk = evidence_text(receipt("M4", maint_pages))
+        assert "- shortest click route found: " + route + "\n" in walk
+        steps = [ln for ln in walk.splitlines() if ln.startswith("## Step ")]
+        assert steps == ["## Step 1: / -> /lessons/", "## Step 2: /lessons/ -> /lessons/find-your-door/",
+                         "## Step 3: /lessons/find-your-door/ -> /lessons/", "## Step 4: /lessons/ -> /lessons/alpha/"]
+        assert "Target reading age 9 ~ grade 4 " in walk and "| https://example.invalid/ | 11 | 2 | 0.5 | at/below | 0 |" in walk
+        assert f"| https://example.invalid/lessons/alpha/ {alpha}" in walk, alpha
+    assert [f["detail"] for f in findings("M4")] == ["1 term(s): harness"]
+    fk = maint_pages.fk_grade
+    assert fk("Visit b4him.com today.")["sentences"] == 1                # a dot inside a word ends no sentence
+    assert [maint_pages.syllables(w) for w in ("ago", "psst")] == [1, 1]   # three letters is one; never zero
+
+
+# ================================================================== sweep round 14: the behavioural survivors
+def test_cite_D3_a_failed_fail_ping_is_scrubbed_whole(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_watch as mw
+    _hb(monkeypatch)
+
+    def refuse(url):
+        raise OSError(f"refused {url}")
+    monkeypatch.setattr(mw, "HTTP_GET", refuse)
+    _d1d2(outcome2="UNKNOWN", why2="could not judge")                 # an UNKNOWN D2: the ping goes to /fail
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["why"] == "heartbeat (fail) not delivered: OSError: refused <MAINT_HEARTBEAT_URL>"
+
+
+def test_cite_D1_missing_leads_the_problems(monkeypatch, tmp_path):
+    import maint_watch
+    mw = maint_watch
+    day, now = dt.date(2026, 11, 2), local_at(2026, 11, 2, 11, 0)
+    late = {"date": "2026-11-02", "mode": "apply", "outcome": "FAILED", "at": "2026-11-02T10:45:00-05:00"}
+    j = mw.judge_release_day([late], day, now)
+    assert j["problems"][0].startswith("MISSING: no line from the 08:30 run by 10:30") and len(j["problems"]) == 2
+    assert owns("D1", mw)
+
+
+def test_cite_H2_a_note_s_first_date_and_reviewer_lines_count(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    body = ("Reviewed: the calendar and PRODUCTION_PLAN\nVerdict: no change needed\nFindings: none\n")
+    write_note(md, "H2_2026-11-02.md", "Date: 2026-11-02\nDate: 2026-11-05\nReviewer: reviewer\n"
+               "Reviewer: managing-editor\n" + body)
+    probs = maint_watch.note_problems(md / "notes" / "H2_2026-11-02.md", "H2", dt.date(2026, 11, 2), dt.date(2026, 11, 2))
+    assert probs == []
+    write_note(md, "H2_2026-11-03.md", "Date: 2026-11-03T02:00Z\nReviewer: reviewer\n" + body)   # an 11+ char Date
+    probs = maint_watch.note_problems(md / "notes" / "H2_2026-11-03.md", "H2", dt.date(2026, 11, 3), dt.date(2026, 11, 3))
+    assert probs == ["a Date: line equal to the filename's date (2026-11-02 != 2026-11-03)"] and owns("H2", maint_watch)
+
+
+def test_cite_M4_a_refused_second_judgement_names_the_latest_line(monkeypatch, tmp_path, capsys):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("M4", "maint_pages.py", "awaiting managing-editor judgement: the walk", "audits/walk.md")
+    close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "walked")
+    capsys.readouterr()
+    code, _p, _a = close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "again")
+    out = capsys.readouterr().out
+    assert code == 1 and "latest receipt is not `awaiting ...` (PASS judged by managing-editor: walked)" in out
+    assert owns("M4", maint_pages)
+
+
+def test_cite_D3_a_d1_finding_s_cause_is_after_the_day_prefix(monkeypatch, tmp_path):
+    import maint_receipt as mr
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    mr.write_receipt("D1", "FINDINGS", n=1, why="2026-11-02: MISSING: no line by 10:30", tool="maint_watch.py")
+    mr.write_receipt("D2", "PASS", why="ok", tool="maint_watch.py")
+    fail, why, alarms = maint_watch.d3_signal(local_at(2026, 11, 2, 11))
+    assert alarms == [maint_watch.alarm_key("D1", "findings", "MISSING: no line by 10:30")] and owns("D3", maint_watch)
+
+
+def test_cite_W2_a_c1_reading_six_and_a_half_days_old_still_counts(monkeypatch, tmp_path):
+    import maint_receipt as mr
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    clock.set(2026, 10, 27, 23, 0)
+    mr.write_receipt("C1", "PASS", why="six and a half days old", tool="headers_tls_check.py")
+    clock.set(2026, 11, 2, 11, 0)
+    line = maint_watch.c1_monitor_line(maint_watch.local(clock.now()))
+    assert line["why"] == "six and a half days old" and owns("W2", maint_watch)
+
+
+def test_cite_W2_a_row_is_a_retire_candidate_by_its_first_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    mw = maint_watch
+    now = local_at(2026, 11, 2, 11)
+    rs = [rec_at("W1", "PASS", now - dt.timedelta(days=400), tool="linkcheck.py"),
+          rec_at("W1", "PASS", now - dt.timedelta(days=1), tool="linkcheck.py")]
+    out = mw.retire_candidates(one_row_table(mw, "W1"), rs, [], now)
+    assert out == ["- **W1**: zero findings and zero alarms in 4 quarters: candidate to retire"] and owns("W2", mw)
+
+
+def test_cite_A2_the_inventory_s_trivial_line_titles_and_commit_dates(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setenv("GIT_AUTHOR_DATE", "2026-10-20T10:00:00")
+    words = lambda n: "<p>" + " ".join(["word"] * n) + "</p>"           # the template adds 10 words
+    repo = pages_repo(monkeypatch, mp, tmp_path, {"a/index.html": page("Short", words(139)),
+                                                  "b/index.html": page("Long &amp; full", words(140))})
+    (repo / "b" / "index.html").write_text(page("Long &amp; full", words(140) + "<p>x.</p>"), encoding="utf-8")
+    monkeypatch.setenv("GIT_AUTHOR_DATE", "2026-12-01T10:00:00")
+    assert mp.git(repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qam", "edit")[0] == 0
+    _today(monkeypatch, "2026-12-02")
+    drive("A2", mp)
+    inv = {x["page"]: x for x in json.loads((md / "audits" / "2026-12-02_inventory.json").read_text(encoding="utf-8"))}
+    assert (inv["a/" + HOME]["words"], inv["b/" + HOME]["words"]) == (149, 151)
+    assert inv["b/" + HOME]["title"] == "Long & full"
+    assert (inv["b/" + HOME]["first"], inv["b/" + HOME]["last"], inv["b/" + HOME]["commits"]) == ("2026-10-20", "2026-12-01", 2)
+    text = evidence_text(receipt("A2", mp))
+    trivial = text.split('"coming" shell): ')[1].split("\n")[0].split(", ")
+    assert "a/" + HOME in trivial and "b/" + HOME not in trivial and "under 150 visible words" in text
+
+
+def test_cite_A2_exactly_150_words_is_not_trivial(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    repo = pages_repo(monkeypatch, mp, tmp_path, {"c/index.html": page("Even", "<p>" + " ".join(["word"] * 140) + "</p>")})
+    _today(monkeypatch, "2026-11-02")
+    drive("A2", mp)
+    text = evidence_text(receipt("A2", mp))
+    trivial = text.split('"coming" shell): ')[1].split("\n")[0].split(", ")
+    assert "c/" + HOME not in trivial and "| 150 |" in text
+
+
+def test_cite_W3_block_tags_titles_and_a_run_s_end(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    body, _chrome = mp.scan_html("<main>x<pa>Quillon</pa> y<p>Mistlewood</p></main>")
+    assert "x<pa>Quillon" in body and "y" + mp.BLOCK_SEP + "<p>" in body               # <pa> is not a <p>
+    assert mp.site_vocabulary({"a.html": "<h1x>Not A Heading</h1x><h1>Real Title</h1>"}) == ["real title"]
+    assert not mp.CAP_PAIR.match("Quillon!") and owns("W3", mp)
+
+
+def test_cite_Q1_queue_lines_are_numbered_from_one(monkeypatch, tmp_path):
+    import maint_pages
+    p = tmp_path / "q.jsonl"
+    p.write_text('{"id": "C-1"}\n{broken\n', encoding="utf-8")
+    assert maint_pages.read_jsonl(p) == [{"id": "C-1"}, {"_broken": 2}] and owns("Q1", maint_pages)
+
+
+def test_cite_Q1_a_page_s_clock_comes_from_the_rows_that_carry_it(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    repo = pages_repo(monkeypatch, mp, tmp_path)
+    due = {x["page"]: x for x in mp.pages_due(repo, mp.load_rows(repo), dt.date(2027, 1, 18))}
+    assert due["lessons/alpha/" + HOME]["rows"] == ["C-1"] and due["about.html" if "about.html" in due else
+                                                                  "lessons/" + HOME]["rows"] == ["P-1"]
+    assert owns("Q1", mp)
+
+
+def test_cite_Q2_the_sweep_records_its_exemptions_and_scoped_lines(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    text = D11.replace("`Vexmoor-rig` → \"a machine\".", "`Vexmoor-rig` → \"a machine\". Marrowby → first person.")
+    pages_repo(monkeypatch, mp, tmp_path, {"about/index.html": page("About", "<p>Marrowby again.</p>")}, decisions=text)
+    drive("Q2", mp)
+    state = json.loads(sorted((md / "audits").glob("*_genericize.json"))[-1].read_text(encoding="utf-8"))
+    assert [Path(e["path"]).stem for e in state["exempted"]] == ["DECISIONS"]               # D11's own rule line
+    assert [h["path"] for h in state["voice_scoped"]] == ["about/" + HOME] and owns("Q2", mp)
+
+
+def test_cite_M4_links_from_the_root_and_by_aria_label(monkeypatch, tmp_path):
+    import maint_pages
+    served = {HOME, "about.html", "lessons/" + HOME}
+    got = maint_pages.links_of("lessons/" + HOME, '<a href="/">Home</a><a href="/about.html" aria-label="About us">'
+                               '<img src="x.png"></a>', served)
+    assert got == {HOME: ["Home"], "about.html": ["[aria-label] About us"]} and owns("M4", maint_pages)
+
+
+def test_cite_Q3_maint_pages_exits_by_the_summary_line(monkeypatch, tmp_path):
+    import maint_pages
+    monkeypatch.setattr(maint_pages, "cmd_hygiene", lambda repo, today: [{"row": "Q3", "outcome": "FINDINGS"},
+                                                                        {"row": "Q3", "outcome": "PASS"}])
+    assert maint_pages.main(["--repo", str(tmp_path), "hygiene"]) == 0 and owns("Q3", maint_pages)
+
+
+def test_cite_W1_root_and_relative_links_lose_their_query_and_fragment(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    repo = site_repo(linkcheck, tmp_path, {"about/index.html": "<a href='/lessons/#top?x'>a</a><a href='/lessons/?x#y'>b</a>"
+                                           "<a href='../lessons/#top?x'>c</a><a href='../lessons/?x#y'>d</a>"})
+    _net(monkeypatch)
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    assert rec["outcome"] == "PASS" and evidence(rec)["internal"]["broken"] == [] and owns("W1", linkcheck)
+
+
+def live_at_head(tool, repo):
+    """Mark the fixture repo's HEAD as what is live (origin/main), with the tool's own public git()."""
+    if tool.git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")[0]:
+        raise AssertionError("could not set origin/main in the fixture repo")
+
+
+def test_cite_W1_a_broken_link_on_a_live_page_is_s2(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    repo = site_repo(linkcheck, tmp_path, {"guides/old/" + HOME: '<a href="/nowhere/">x</a>'})
+    live_at_head(linkcheck, repo)
+    _net(monkeypatch)
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    assert rec["outcome"] == "FINDINGS" and "1 broken internal (1 S2)" in rec["why"] and owns("W1", linkcheck)
+
+
+def test_cite_W1_a_broken_root_link_is_reported_as_release_sees_it(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    repo = site_repo(linkcheck, tmp_path, {"guides/old/" + HOME: '<a href="/nowhere/#frag">x</a>'})
+    _net(monkeypatch)
+    drive("W1", linkcheck, "--repo", str(repo))
+    bad = evidence(receipt("W1", linkcheck))["internal"]["broken"]
+    assert [(b["link"], b["kind"]) for b in bad] == [("/nowhere/", "root")] and owns("W1", linkcheck)
+
+
+def test_cite_W1b_a_found_snapshot_is_cached_and_counted(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    repo = site_repo(linkcheck, tmp_path, {"about/index.html": f'<a href="{OUT}">out</a>'})
+    calls = _net(monkeypatch, dead=(OUT,))
+    drive("W1b", linkcheck, "--repo", str(repo))
+    rec = receipt("W1b", linkcheck)
+    assert rec["why"] == "1 dead outbound: 1 with a proposed snapshot, 0 with none in the archive"
+    first = len(calls)
+    drive("W1b", linkcheck, "--repo", str(repo))
+    assert len(calls) == first and receipt("W1b", linkcheck)["why"] == rec["why"]    # nothing re-fetched
+
+
+def test_cite_M3_mixed_content_needs_a_whole_attribute_name(monkeypatch, tmp_path):
+    import headers_tls_check as h
+    hits = h.mixed_content(['a.html:3:<img src="http://x.example/a.png">', 'b.html:4:<a xsrc="http://x.example/">'])
+    assert [x["path"] for x in hits] == ["a.html"]
+    repo = site_repo(RunGit(), tmp_path)
+    assert h.git_grep_http(repo) == [] and owns("M3", h)                 # no http:// at all: git grep exits 1
+
+
+def test_cite_Q4_the_first_www_cname_is_the_one_judged(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    rec = q4_with(monkeypatch, headers_tls_check,
+                  {("www.b4him.com", "CNAME"): ("ok", ["sobevista.github.io.", "elsewhere.example."])})
+    assert rec["outcome"] == "PASS" and owns("Q4", headers_tls_check)
+
+
+def test_cite_A3_rdap_falls_back_to_the_first_server_and_a_bad_status_counts_one(monkeypatch, tmp_path):
+    import maint_human as mh
+    monkeypatch.setattr(mh, "GET_JSON", lambda url: {"services": [[["com"], ["http://a.example/", "http://b.example/"]]]})
+    assert mh.rdap_base("b4him.com") == "http://a.example/" and owns("A3", mh)
+
+
+def test_cite_A1_the_pack_copies_the_newest_m1_report(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
+    md.mkdir(parents=True, exist_ok=True)
+    (md / "2026-10-01_a11y.json").write_text('{"old": true}', encoding="utf-8")
+    (md / "2026-12-01_a11y.json").write_text('{"new": true}', encoding="utf-8")
+    drive("A1", maint_human)
+    packs = list((md / "packs").glob("A1_*/automated_axe_pa11y.json"))
+    assert [p.read_text(encoding="utf-8") for p in packs] == ['{"new": true}'] and owns("A1", maint_human)
+
+
+def test_cite_A4_scanner_helpers_judge_and_findings(monkeypatch, tmp_path):
+    import maint_quality as mq
+    assert mq.fault_seen("mixed-content", ["mixed:http://x"]) and not mq.fault_seen("mixed-content", ["mixed:src="])
+    cal = {"problems": [], "matrix": {"f1": {"a": "SEEN", "b": "MISSED"}, "f2": {"a": "UNKNOWN timeout"}}}
+    assert mq.judge_calibration(cal) == ("UNKNOWN", None, "seen: f1 by a. NOT calibrated: f2. Scanners that could not "
+                                                          "run: a: timeout")
+    assert mq.judge_calibration({"problems": [], "matrix": {"f1": {"a": "SEEN"}}})[:2] == ("PASS", 0)
+    assert owns("A4", mq)
+
+
+def test_cite_A4_a_problem_s_finding_is_named_by_its_first_word(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setattr(mq, "run_calibration", lambda root, scanners=None: {
+        "problems": ["linkcheck.py: interface changed"], "matrix": {}})
+    drive("A4", mq)
+    assert [f["subject"] for f in findings("A4")] == ["linkcheck.py:"] and owns("A4", mq)
+
+
+def test_cite_M2_budgets_urls_and_a_missing_config(monkeypatch, tmp_path):
+    import pytest
+    import maint_quality as mq
+    cfg = {"ci": {"assert": {"assertions": {"a": ["warn"], "b": ["error", {"maxNumericValue": 5}]}}}}
+    assert mq.budgets_of(cfg) == {"b": 5.0}
+    assert mq.url_key("http://localhost:51234/a/?next=https://x.example/") == "/a/?next=https://x.example/"
+    with pytest.raises(mq.Unavailable, match=r"the pa11y-ci config is missing \(.pa11yci\)"):
+        mq.a11y_config(tmp_path, [])
+    with mq.serve(tmp_path) as base:
+        assert int(base.rsplit(":", 1)[1]) > 1024                     # a free port the system chose
+    assert owns("M2", mq)
+
+
+def test_cite_M1_findings_count_each_cause_s_issues_and_pages(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    issue = {"code": "image-alt", "message": "Images need alt text", "runner": "axe"}
+    _pa11y(monkeypatch, 2, json.dumps({"total": 2, "passes": 0, "errors": 3,
+                                       "results": {"http://h/a/": [issue, issue], "http://h/b/": [issue]}}))
+    drive("M1", maint_quality)
+    det = [f["detail"] for f in findings("M1")]
+    assert len(det) == 1 and det[0].startswith("3x on 2 page(s) [") and owns("M1", maint_quality)
+
+
+def test_cite_M2b_a_miss_beside_a_missing_metric_is_filed_alone(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    body = {"record": {"metrics": {"largest_contentful_paint": {"percentiles": {"p75": 3100}},
+                                   "interaction_to_next_paint": {"percentiles": {"p75": 100}}},
+                       "collectionPeriod": {}}}
+    _crux(monkeypatch, 200, body)
+    drive("M2b", maint_quality)
+    assert [f["detail"] for f in findings("M2b")] == ["largest_contentful_paint p75 3100 > 2500"]
+    assert owns("M2b", maint_quality)
