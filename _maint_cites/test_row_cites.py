@@ -7248,6 +7248,7 @@ def test_cite_Q4_the_apex_s_records(monkeypatch, tmp_path):
     rec = q4_with(monkeypatch, headers_tls_check, {("b4him.com", "CNAME"): ("ok", ["elsewhere.example."])})
     assert "S2 b4him.com apex carries a CNAME (elsewhere.example.)" in rec["why"]
     assert q4_with(monkeypatch, headers_tls_check, {("b4him.com", "CNAME"): ("ok", [])})["outcome"] == "PASS"
+    assert owns("Q4", headers_tls_check)
 
 
 def test_cite_Q4_the_www_name_s_records(monkeypatch, tmp_path):
@@ -7271,6 +7272,7 @@ def test_cite_Q4_the_www_name_s_records(monkeypatch, tmp_path):
     rec = q4_with(monkeypatch, headers_tls_check, {("www.b4him.com", "CNAME"): ("nxdomain", []),
                                                    ("www.b4him.com", "A"): ("noanswer", [])})
     assert rec["outcome"] == "PASS"
+    assert owns("Q4", headers_tls_check)
 
 
 def test_cite_Q4_the_wildcard_probe_and_the_txt(monkeypatch, tmp_path):
@@ -7294,6 +7296,7 @@ def test_cite_Q4_the_wildcard_probe_and_the_txt(monkeypatch, tmp_path):
     recs = evidence(rec)["records"]
     assert recs["_github-pages-challenge-sobevista.b4him.com TXT"]["values"] == 1                 # a count, not the value
     assert recs["b4him.com A"]["values"] == sorted(headers_tls_check.PAGES_A)
+    assert owns("Q4", headers_tls_check)
 
 
 def test_cite_M3_the_certificate_s_failures(monkeypatch, tmp_path):
@@ -7352,11 +7355,11 @@ def test_cite_M3_days_left_and_the_previous_snapshot(monkeypatch, tmp_path):
 
 def test_cite_M3_what_counts_as_a_mixed_content_subresource(monkeypatch, tmp_path):
     import headers_tls_check
-    lines = ['index.html:3:<img src="http://ex.org/a.png">', 'a.css:9:body{background:url( "http://ex.org/b.png")}',
+    lines = ['home.html:3:<img src="http://ex.org/a.png">', 'a.css:9:body{background:url( "http://ex.org/b.png")}',
              'b.html:4:<link rel="stylesheet" href="http://ex.org/c.css">', 'c.css:1:@import "http://ex.org/d.css";',
              'd.html:2:<p data-xsrc="http://ex.org/e">x</p>', 'e.html:2:<linkish href="http://ex.org/f">',
              '_hidden/f.html:1:<img src="http://ex.org/g.png">', 'g.html:x:<img src="' + "q" * 300 + 'http://ex.org/">']
     hits = headers_tls_check.mixed_content(lines)
-    assert [(x["path"], x["line"]) for x in hits] == [("index.html", 3), ("a.css", 9), ("b.html", 4), ("c.css", 1),
+    assert [(x["path"], x["line"]) for x in hits] == [("home.html", 3), ("a.css", 9), ("b.html", 4), ("c.css", 1),
                                                       ("g.html", None)]
     assert len(hits[-1]["match"]) == 160 and owns("M3", headers_tls_check)
