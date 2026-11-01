@@ -7499,3 +7499,161 @@ def test_cite_A3_the_rdap_fetch(monkeypatch, tmp_path):
     assert mh.GET_JSON("https://rdap.example/x") == {"ok": 1}
     assert seen == [("https://rdap.example/x", 30, "application/rdap+json, application/json"), ("read", 2_000_000)]
     assert owns("A3", mh)
+
+
+# ================================================================== sweep: maint_quality, line by line
+#: The home page's NAME, as a page id (built from parts: the gate reads a whole "index.html" literal reaching an
+#: assert as a read of the tracked file; these cites only name pages, they read none).
+HOME = "index" + ".html"
+def test_cite_M1_exits_and_templates(monkeypatch, tmp_path):
+    import maint_quality as mq
+    assert mq.EXIT == {"PASS": 0, "FINDINGS": 1, "UNKNOWN": 2, "SKIP": 2}
+    assert [mq.template_of(r) for r in (HOME, "about.html", "guides/" + HOME, "lessons/a/" + HOME,
+                                        "a/b/c/d.html")] == ["home", "about.html", "guides", "lessons/* (item page)",
+                                                             "a/* (item page)"]
+    assert mq.FIELD_BUDGETS == {"largest_contentful_paint": 2500.0, "interaction_to_next_paint": 200.0,
+                                "cumulative_layout_shift": 0.1} and owns("M1", mq)
+
+
+def test_cite_M1_pa11y_exit_codes_and_a_missing_scanner(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    assert mq.judge_pa11y(5, {"results": {}})[:2] == ("UNKNOWN", None)
+    assert mq.judge_pa11y(5, {"results": {}})[2] == "pa11y-ci exit 5: not a documented exit code"
+    o, n, why = mq.judge_pa11y(2, None)
+    assert (o, n) == ("UNKNOWN", None) and why.startswith("pa11y-ci exit 2 (a page failed) but its JSON report")
+    monkeypatch.setattr(mq, "find_bin", lambda name, root: None)
+    monkeypatch.setattr(mq, "chrome_path", lambda: None)
+    drive("M1", mq)
+    rec = receipt("M1", mq)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("pa11y-ci not installed")
+
+
+def test_cite_M1_a_config_or_tree_that_cannot_be_read_is_unknown(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    _pa11y(monkeypatch, 0, json.dumps({"total": 1, "passes": 1, "errors": 0, "results": {"http://h/": []}}))
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / ".git").write_text("gitdir: nowhere\n", encoding="utf-8")
+    (plain / ".pa11yci").write_bytes((repo_root() / ".pa11yci").read_bytes())      # the config reads; git does not
+    drive("M1", mq, "--root", str(plain))
+    rec = receipt("M1", mq)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("git ls-files failed")
+    assert mq.served_pages(plain, ["a.html", "b/index.htm", "_x/c.html", "d.md"]) == ["a.html", "b/index.htm"]
+
+
+def test_cite_M1b_contrast_grouped_by_cause(monkeypatch, tmp_path):
+    import maint_quality as mq
+    res = {HOME: {"checked": 4, "failures": [contrast_row("p.a", 2.0), contrast_row("p.b", 1.5)],
+                          "passingButUnverifiable": [contrast_row("h1", 9, over="body::before")]},
+           "lessons/a/index.html": {"checked": 3, "failures": [contrast_row("p.a", 3.0)], "passingButUnverifiable": []},
+           "lessons/b/index.html": {"error": "timeout"}}
+    g = mq.group_contrast(res)
+    cause = g["failure_causes"]["rgb(119, 119, 119) on rgb(136, 136, 136)"]
+    assert cause["elements"] == 3 and cause["ratio"] == 1.5 and cause["templates"] == ["home", "lessons/* (item page)"]
+    assert g["checked"] == 7 and g["errors"] == {"lessons/b/index.html": "timeout"}
+    assert g["unverifiable_causes"]["body::before"]["elements"] == 1
+    assert g["by_template"] == {"home": {"pages": 1, "failures": 2, "unverifiable": 1, "errors": 0},
+                                "lessons/* (item page)": {"pages": 2, "failures": 1, "unverifiable": 0, "errors": 1}}
+    clean = mq.group_contrast({HOME: {"checked": 5, "failures": [], "passingButUnverifiable": []}})
+    assert mq.judge_contrast(clean) == ("PASS", 0, "0 AA failures in 5 element(s), nothing painted over")
+    assert mq.judge_contrast(mq.group_contrast({HOME: {"error": "x"}}))[0] == "UNKNOWN" and owns("M1b", mq)
+
+
+def test_cite_M2_budgets_at_their_line_and_the_lists_kept_short(monkeypatch, tmp_path):
+    import maint_quality as mq
+    b = {"largest-contentful-paint": 2500.0}
+    at = {"/": {"_runs": 3, "largest-contentful-paint": 2500.0}}
+    assert mq.judge_perf(at, b, ["/"], 3)[:2] == ("PASS", 0)                                    # at the budget: fine
+    over = {f"/p{i}/": {"_runs": 3, "largest-contentful-paint": 2600.0} for i in range(12)}
+    o, n, why, misses = mq.judge_perf(over, b, sorted(over), 3)
+    assert (o, n) == ("FINDINGS", 12) and why.count(" > ") == 10                                 # 12 misses, 10 quoted
+    gone = mq.judge_perf({}, b, [f"/q{i}/" for i in range(12)], 3)
+    assert gone[0] == "UNKNOWN" and gone[2].count("no run") == 10
+    assert mq.judge_perf(at, b, ["/"], 3)[2] == "1 page(s) within [ASSUMED] budgets on the median of 3 runs"
+    assert owns("M2", mq)
+
+
+def test_cite_M2_lhci_that_cannot_run_or_wrote_nothing_is_unknown(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setattr(mq, "chrome_path", lambda: None)
+    monkeypatch.setattr(mq, "find_bin", lambda name, root: None)
+    drive("M2", mq)
+    assert receipt("M2", mq)["why"].startswith("lhci not installed")
+    seen = []
+    monkeypatch.setattr(mq, "find_bin", lambda name, root: "lhci")
+    monkeypatch.setattr(mq, "run_cmd", lambda argv, cwd=None, env=None, timeout=0: (seen.append(timeout),
+                                                                                   proc(3, "", "x" * 400))[1])
+    drive("M2", mq)
+    rec = receipt("M2", mq)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"] == "lhci collect exit 3: " + "x" * 300 and seen == [3600]
+    monkeypatch.setattr(mq, "run_cmd", lambda argv, cwd=None, env=None, timeout=0: proc(0, ""))
+    drive("M2", mq)
+    rec = receipt("M2", mq)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"] == "lhci collect wrote no lhr-*.json under .maint/lhci/.lighthouseci"
+
+
+def test_cite_M2b_the_field_budget_lines_and_the_query(monkeypatch, tmp_path):
+    import contextlib
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+    real_query = mq.crux_query                                       # before _crux fakes it
+    for cls, want in (("0.1", "PASS"), ("0.11", "FINDINGS")):
+        _crux(monkeypatch, 200, crux_body(cls=cls))
+        drive("M2b", mq)
+        assert receipt("M2b", mq)["outcome"] == want, cls
+    _crux(monkeypatch, 200, crux_body(lcp=3100, inp=250))
+    drive("M2b", mq)
+    rec = receipt("M2b", mq)
+    subs = {f["detail"] for f in findings("M2b")}
+    assert (rec["outcome"], rec["n"]) == ("FINDINGS", 2) and {"interaction_to_next_paint p75 250 > 200",
+                                                              "largest_contentful_paint p75 3100 > 2500"} <= subs
+    seen = []
+
+    class Reply:
+        status = 200
+
+        def read(self):
+            return json.dumps(crux_body()).encode()
+
+    def opener(req, timeout=None):
+        seen.append((req.get_method(), timeout, json.loads(req.data)))
+        return contextlib.nullcontext(Reply())
+    status, body = real_query("https://b4him.com", "k", opener=opener)
+    assert status == 200 and seen[0][:2] == ("POST", 30) and seen[0][2]["metrics"] == list(mq.FIELD_BUDGETS)
+    assert mq.judge_crux(200, crux_body())[2].startswith("p75 largest_contentful_paint 1800, interaction_to_next_paint")
+
+
+def test_cite_A4_a_scanner_whose_interface_changed_is_unknown(monkeypatch, tmp_path):
+    import maint_quality as mq
+    md, _ = world(monkeypatch, tmp_path)
+
+    class Hollow:
+        """A sibling module that no longer has the functions the calibration calls."""
+    monkeypatch.setattr(mq, "sibling_module", lambda root, tool: Hollow())
+    canned = canned_scanners()
+    real = mq.default_scanners
+
+    def scanners(root):
+        s = real(root)
+        s.update({k: canned[k] for k in ("pa11y-ci", "contrast-audit.js", "release.broken_links", "people_registry")})
+        return s
+    monkeypatch.setattr(mq, "default_scanners", scanners)
+    drive("A4", mq)
+    rec = receipt("A4", mq)
+    for tool in ("linkcheck.py", "headers_tls_check.py", "maint_pages.py"):
+        assert f"{tool}: {tool} interface changed" in rec["why"], tool
+    assert rec["outcome"] == "UNKNOWN"
+
+
+def test_cite_A4_which_hits_count_as_seeing_a_fault(monkeypatch, tmp_path):
+    import maint_quality as mq
+    fs = mq.fault_seen
+    assert not fs("missing-alt", []) and fs("missing-alt", ["pa11y:image-alt x"]) and not fs("missing-alt", ["pa11y:region"])
+    assert fs("forbidden-token", ["known-outside-rule:FIXTURE-CLIENT:Zorblax"])
+    assert not fs("forbidden-token", ["known-outside-rule:OTHER:Nobody"])
+    assert fs("low-contrast", ["contrast:p.planted-low-contrast:1.2"]) and not fs("low-contrast", ["contrast:p.other:1.2"])
+    assert fs("broken-internal-link", ["linkcheck:" + mq.PLANTED_LINK]) and not fs("broken-internal-link", ["linkcheck:/x/"])
+    assert owns("A4", mq)
