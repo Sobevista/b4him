@@ -7657,3 +7657,366 @@ def test_cite_A4_which_hits_count_as_seeing_a_fault(monkeypatch, tmp_path):
     assert fs("low-contrast", ["contrast:p.planted-low-contrast:1.2"]) and not fs("low-contrast", ["contrast:p.other:1.2"])
     assert fs("broken-internal-link", ["linkcheck:" + mq.PLANTED_LINK]) and not fs("broken-internal-link", ["linkcheck:/x/"])
     assert owns("A4", mq)
+
+
+# ================================================================== sweep: the final confirmation's survivors
+def test_cite_D2_a_calendar_run_of_E1_alone_writes_the_owed_finding(monkeypatch, tmp_path):
+    import maint_run as run
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    by_id = {r["id"]: r for r in run.load_table()}
+    run.run(["E2"], by_id)
+    assert findings("E1") == []                                   # E2's event receipt owes nothing
+    run.run(["E1"], by_id)
+    assert [f["subject"] for f in findings("E1")] == [run.OWED] and owns("D2", maint_watch)
+
+
+def test_cite_M1_the_patch_proof_exit_follows_its_outcome(monkeypatch, tmp_path):
+    import maint_run as run
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2)):
+        monkeypatch.setattr(run, "patch_proof", lambda tree, o=outcome: {"row": "E1", "outcome": o})
+        assert run.main(["--patch-proof", str(tmp_path)]) == code, outcome
+        end = [e for e in log_lines() if e.get("kind") == "run_end"][-1]
+        assert end["exit"] == code and end["rows_failed"] == (["E1"] if outcome == "UNKNOWN" else []), outcome
+    assert owns("M1", maint_quality)
+
+
+def test_cite_W1_an_in_process_tool_exits_as_a_child_would(monkeypatch, tmp_path):
+    import maint_run as run
+    import linkcheck
+    script = tools_dir() / "linkcheck.py"                          # the file maint_run runs for W1
+
+    def ends(how):
+        class Script:
+            """A module-like object loaded from linkcheck.py's own file, whose main ends `how`."""
+            __file__ = str(script)
+
+            @staticmethod
+            def main(argv):
+                raise how
+        return run.in_process(Script)(["py", str(script)], 5)
+    assert ends(SystemExit(3))[0] == 3
+    assert ends(SystemExit("a message, not a code"))[0] == 1
+    code, out, err = ends(RuntimeError("boom"))
+    assert (code, err) == (1, "RuntimeError: boom") and owns("W1", linkcheck)
+
+
+def test_cite_W1_a_runner_s_quoted_tail_is_160_characters(monkeypatch, tmp_path):
+    import maint_run as run
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    monkeypatch.setattr(run, "RUN", lambda argv, timeout: (3, "", "first line\n" + "e" * 170 + "\n"))
+    res = run.run_tool("linkcheck.py", (), 5, ["W1"])
+    why = res["receipts"]["W1"]["why"]
+    assert why.endswith(": " + "e" * 160) and owns("W1", linkcheck)
+
+
+def test_cite_D2_a_parent_with_a_start_time_but_no_image_is_not_the_launcher(monkeypatch, tmp_path):
+    import maint_run as run
+    import maint_watch
+    own = (11, r"C:\Python\python.exe", "2026-11-02T16:00:00+00:00")
+    assert run.choose_launch(own, (22, None, "2026-11-02T15:59:59+00:00"))["pid"] == 11 and owns("D2", maint_watch)
+
+
+def test_cite_D2_the_receipt_writer_refuses_a_malformed_receipt(monkeypatch, tmp_path):
+    import pytest
+    import maint_receipt as mr
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    bad = [(dict(row="", outcome="PASS"), "row id"),
+           (dict(row="D2", outcome="MAYBE"), "is not one of"),
+           (dict(row="D2", outcome="FINDINGS", n=0), "FINDINGS needs n >= 1"),
+           (dict(row="D2", outcome="FINDINGS", n=True), "FINDINGS needs n >= 1"),
+           (dict(row="D2", outcome="PASS", n="1"), "n is an int or None"),
+           (dict(row="D2", outcome="UNKNOWN", why=""), "UNKNOWN needs a why"),
+           (dict(row="D2", outcome="SKIP", why="  "), "SKIP needs a why"),
+           (dict(row="D2", outcome="PASS", evidence="audits/x.md"), "under .maint/"),
+           (dict(row="D2", outcome="PASS", evidence=".maint/../x.md"), "under .maint/")]
+    for kw, why in bad:
+        with pytest.raises(ValueError, match=why):
+            mr.write_receipt(**kw)
+    for kw, why in ((("run_middle", "r1"), "a run marker"), (("run_start", ""), "a run marker")):
+        with pytest.raises(ValueError, match=why):
+            mr.write_run_marker(*kw)
+    for args, why in ((("", "S1", "s"), "row id"), (("D2", "S9", "s"), "severity"), (("D2", "S1", " "), "subject")):
+        with pytest.raises(ValueError, match=why):
+            mr.write_finding(*args)
+    assert log_lines() == [] and mr.read_findings() == []           # a refused line is never written
+    assert mr.write_receipt("D2", "FINDINGS", n=1, why="one")["n"] == 1 and owns("D2", maint_watch)
+
+
+def test_cite_D2_a_receipt_log_line_that_is_not_an_object_names_its_line(monkeypatch, tmp_path):
+    import pytest
+    import maint_receipt as mr
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    mr.write_receipt("D1", "PASS", why="ok", tool="maint_watch.py")
+    with (md / mr.LOG_NAME).open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write("[1, 2]\n")
+    with pytest.raises(ValueError, match=r":2 is not a JSON object"):
+        mr.read_receipts()
+    drive("D2", maint_watch)
+    assert receipt("D2", maint_watch)["outcome"] == "UNKNOWN"
+
+
+def test_cite_D2_the_input_layer_names_each_kind_of_bad_input(monkeypatch, tmp_path):
+    import pytest
+    import maint_input as mi
+    import maint_watch
+    now = dt.datetime(2026, 11, 2, 16, 0, tzinfo=dt.timezone.utc)
+    with pytest.raises(mi.InputUnknown, match="unreadable time 'tuesday'"):
+        mi.parse_time("tuesday", "the stamp")
+    assert mi.parse_time((now + dt.timedelta(minutes=10)).isoformat(), "the stamp", now) == now + dt.timedelta(minutes=10)
+    with pytest.raises(mi.InputUnknown, match="is in the future"):
+        mi.parse_time((now + dt.timedelta(minutes=10, seconds=1)).isoformat(), "the stamp", now)
+    bad = tmp_path / "bad.txt"
+    bad.write_bytes(b"\xff\xfe\xfa not utf-8")
+    with pytest.raises(mi.InputUnknown, match=r"the file is unreadable \(bad.txt: UnicodeDecodeError\)"):
+        mi.read_text(bad, "the file")
+    js = tmp_path / "x.json"
+    js.write_text("{nope", encoding="utf-8")
+    with pytest.raises(mi.InputUnknown, match=r"the table is not JSON \(x.json: "):
+        mi.read_json(js, "the table")
+    with pytest.raises(mi.InputUnknown, match="the log line 2 is not JSON"):
+        mi.parse_jsonl('{"a": 1}\nnope\n', "the log")
+    with pytest.raises(mi.InputUnknown, match="the log line 1 is not a JSON object"):
+        mi.parse_jsonl("[1]\n", "the log")
+    assert owns("D2", maint_watch)
+
+
+def test_cite_D2_an_unknown_streak_starts_at_its_first_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    mw = maint_watch
+    now = local_at(2026, 11, 10, 12)
+    table = one_row_table(mw, "W1")                                   # W1's grace: 24 h
+    after_pass = [rec_at("W1", "PASS", now - dt.timedelta(days=30), tool="linkcheck.py"),
+                  rec_at("W1", "UNKNOWN", now - dt.timedelta(hours=1), tool="linkcheck.py")]
+    stuck, pending = mw.unknown_rows(table, after_pass, now)
+    assert stuck == [] and [p["row"] for p in pending] == ["W1"] and pending[0]["since"] == now - dt.timedelta(hours=1)
+    two = [rec_at("W1", "UNKNOWN", now - dt.timedelta(hours=30), tool="linkcheck.py"),
+           rec_at("W1", "UNKNOWN", now - dt.timedelta(hours=1), tool="linkcheck.py")]
+    stuck, pending = mw.unknown_rows(table, two, now)
+    assert pending == [] and [s["since"] for s in stuck] == [now - dt.timedelta(hours=30)]
+    assert [t for _r, t, _e in mw.unknown_streaks(after_pass)] == [now - dt.timedelta(hours=1)]
+    assert [t for _r, t, _e in mw.unknown_streaks(two)] == [now - dt.timedelta(hours=30)] and owns("D2", mw)
+
+
+def test_cite_D2_an_unknown_in_grace_keeps_D2_from_passing(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    _table(monkeypatch, tmp_path, "D1", "D2", "W1")
+    mr.write_receipt("D1", "PASS", why="released", tool="maint_watch.py")
+    mr.write_receipt("W1", "UNKNOWN", why="the site did not answer", tool="linkcheck.py")
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("UNKNOWN inside grace: W1 (until ")
+
+
+def test_cite_D2_a_missing_schedule_alarms_and_an_unknown_one_is_named(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    import maint_watch as mw
+    _table(monkeypatch, tmp_path, "D1", "D2")
+    mr.write_receipt("D1", "PASS", why="released", tool="maint_watch.py")
+    monkeypatch.setattr(mw, "SCHEDULE_CHECK", lambda now: {"state": "missing", "problems": ["no b4him-maint-run task"],
+                                                           "why": "x"})
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "FINDINGS" and "SCHEDULE (no b4him-maint-run task)" in rec["why"]
+    assert "SCHEDULE MISSING" in [f["subject"] for f in findings("D2")]
+    _table(monkeypatch, tmp_path, "D1", "D2", "W1")                   # W1 never ran: overdue, and the schedule unknown
+    monkeypatch.setattr(mw, "SCHEDULE_CHECK", lambda now: {"state": "unknown", "problems": [], "why": "schtasks gone"})
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "FINDINGS" and rec["why"].count("; schedule UNKNOWN: schtasks gone") == 1
+
+
+def test_cite_D3_an_unreadable_drill_log_is_unknown_and_not_recorded_counts_one(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_watch as mw
+    _hb(monkeypatch)
+    _d1d2()
+    (md / mw.DRILLS).write_text("{not json\n", encoding="utf-8")
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("cannot tell whether a drill withholds today's ping")
+    (md / mw.DRILLS).unlink()
+    monkeypatch.setattr(mw, "HTTP_GET", lambda url: (200, "OK (not found)"))
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1)
+
+
+def test_cite_D2_a_judgement_owed_is_not_closed_by_an_unknown(monkeypatch, tmp_path):
+    import maint_watch
+    mw = maint_watch
+    t = [local_at(2026, 11, d, 11) for d in (2, 3, 4)]
+    mine = [(t[0], rec_at("M4", "SKIP", t[0], why="awaiting managing-editor judgement: walk")),
+            (t[1], rec_at("M4", "UNKNOWN", t[1], why="the walk could not run")),
+            (t[2], rec_at("M4", "SKIP", t[2], why="no pages to walk"))]
+    assert mw.last_done(mine)[0] == t[0] and owns("D2", mw)
+
+
+def test_cite_H2_an_author_cannot_judge_h2_and_a_judged_pass_counts_zero(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("H2", "maint_watch.py", "awaiting independent-reviewer judgement: the re-read", "notes/h2.md")
+    author = "managing-editor"                                       # a seat that writes the pages
+    code, _prev, after = close("H2", maint_watch, "judge", "H2", "PASS", "--seat", author, "--note", "read it")
+    assert code == 1 and after["outcome"] == "SKIP"
+    judge = "reviewer"                                               # the Independent Reviewer's seat
+    code, _prev, after = close("H2", maint_watch, "judge", "H2", "PASS", "--seat", judge, "--note", "read it")
+    assert code == 0 and (after["outcome"], after["n"]) == ("PASS", 0) and owns("H2", maint_watch)
+
+
+def test_cite_Q2_a_witness_is_stamped_with_the_real_clock_only(monkeypatch, tmp_path, capsys):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    code = maint_watch.main(["--now", "2026-11-02T11:00:00-05:00", "witness", "reviewer"])
+    assert code == 1 and "`witness` records a person's act" in capsys.readouterr().out and snap("Q2") == []
+    assert owns("Q2", maint_pages)
+
+
+def test_cite_W2_the_h3_section_follows_h3_s_own_check(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    import maint_watch as mw
+    cases = (("PASS", "FINDINGS", False), ("UNKNOWN", "PASS", True), ("FINDINGS", "PASS", True),
+             ("SKIP", "PASS", False))
+    for h3, h2, reminder in cases:
+        outs = {"M5": "PASS", "H2": h2, "H3": h3}
+        monkeypatch.setattr(mw, "run_check", lambda rid, now, table=None, o=outs: mr.write_receipt(
+            rid, o[rid], n=1 if o[rid] == "FINDINGS" else None, why=f"{rid} {o[rid].lower()} canned", tool="maint_watch.py"))
+        drive("W2", maint_watch)
+        pack = _digest(md, receipt("W2", maint_watch)).split("## H3")[1].split("\n## ")[0]
+        assert ("REMINDER: the re-read is due" in pack) == reminder, h3
+        assert reminder or f"- {h3}: H3 {h3.lower()} canned" in pack, h3
+
+
+def test_cite_Q3_maint_pages_exits_by_its_last_receipt(monkeypatch, tmp_path):
+    import maint_pages
+    for outcome, code in (("PASS", 0), ("SKIP", 0), ("FINDINGS", 1), ("UNKNOWN", 2)):
+        monkeypatch.setattr(maint_pages, "cmd_hygiene", lambda repo, today, o=outcome: [{"row": "Q3", "outcome": o}])
+        assert maint_pages.main(["--repo", str(tmp_path), "hygiene"]) == code, outcome
+    assert owns("Q3", maint_pages)
+
+
+def test_cite_M3_headers_tls_check_exits_by_its_receipt(monkeypatch, tmp_path):
+    import headers_tls_check
+    for outcome, code in (("PASS", 0), ("SKIP", 0), ("FINDINGS", 1), ("UNKNOWN", 2)):
+        monkeypatch.setattr(headers_tls_check, "run_tls", lambda o=outcome: {"row": "M3", "outcome": o})
+        assert headers_tls_check.main(["tls"]) == code, outcome
+    assert owns("M3", headers_tls_check)
+
+
+def test_cite_M2b_maint_quality_exits_by_its_receipt(monkeypatch, tmp_path):
+    import maint_quality
+    for outcome, code in (("PASS", 0), ("SKIP", 2), ("FINDINGS", 1), ("UNKNOWN", 2)):
+        monkeypatch.setitem(maint_quality.COMMANDS, "crux", lambda root, o=outcome: {"row": "M2b", "outcome": o})
+        assert maint_quality.main(["crux"]) == code, outcome
+    assert owns("M2b", maint_quality)
+
+
+def test_cite_A3_maint_human_exits_by_its_receipt(monkeypatch, tmp_path):
+    import maint_human
+    for outcome, code in (("PASS", 0), ("SKIP", 0), ("FINDINGS", 1), ("UNKNOWN", 2)):
+        monkeypatch.setitem(maint_human.COMMANDS, "a3", lambda repo, today, o=outcome: {"row": "A3", "outcome": o})
+        assert maint_human.main(["a3"]) == code, outcome
+    assert owns("A3", maint_human)
+
+
+def test_cite_W3_what_the_title_vocabulary_may_and_may_not_exempt(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+
+    def res(*hits, loaded=True):
+        return {"exit": 1, "outcome": "FINDINGS", "status": "REFUSED", "known_names_loaded": loaded,
+                "findings": [{"kind": k, "text": t} for k, t in hits]}
+    vocab = lambda w: True                                          # every hit is this page's own title words
+    could_not = {"exit": 2, "outcome": "UNKNOWN", "status": "COULD NOT RUN: no registry", "findings": [],
+                 "known_names_loaded": False}
+    assert mp.exempt(could_not, vocab) is could_not                 # nothing ran: nothing to exempt or recount
+    out = mp.exempt(res(("unknown-name", "Garden Tools")), vocab)
+    assert (out["outcome"], out["exit"], [d["text"] for d in out["exempted"]]) == ("PASS", 0, ["Garden Tools"])
+    out = mp.exempt(res(("unknown-name", "Garden Tools"), loaded=False), vocab)
+    assert (out["outcome"], out["exit"]) == ("UNKNOWN", 2) and out["status"].startswith("UNKNOWN (known-names")
+    out = mp.exempt(res(("known-person", "Garden Tools")), vocab)   # a known-person hit is never exempted
+    assert (out["outcome"], out["exempted"]) == ("FINDINGS", [])
+    out = mp.exempt(res(("unknown-name", "Quillon Vexwort")), vocab, ({"quillon vexwort"}, set()))
+    assert out["outcome"] == "FINDINGS"                             # the pair is in the names file
+    out = mp.exempt(res(("unknown-name", "Quillon Vexwort")), vocab, (set(), {"quillon", "vexwort"}))
+    assert out["outcome"] == "FINDINGS" and owns("W3", mp)          # both words are, one by one
+
+
+def test_cite_Q2_d11_is_read_from_its_own_section_only(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    text = ("# Decisions\n\n"
+            "### D11 an aside\n\nGenericization is a hard rule: `Wrongful` → x\n\n"
+            "## D110 another\n\nGenericization is a hard rule: `Wrongish` → y\n\n"
+            "## D11 — Publishing the Lessons\n\nan older note ## not a heading\n\n"
+            "- **Genericization is a hard rule.** `Zorblax` → \"a tool\", xQuillon → q, "
+            "Marrowby → first person\n\n## D12 — Later\n\nText.\n")
+    repo = pages_repo(monkeypatch, mp, tmp_path, decisions=text)
+    assert mp.d11_tokens(repo) == ["Zorblax", "Marrowby"]
+    assert mp.d11_voice_tokens(repo) == ["Marrowby"] and owns("Q2", mp)
+
+
+def test_cite_Q4_github_s_four_documented_addresses_each_pass(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    four_a = ["185.199.108.153", "185.199.109.153", "185.199.110.153", "185.199.111.153"]   # GitHub's Pages docs
+    four_aaaa = ["2606:50C0:8000::153", "2606:50c0:8001::153", "2606:50c0:8002::153", "2606:50c0:8003::153"]
+    rec = q4_with(monkeypatch, headers_tls_check, {("b4him.com", "A"): ("ok", four_a),
+                                                   ("b4him.com", "AAAA"): ("ok", four_aaaa)})
+    assert rec["outcome"] == "PASS", rec["why"]
+    rec = q4_with(monkeypatch, headers_tls_check, {("b4him.com", "A"): ("ok", four_a + ["185.199.112.153"])})
+    assert rec["outcome"] == "FINDINGS" and "A points outside GitHub Pages: 185.199.112.153" in rec["why"]
+    assert owns("Q4", headers_tls_check)
+
+
+def test_cite_M3_fourteen_days_left_is_not_yet_s1(monkeypatch, tmp_path):
+    import headers_tls_check as h
+    md, _ = world(monkeypatch, tmp_path)
+    now = dt.datetime(2026, 11, 2, 16, tzinfo=dt.timezone.utc)
+    _tls(monkeypatch)
+
+    def cert_at(t):
+        monkeypatch.setattr(h, "probe_cert", lambda host: {"not_after": t.strftime("%b %d %H:%M:%S %Y GMT"),
+                                                           "issuer": "O=X"})
+    cert_at(now + dt.timedelta(days=14))
+    rec = h.run_tls(day=now.date(), now=now)
+    assert rec["outcome"] == "PASS" and evidence(rec)["cert"]["days_left"] == 14.0
+    cert_at(now + dt.timedelta(hours=6))                             # a quarter of a day: 0.25, rounded to 0.2
+    rec = h.run_tls(day=now.date(), now=now)
+    assert rec["outcome"] == "FINDINGS" and evidence(rec)["cert"]["days_left"] == 0.2 and owns("M3", h)
+
+
+def test_cite_W1_a_link_jekyll_will_not_serve_is_broken(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    repo = site_repo(linkcheck, tmp_path, {"about/index.html": '<a href="/_hidden/secret.html#top">x</a>'})
+    _net(monkeypatch)
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    bad = evidence(rec)["internal"]["broken"]
+    assert rec["outcome"] == "FINDINGS" and "1 broken internal" in rec["why"]
+    assert [(b["page"], b["link"], b["kind"]) for b in bad] == [("about/" + HOME, "/_hidden/secret.html#top",
+                                                                 "unserved")]
+
+
+def test_cite_M1_an_undocumented_exit_writes_no_findings(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    _pa11y(monkeypatch, 5, pa11y_recorded())                          # a real report, but an exit pa11y-ci never gives
+    drive("M1", maint_quality)
+    rec = receipt("M1", maint_quality)
+    assert rec["outcome"] == "UNKNOWN" and findings("M1") == []
+
