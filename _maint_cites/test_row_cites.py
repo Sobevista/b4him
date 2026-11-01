@@ -1608,6 +1608,7 @@ def test_a1_without_a_page_list_is_unknown(monkeypatch, tmp_path):
     md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
     tree = tmp_path / "not-a-checkout"
     tree.mkdir()
+    (tree / ".git").write_text("gitdir: nowhere\n", encoding="utf-8")   # not a checkout, even inside one
     drive("A1", maint_human, "--repo", str(tree))
     rec = receipt("A1", maint_human)
     assert rec["outcome"] == "UNKNOWN" and "no page list" in rec["why"]
@@ -2581,6 +2582,7 @@ def test_cite_M4_an_unreadable_tree_never_passes(monkeypatch, tmp_path, kind):
     import maint_pages as mp
     d = md.parent / "not-a-repo"
     d.mkdir(parents=True)
+    (d / ".git").write_text("gitdir: nowhere\n", encoding="utf-8")      # not a checkout, even inside one
     monkeypatch.setattr(mp, "REPO", d)
     drive("M4", maint_pages)
     rec = receipt("M4", maint_pages)
