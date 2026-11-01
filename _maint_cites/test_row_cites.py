@@ -5789,8 +5789,9 @@ def test_cite_C1_the_launch_is_the_py_launcher_s_when_it_started_the_run(monkeyp
 # ================================================================== sweep: maint_watch's clock, line by line
 def owns(row, tool):
     """`tool` (the module a cite imported) is the script maint_run.py runs for `row`."""
+    import maint_receipt as mr
     import maint_run as run
-    return run.RUNNERS[row][0] == tool.TOOL
+    return mr.tool_path(tool.TOOL) == "tools/" + run.RUNNERS[row][0]
 
 
 def local_at(*when):
@@ -6387,3 +6388,212 @@ def test_cite_D2_no_hand_act_takes_a_fixed_clock(monkeypatch, tmp_path):
     assert refused("H1", maint_watch, "--now", "2026-11-02T10:00:00+00:00", "human", "H1", "E01234")
     assert refused("Q2", maint_watch, "--now", "2026-11-02T10:00:00+00:00", "witness", "privacy-safety")
     assert snap("D2") == []
+
+
+# ================================================================== sweep: maint_run's calendar, groups, proof and launch record
+def calendar_row(rid):
+    import maint_run as run
+    return next(r for r in run.load_table() if r["id"] == rid)
+
+
+def test_cite_D1_a_daily_row_is_due_every_day(monkeypatch, tmp_path):
+    import maint_watch
+    import maint_run as run
+    row = calendar_row("D1")
+    assert all(run.is_due(row, dt.date(2026, 11, d)) for d in range(1, 8)) and owns("D1", maint_watch)
+
+
+def test_cite_W1_a_weekly_row_is_due_on_mondays(monkeypatch, tmp_path):
+    import linkcheck
+    import maint_run as run
+    row = calendar_row("W1")
+    due = [d for d in range(1, 15) if run.is_due(row, dt.date(2026, 11, d))]
+    assert due == [2, 9] and owns("W1", linkcheck)
+
+
+def test_cite_M1_a_monthly_row_is_due_on_the_first_monday(monkeypatch, tmp_path):
+    import maint_quality
+    import maint_run as run
+    row = calendar_row("M1")
+    nov = [d for d in range(1, 31) if run.is_due(row, dt.date(2026, 11, d))]
+    feb = [d for d in range(1, 29) if run.is_due(row, dt.date(2027, 2, d))]        # Feb 1 2027 is a Monday
+    assert nov == [2] and feb == [1] and run.first_monday(2026, 12) == dt.date(2026, 12, 7) and owns("M1", maint_quality)
+
+
+def test_cite_Q1_a_quarterly_row_is_due_on_its_months_first_monday(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_run as run
+    row = calendar_row("Q1")
+    days = [dt.date(2027, m, d) for m in range(1, 13) for d in range(1, 29) if run.is_due(row, dt.date(2027, m, d))]
+    assert days == [dt.date(2027, 1, 4), dt.date(2027, 4, 5), dt.date(2027, 7, 5), dt.date(2027, 10, 4)]
+    assert owns("Q1", maint_pages)
+
+
+def test_cite_H2_a_semiannual_row_and_A2_an_annual_one(monkeypatch, tmp_path):
+    import maint_watch
+    import maint_run as run
+    h2 = calendar_row("H2")
+    days = [dt.date(2027, m, d) for m in range(1, 13) for d in range(1, 29) if run.is_due(h2, dt.date(2027, m, d))]
+    assert days == [dt.date(2027, 1, 4), dt.date(2027, 7, 5)] and owns("H2", maint_watch)
+    a2 = calendar_row("A2")
+    assert [dt.date(2027, m, d) for m in range(1, 13) for d in range(1, 29)
+            if run.is_due(a2, dt.date(2027, m, d))] == [dt.date(2027, 1, 4)]
+
+
+def test_cite_A3_is_polled_every_monday(monkeypatch, tmp_path):
+    import maint_human
+    import maint_run as run
+    row = calendar_row("A3")
+    assert [d for d in range(1, 15) if run.is_due(row, dt.date(2026, 11, d))] == [2, 9] and owns("A3", maint_human)
+    assert run.is_due(row, dt.date(2027, 1, 4)) and not run.is_due(row, dt.date(2027, 1, 5))
+    assert not run.is_due(calendar_row("E1"), dt.date(2026, 11, 2))                          # an event row never
+
+
+def test_cite_W1_maint_run_runs_one_child_for_rows_that_share_it(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+    import maint_run as run
+    asked = []
+
+    def child(argv, timeout):
+        asked.append(Path(argv[1]).name)
+        mr.write_receipt("W1", "PASS", n=0, why="w1", tool="linkcheck.py")
+        mr.write_receipt("W1b", "PASS", n=0, why="w1b", tool="linkcheck.py")
+        return 0, "", ""
+    monkeypatch.setattr(run, "RUN", child)
+    code = run.main(["--row", "W1", "--row", "W1b"])
+    lines = {e["row"]: e for e in receipts_any()}
+    assert asked == ["linkcheck.py"] and code == 0 and lines["W1"]["why"] == "w1" and lines["W1b"]["why"] == "w1b"
+    assert owns("W1", linkcheck)
+
+
+def test_cite_M5_a_line_the_digest_wrote_counts_for_its_row(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    import maint_run as run
+    asked = []
+
+    def child(argv, timeout):
+        asked.append((Path(argv[1]).name, list(argv[2:])))
+        mr.write_receipt("W2", "PASS", why="digest", tool="maint_watch.py")
+        mr.write_receipt("M5", "PASS", why="board run 2026-11-02 found", tool="maint_watch.py")
+        return 0, "", ""
+    monkeypatch.setattr(run, "RUN", child)
+    res = run.run(["W2", "M5"], {r["id"]: r for r in run.load_table()})
+    got = {e["row"]: e["why"] for e in res["receipts"]}
+    assert asked == [("maint_watch.py", ["digest"])] and got == {"W2": "digest", "M5": "board run 2026-11-02 found"}
+    other = run.run(["W2"], {r["id"]: r for r in run.load_table()})
+    assert [e["row"] for e in other["receipts"]] == ["W2"]                  # a line for a row not asked for: not listed
+    assert owns("M5", maint_watch)
+
+
+def test_cite_D2_a_row_with_no_runner_could_not_start(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_run as run
+    res = run.run(["Z9"], {"Z9": {"id": "Z9", "kind": "daily"}})
+    rec = res["receipts"][0]
+    assert res["could_not_start"] == ["Z9"] and rec["outcome"] == "UNKNOWN" and \
+        rec["why"] == "runner could not start: no runner wired for Z9"
+    ev = run.run(["E2"], {r["id"]: r for r in run.load_table()})
+    assert ev["receipts"][0]["outcome"] == "SKIP" and ev["could_not_start"] == [] and owns("D2", maint_watch)
+
+
+def test_cite_D2_maint_run_refuses_rows_it_does_not_know_and_lists_without_running(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_run as run
+    monkeypatch.setattr(run, "RUN", lambda argv, timeout: (_ for _ in ()).throw(AssertionError("ran")))
+    assert run.main(["--row", "Z9"]) == 2 and log_lines() == []
+    assert run.main(["--list", "--date", "2026-11-02"]) == 0 and log_lines() == []
+    bad = tmp_path / "rows.json"
+    bad.write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(run, "ROWS_FILE", bad)
+    assert run.main(["--row", "D2"]) == 2 and owns("D2", maint_watch)
+
+
+def test_cite_C1_a_child_that_timed_out_after_a_pass_is_unknown(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+    import maint_run as run
+
+    def child(argv, timeout):
+        mr.write_receipt("C1", "PASS", n=0, why="up", tool="headers_tls_check.py")
+        return None, "", ""
+    monkeypatch.setattr(run, "RUN", child)
+    drive("C1", headers_tls_check)
+    rec = receipt("C1", headers_tls_check)
+    assert rec["outcome"] == "UNKNOWN" and "timed out after writing C1 PASS" in rec["why"]
+    rec2, end, rc = exit_case(monkeypatch, "C1", headers_tls_check, "SKIP", 1)        # a SKIP does not explain 1
+    assert rec2["outcome"] == "UNKNOWN" and end["rows_failed"] == ["C1"] and rc == 2
+
+
+def test_cite_M1_the_patch_proof_runs_its_four_checks_on_the_tree(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    import os
+    import maint_receipt as mr
+    import maint_run as run
+    tree = str(repo_root())
+    asked = []
+
+    def child(argv, timeout, outcomes={"M1": "PASS", "M1b": "FINDINGS", "W1": "PASS", "M2": "FINDINGS"}):
+        script, args = Path(argv[1]).name, list(argv[2:])
+        asked.append((script, args, timeout))
+        row = {"a11y": "M1", "contrast": "M1b", "perf": "M2"}.get(args[0], "W1")
+        o = outcomes[row]
+        mr.write_receipt(row, o, n=2 if o == "FINDINGS" else None, why=f"{row} said {o}", tool=script)
+        return {"PASS": 0, "FINDINGS": 1}[o], "", ""
+    monkeypatch.setattr(run, "RUN", child)
+    rec = run.patch_proof(Path(tree))
+    assert asked == [("maint_quality.py", ["a11y", "--root", tree], 7200),
+                     ("maint_quality.py", ["contrast", "--root", tree], 3600),
+                     ("linkcheck.py", ["--repo", tree, "--internal-only"], 3600),
+                     ("maint_quality.py", ["perf", "--root", tree], 7200)]
+    assert (rec["row"], rec["outcome"], rec["n"]) == ("E1", "FINDINGS", 4)
+    assert rec["why"].startswith("M1 PASS; M1b FINDINGS 2; W1 PASS; M2 FINDINGS 2 on ")
+    assert os.environ["MAINT_DIR"] == str(md) and maint_quality.TOOL == "maint_quality.py"
+    owed = [f for f in mr.read_findings() if f["row"] == "E1"]
+    run.patch_proof(Path(tree))
+    assert len(owed) == 1 and len([f for f in mr.read_findings() if f["row"] == "E1"]) == 1   # owed once, not per run
+
+
+def test_cite_M1_a_patch_proof_with_an_unknown_step_is_incomplete(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_receipt as mr
+    import maint_run as run
+
+    def child(argv, timeout):
+        args = list(argv[2:])
+        row = {"a11y": "M1", "contrast": "M1b", "perf": "M2"}.get(args[0], "W1")
+        o = "UNKNOWN" if row == "M1b" else "PASS"
+        mr.write_receipt(row, o, why=f"{row} {o}", tool=Path(argv[1]).name)
+        return (2 if o == "UNKNOWN" else 0), "", ""
+    monkeypatch.setattr(run, "RUN", child)
+    rec = run.patch_proof(repo_root())
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("patch proof incomplete: M1 PASS; M1b UNKNOWN")
+    monkeypatch.setattr(run, "RUN", lambda argv, timeout: (mr.write_receipt(
+        {"a11y": "M1", "contrast": "M1b", "perf": "M2"}.get(argv[2], "W1"), "PASS", n=0, why="ok",
+        tool=Path(argv[1]).name), 0, "", "")[1:])
+    clean = run.patch_proof(repo_root())
+    assert (clean["outcome"], clean["n"]) == ("PASS", 0)
+    gone = run.patch_proof(tmp_path / "not-a-tree")
+    assert gone["outcome"] == "UNKNOWN" and gone["why"] == "patch proof: not-a-tree is not a git checkout"
+    assert maint_quality.TOOL == "maint_quality.py"
+
+
+def test_cite_C1_the_run_start_marker_records_a_real_process_start(monkeypatch, tmp_path):
+    import headers_tls_check
+    import os
+    md, _ = world(monkeypatch, tmp_path)
+    _monitors(monkeypatch, MONS)
+    drive("C1", headers_tls_check)
+    start = [e for e in log_lines() if e.get("kind") == "run_start" and e["run_id"] == DRIVES["C1"]["run_id"]][0]
+    t = dt.datetime.fromisoformat(start["proc_started"])
+    real_now = dt.datetime.now(dt.timezone.utc)
+    assert dt.timedelta(0) <= real_now - t < dt.timedelta(days=2), start             # a process of this run, today
+    assert start["pid"] in (os.getpid(), os.getppid()) and receipt("C1", headers_tls_check)["outcome"] == "PASS"
