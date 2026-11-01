@@ -1686,7 +1686,7 @@ def test_cite_A3_a_hold_status_is_s1(monkeypatch, tmp_path):
     _rdap(monkeypatch, "2027-07-19T00:00:00Z", status=("client hold",))
     drive("A3", maint_human)
     rec = receipt("A3", maint_human)
-    assert rec["outcome"] == "FINDINGS" and [f["severity"] for f in findings("A3")] == ["S1"]
+    assert rec["outcome"] == "FINDINGS" and rec["n"] == 1 and [f["severity"] for f in findings("A3")] == ["S1"]
 
 
 def test_cite_A3_daniels_close_ends_the_window(monkeypatch, tmp_path):
@@ -8281,6 +8281,7 @@ def test_cite_Q1_the_reread_quotes_the_latest_w1_and_w3_lines(monkeypatch, tmp_p
     md, clock = world(monkeypatch, tmp_path, 2027, 1, 18, 11)
     pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
     _today(monkeypatch, "2027-01-18")                                 # every page 90 days old: due
+    mr.write_receipt("W1", "FINDINGS", n=2, why="two broken", tool="linkcheck.py")
     mr.write_receipt("W1", "PASS", n=0, why="links fine", tool="linkcheck.py")
     mr.write_receipt("W3", "SKIP", why="no names file", tool="maint_pages.py")
     drive("Q1", maint_pages)
@@ -8386,9 +8387,10 @@ def test_cite_D1_missing_leads_the_problems(monkeypatch, tmp_path):
     import maint_watch
     mw = maint_watch
     day, now = dt.date(2026, 11, 2), local_at(2026, 11, 2, 11, 0)
-    late = {"date": "2026-11-02", "mode": "apply", "outcome": "FAILED", "at": "2026-11-02T10:45:00-05:00"}
-    j = mw.judge_release_day([late], day, now)
-    assert j["problems"][0].startswith("MISSING: no line from the 08:30 run by 10:30") and len(j["problems"]) == 2
+    late = [{"date": "2026-11-02", "mode": "apply", "outcome": "FAILED", "at": f"2026-11-02T10:{m}:00-05:00"}
+            for m in (45, 50)]
+    j = mw.judge_release_day(late, day, now)
+    assert j["problems"][0].startswith("MISSING: no line from the 08:30 run by 10:30") and len(j["problems"]) == 3
     assert owns("D1", mw)
 
 
@@ -8432,7 +8434,7 @@ def test_cite_W2_a_c1_reading_six_and_a_half_days_old_still_counts(monkeypatch, 
     import maint_receipt as mr
     import maint_watch
     md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
-    clock.set(2026, 10, 27, 23, 0)
+    clock.set(2026, 10, 26, 23, 0)
     mr.write_receipt("C1", "PASS", why="six and a half days old", tool="headers_tls_check.py")
     clock.set(2026, 11, 2, 11, 0)
     line = maint_watch.c1_monitor_line(maint_watch.local(clock.now()))
@@ -8590,8 +8592,9 @@ def test_cite_W1b_a_found_snapshot_is_cached_and_counted(monkeypatch, tmp_path):
 
 def test_cite_M3_mixed_content_needs_a_whole_attribute_name(monkeypatch, tmp_path):
     import headers_tls_check as h
-    hits = h.mixed_content(['a.html:3:<img src="http://x.example/a.png">', 'b.html:4:<a xsrc="http://x.example/">'])
-    assert [x["path"] for x in hits] == ["a.html"]
+    hits = h.mixed_content(['a.html:3:<img src="http://x.example/a.png">', 'b.html:4:<a xsrc="http://x.example/">',
+                            'c.html:5:<link rel="x" href="http://x.example/s.css">', 'd.html:6:<link xhref="http://x.example/">'])
+    assert [x["path"] for x in hits] == ["a.html", "c.html"]
     repo = site_repo(RunGit(), tmp_path)
     assert h.git_grep_http(repo) == [] and owns("M3", h)                 # no http:// at all: git grep exits 1
 
@@ -8761,3 +8764,38 @@ def test_cite_D3_a_failed_success_ping_is_scrubbed_whole(monkeypatch, tmp_path):
     drive("D3", maint_watch)
     rec = receipt("D3", maint_watch)
     assert rec["why"] == "heartbeat (success) not delivered: OSError: refused <MAINT_HEARTBEAT_URL>"
+
+
+# ================================================================== sweep round 18
+def test_cite_W3_a_possessive_is_dropped_only_at_a_word_s_end(monkeypatch, tmp_path):
+    import maint_pages
+    mp = maint_pages
+    repo = site_repo(mp, tmp_path)
+    local_names(repo, names=("Douza Vane",))
+    out = mp.exempt({"exit": 1, "outcome": "FINDINGS", "status": "REFUSED", "known_names_loaded": True,
+                     "findings": [{"kind": "unknown-name", "text": "Quillon D'Souza"}]}, lambda w: True,
+                    mp.names_file_words(repo))
+    assert out["outcome"] == "PASS" and owns("W3", mp)                 # D'Souza is not Douza
+
+
+def test_cite_Q2_the_witness_reads_the_newest_sweep_and_a_pass_has_no_count(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path, 2026, 11, 2, 11)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, {"lessons/alpha/index.html": page("Alpha", "<p>i built zorblax.</p>")},
+                      names=True)
+    _client(repo)
+    _today(monkeypatch, "2026-11-02")
+    drive("Q2", maint_pages)                                         # 11-02: a FINDINGS sweep
+    report = evidence_text(receipt("Q2", maint_pages))
+    assert "\n- outcome: **FINDINGS** 1: " in report
+    clean = page("Alpha", "<p>i built a tool.</p>")
+    (repo / "lessons" / "alpha" / "index.html").write_text(clean, encoding="utf-8")
+    who = ("-c", "user.name=t", "-c", "user.email=t@example.invalid")
+    assert maint_pages.git(repo, *who, "commit", "-qam", "fixed")[0] == 0
+    clock.set(2026, 11, 3, 11)
+    _today(monkeypatch, "2026-11-03")
+    drive("Q2", maint_pages)                                         # 11-03: the newest sweep is clean
+    prev = receipt("Q2", maint_pages)
+    rec = maint_pages.cmd_witness(repo, clock.now().date(), "privacy-safety", tool="maint_watch.py",
+                                  evidence=prev["evidence"])[0]
+    assert (rec["outcome"], rec["n"]) == ("PASS", None) and owns("Q2", maint_pages)
