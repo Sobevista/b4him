@@ -259,8 +259,20 @@ def scan_html(page_html: str) -> tuple[str, list[str]]:
     return _blocks(CHROME_EL.sub(BLOCK_SEP, page_html)), chrome
 
 
+POSSESSIVE = re.compile(r"['’]s$", re.I)
+
+
+def _name_words(tokens: list[str]) -> list[str]:
+    """people_registry.WORD tokens as name words: a possessive dropped ("Doe's" -> "Doe") and a hyphenated word split
+    into its parts ("Smith-Jones" -> "Smith", "Jones"), so a hit and the names file compare word for word."""
+    out = []
+    for t in tokens:
+        out += [p for p in POSSESSIVE.sub("", t).split("-") if p]
+    return out
+
+
 def _words(s: str) -> str:
-    return " ".join(pr.WORD.findall(html.unescape(re.sub(r"<[^>]+>", " ", s)))).lower()
+    return " ".join(_name_words(pr.WORD.findall(html.unescape(re.sub(r"<[^>]+>", " ", s))))).lower()
 
 
 def site_vocabulary(texts: dict[str, str]) -> list[str]:
@@ -297,20 +309,24 @@ def names_file_words(repo: Path) -> tuple[set[str], set[str]]:
     if p.exists():
         try:
             for person in json.loads(p.read_text(encoding="utf-8")).get("people", []):
-                full |= {" ".join(pr.WORD.findall(n)).lower() for n in person.get("names", []) if n}
+                full |= {" ".join(_name_words(pr.WORD.findall(n))).lower() for n in person.get("names", []) if n}
         except (OSError, ValueError, AttributeError):
             pass
     return full, {w for n in full for w in n.split()}
 
 
-CAP_PAIR = re.compile(r"^[A-Z][\w'’-]*\s+[A-Z][\w'’-]*$")
+#: A capitalised run of ANY length (one word or many, middle initials, hyphens and possessives included). Every such
+#: hit is checked against the names file, word by word: a run that holds a known name, or any word of one, is never
+#: exempted. (The name CAP_PAIR is kept: exempt()'s test line reads it as before.)
+CAP_PAIR = re.compile(r"^[A-Z][\w'’.-]*(?:\s+[\w'’.-]+)*$")
 
 
 def exempt(res: dict, is_vocab, names: tuple[set[str], set[str]] = (set(), set())) -> dict:
     """Drop a heuristic unknown-name hit only when it is the title vocabulary of THIS page (is_vocab(words) is the
     page's own <title>/<h1>, never another page's); record what was dropped. Never exempted: a known-person or age
-    hit, and a two-word Capitalised pair whose pair or either word is in the names file. The outcome is recomputed
-    with the CLI's mapping."""
+    hit, and a Capitalised run of any length holding any word of a name in the names file (a full name inside a
+    longer run, a middle initial, a hyphenated or possessive surname all count). The outcome is recomputed with the
+    CLI's mapping."""
     if res["exit"] == 2 and not res["findings"] and res["status"].startswith("COULD NOT RUN"):
         return res
     full, single = names
