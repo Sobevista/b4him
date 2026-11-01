@@ -671,14 +671,33 @@ def cal_people(root: Path) -> dict[str, list[str]]:
     return out
 
 
+def _linkcheck():
+    import linkcheck
+    return linkcheck
+
+
+def _headers_tls_check():
+    import headers_tls_check
+    return headers_tls_check
+
+
+def _maint_pages():
+    import maint_pages
+    return maint_pages
+
+
+#: The sibling scanners the calibration calls, each a literal import. Imported only when asked for, so a sibling
+#: that will not import is A4's UNKNOWN, not a crash of every maint_quality row.
+TOOL_MODULES = {"linkcheck.py": _linkcheck, "headers_tls_check.py": _headers_tls_check, "maint_pages.py": _maint_pages}
+
+
 def sibling_module(root: Path, tool: str):
     """Import a sibling builder's scanner from this branch's tools/, or say it is not here. Its pure functions are
     called in process, against the scratch site: its CLI would write W1/M3/W3 receipts for a run that is not one."""
-    if not (root / "tools" / tool).exists():
+    if not (root / "tools" / tool).exists() or tool not in TOOL_MODULES:
         raise Unavailable(f"{tool} is not on this branch")
-    import importlib
     try:
-        return importlib.import_module(tool[:-3])
+        return TOOL_MODULES[tool]()
     except Exception as e:
         raise Unavailable(f"{tool} would not import: {type(e).__name__}: {str(e)[:150]}") from None
 
