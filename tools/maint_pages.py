@@ -198,7 +198,7 @@ def load_rows(repo: Path, allow_broken: bool = False) -> list[dict]:
         pb.QUEUE = saved
     if not rows:
         raise CouldNotRun("the production queue: zero records where records are expected")
-    broken = [r["_broken"] for r in rows if r.get("_broken")]
+    broken = [str(r.get("id", "")).removeprefix("UNPARSEABLE-line-") for r in rows if r.get("_broken")]
     if broken and not allow_broken:            # Q3 reports them itself; every other row must not judge a part-read queue
         raise CouldNotRun(f"the production queue has {len(broken)} unparseable line(s) (first: line {broken[0]})")
     return rows

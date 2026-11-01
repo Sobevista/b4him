@@ -6597,3 +6597,229 @@ def test_cite_C1_the_run_start_marker_records_a_real_process_start(monkeypatch, 
     real_now = dt.datetime.now(dt.timezone.utc)
     assert dt.timedelta(0) <= real_now - t < dt.timedelta(days=2), start             # a process of this run, today
     assert start["pid"] in (os.getpid(), os.getppid()) and receipt("C1", headers_tls_check)["outcome"] == "PASS"
+
+
+# ================================================================== sweep: maint_pages, line by line
+def test_cite_M4_syllables_and_the_reading_grade(monkeypatch, tmp_path):
+    import maint_pages
+    syl = {w: maint_pages.syllables(w) for w in ("a", "the", "cat", "cake", "baked", "yellow", "beautiful", "eyes",
+                                                  "bees", "playing", "y", "rhythm", "reading")}
+    assert syl == {"a": 1, "the": 1, "cat": 1, "cake": 1, "baked": 1, "yellow": 2, "beautiful": 4, "eyes": 2,
+                   "bees": 1, "playing": 2, "y": 1, "rhythm": 1, "reading": 2}
+    fk = maint_pages.fk_grade
+    assert fk("The cat sat on the mat. It was a good day for a nap.") == {"words": 14, "sentences": 2,
+                                                                          "syllables": 14, "grade": -1.1}
+    assert fk("Reading carefully and thoughtfully improves understanding considerably! Everybody benefits.") == \
+        {"words": 9, "sentences": 2, "syllables": 29, "grade": 24.2}
+    assert fk("") == {"words": 0, "sentences": 0, "syllables": 0, "grade": None}
+    assert fk("One sentence without a stop") == {"words": 5, "sentences": 1, "syllables": 7, "grade": 2.9}
+    assert fk("Ends here. And here? Yes!")["sentences"] == 3 and fk("x")["grade"] == -3.4
+    assert (maint_pages.READING_AGE_TARGET, maint_pages.FK_GRADE_TARGET) == (9, 4)          # reading age 9 = grade 4
+
+
+def test_cite_W3_the_site_chrome_and_title_words(monkeypatch, tmp_path):
+    import maint_pages
+    body, chrome = maint_pages.scan_html("<html><nav>Menu Home</nav><navigation>Kept</navigation><nav>Real</nav>"
+                                         "<main><p>Body text here.</p></main><footer>Foot</footer></html>")
+    assert chrome == ["<nav>Menu Home</nav>", "<nav>Real</nav>", "<footer>Foot</footer>"] and "Kept" in body
+    assert maint_pages.site_vocabulary({"a.html": "<title>Gentle Harbor</title><h1>Gentle Harbor Again</h1>"
+                                                  "<h1x>Not A Heading</h1x>"}) == ["gentle harbor", "gentle harbor again"]
+    pair = maint_pages.CAP_PAIR.match
+    assert pair("Quillon Mistlewood") and not pair("Quillon Mistlewood Jr") and not pair("quillon Mistlewood")
+    assert maint_pages.PAGE_ROW == "W3.page"
+
+
+def test_cite_W3_each_page_s_own_line(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    pages_repo(monkeypatch, maint_pages, tmp_path, {"about/index.html": "<p>i met Quillon there.</p>"}, names=True)
+    drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    lines = {e["why"].split(":")[0]: e for e in receipts_any() if e["row"] == maint_pages.PAGE_ROW}
+    assert rec["outcome"] == "FINDINGS" and lines["about/index.html"]["outcome"] == "FINDINGS"
+    assert lines["about/index.html"]["n"] == 1 and lines["index.html"]["outcome"] == "PASS"
+
+
+def test_cite_W3_a_people_registry_that_cannot_load_is_unknown_on_every_page(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    repo = site_repo(maint_pages, tmp_path)
+    (repo / "data" / "people_registry.json").write_text("{broken", encoding="utf-8")
+    maint_pages.git(repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-am", "break")
+    monkeypatch.setattr(maint_pages, "REPO", repo)
+    local_names(repo)
+    drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    lines = [e for e in receipts_any() if e["row"] == maint_pages.PAGE_ROW]
+    assert rec["outcome"] == "UNKNOWN" and lines and all(e["outcome"] == "UNKNOWN" for e in lines)
+    assert all("COULD NOT RUN" in e["why"] for e in lines)
+
+
+def test_cite_W3_a_tree_that_is_not_a_checkout_could_not_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    d = tmp_path / "plain"
+    d.mkdir()
+    (d / ".git").write_text("gitdir: nowhere\n", encoding="utf-8")
+    monkeypatch.setattr(maint_pages, "REPO", d)
+    drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    assert rec["outcome"] == "UNKNOWN" and rec["why"].startswith("could not run: ")
+
+
+def test_cite_Q1_a_queue_that_cannot_be_read_says_how(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path)
+    q = repo / "production_queue.jsonl"
+    for text, why in (("# only a comment\n", "zero records where records are expected"),
+                      ("\n\n", "the production queue is empty"),
+                      ('{"id": "C-1"}\n{oops\n', "1 unparseable line(s) (first: line 2)")):
+        q.write_text(text, encoding="utf-8")
+        drive("Q1", maint_pages)
+        rec = receipt("Q1", maint_pages)
+        assert rec["outcome"] == "UNKNOWN" and why in rec["why"], why
+    q.unlink()
+    drive("Q1", maint_pages)
+    rec = receipt("Q1", maint_pages)
+    assert rec["outcome"] == "UNKNOWN" and "the production queue is missing" in rec["why"]
+
+
+def test_cite_Q1_due_and_owner_rules(monkeypatch, tmp_path):
+    import maint_pages
+    rows = [{"id": "C-1", "stage": "PUBLISHED", "page": "lessons/alpha/index.html", "published": "2026-07-01"},
+            {"id": "C-2", "stage": "PUBLISHED", "page": "lessons/beta/index.html", "published": "2026-08-03",
+             "last_reviewed": "2026-08-04"}]
+    assert [(r["id"], w) for r, w in maint_pages.rows_due(rows, dt.date(2026, 9, 29))] == \
+        [("C-1", "90 days since last review")]
+    assert [(r["id"], w) for r, w in maint_pages.rows_due(rows, dt.date(2026, 9, 28))] == []
+    assert maint_pages.owner_of("lessons/alpha/index.html", rows) == (["C-1"], "managing-editor (content line)")
+    assert maint_pages.owner_of("index.html", rows) == ([], "unowned in the queue [ASSUMED: managing-editor]")
+
+
+def test_cite_Q1_later_rulings_since_a_date(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    d = ("## D11 — Genericization. LOCKED 2026-07-21\n\nText.\n\n## D12 — Later. LOCKED 2026-09-01\n\n"
+         "see the note ## D13 — Mid-line. LOCKED 2026-12-01\n\n## D14 — End. LOCKED 2026-07-21\n")
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, {"DECISIONS.md": d})
+    assert maint_pages.later_rulings(repo, "2026-07-21") == ["D12 — Later. LOCKED 2026-09-01"]
+    assert maint_pages.later_rulings(repo, None) == ["D11 — Genericization. LOCKED 2026-07-21",
+                                                     "D12 — Later. LOCKED 2026-09-01",
+                                                     "D14 — End. LOCKED 2026-07-21"]
+    assert owns("Q1", maint_pages)
+
+
+def test_cite_Q2_d11_must_be_there_and_parse(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    for decisions, why in (("## D10 — Other. LOCKED 2026-07-01\n\nText.\n\n## D12 — End\n",
+                            "DECISIONS.md has no D11 section"),
+                           ("## D110 — Not it. LOCKED 2026-07-01\n\nZorblax → \"a tool\".\n\n## D12 — E\n",
+                            "DECISIONS.md has no D11 section"),
+                           ("## D11 — Publishing. LOCKED 2026-07-21\n\nNo rule here.\n\n## D12 — End\n",
+                            "D11 has no 'Genericization is a hard rule' line"),
+                           ("## D11 — Publishing. LOCKED 2026-07-21\n\n- **Genericization is a hard rule, applied "
+                            "consistently.** nothing to replace.\n\n## D12 — End\n",
+                            "no 'X → replacement' token parsed from D11")):
+        repo = pages_repo(monkeypatch, maint_pages, tmp_path / why[:10].replace(" ", "_") / str(len(decisions)),
+                          {"DECISIONS.md": decisions}, names=True)
+        _client(repo)
+        drive("Q2", maint_pages)
+        rec = receipt("Q2", maint_pages)
+        assert rec["outcome"] == "UNKNOWN" and why in rec["why"], why
+
+
+def test_cite_Q2_d11_ends_at_the_next_heading_line(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    decisions = ("## D11 — Publishing. LOCKED 2026-07-21\n\n- **Genericization is a hard rule, applied "
+                 "consistently.** Zorblax → \"a tool\". a note ## here is not a heading. Quendrith → "
+                 "\"a teammate\".\n\n## D12 — Later.\n\nVexmoor → \"a machine\".\n\n## D13 — End\n")
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, {"DECISIONS.md": decisions})
+    toks = maint_pages.d11_tokens(repo)
+    assert "Zorblax" in toks and "Quendrith" in toks and "Vexmoor" not in toks and owns("Q2", maint_pages)
+
+
+def test_cite_Q2_the_sweep_s_outcome_rules(monkeypatch, tmp_path):
+    import maint_pages
+    base = {"hits": [], "client_list_loaded": True, "w3": {"outcome": "PASS", "n": 0, "why": "ok"}}
+    g = maint_pages.genericize_outcome
+    assert g(dict(base, witness={"seat": "privacy-safety"})) == \
+        ("PASS", 0, "0 forbidden tokens, W3 PASS, witnessed by privacy-safety")
+    o, n, why = g(dict(base, w3={"outcome": "FINDINGS", "n": 2, "why": "x"}, witness={"seat": "privacy-safety"}))
+    assert (o, n) == ("PASS", 0) and "W3 FINDINGS (its findings stand in W3)" in why
+    o, n, why = g(dict(base, client_list_loaded=False))
+    assert (o, n) == ("UNKNOWN", None) and why.startswith("could not fully run: the client-name list")
+    o, n, why = g(dict(base, w3={"outcome": "UNKNOWN", "n": None, "why": "names file absent"}))
+    assert o == "UNKNOWN" and "W3 could not fully run (names file absent)" in why
+    assert g(dict(base, error="git grep died"))[0] == "UNKNOWN" and g(base)[0] == "SKIP"
+    hits = [{"path": "lessons/a/index.html"}, {"path": "assets/app.js"}]
+    o, n, why = g(dict(base, hits=hits))
+    assert (o, n) == ("FINDINGS", 2) and why.startswith("2 forbidden-token line(s) on served files: 1 in lessons/ (S1)")
+    assert owns("Q2", maint_pages)
+
+
+def test_cite_Q2_every_author_seat_is_refused_as_witness(monkeypatch, tmp_path):
+    import maint_pages
+    import pytest
+    md, clock = world(monkeypatch, tmp_path)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    _client(repo)
+    drive("Q2", maint_pages)
+    rec = receipt("Q2", maint_pages)
+    day = clock.now().date()
+    assert maint_pages.AUTHOR_SEATS == {"managing-editor", "curriculum-designer", "site-maintainer",
+                                        "design-accessibility"} and maint_pages.SWEEP_SEAT == "maintenance-auditor"
+    with pytest.raises(maint_pages.CouldNotRun, match="the witness must be another seat"):
+        maint_pages.cmd_witness(repo, day, "maintenance-auditor", tool="maint_watch.py", evidence=rec["evidence"])
+    with pytest.raises(maint_pages.CouldNotRun, match="is not a b4him seat"):
+        maint_pages.cmd_witness(repo, day, "the-intern", tool="maint_watch.py", evidence=rec["evidence"])
+    (repo / "about.txt").write_text("a later commit\n", encoding="utf-8")
+    maint_pages.git(repo, "add", "-A")
+    maint_pages.git(repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "later")
+    with pytest.raises(maint_pages.CouldNotRun, match="HEAD moved since the sweep"):
+        maint_pages.cmd_witness(repo, day, "privacy-safety", tool="maint_watch.py", evidence=rec["evidence"])
+
+
+def test_cite_Q2_witness_through_the_cli_exits_by_its_outcome(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    _client(repo)
+    drive("Q2", maint_pages)
+    assert maint_pages.main(["--repo", str(repo), "witness", "site-maintainer"]) == 2      # refused: 2, not 1
+    assert maint_pages.main(["--repo", str(repo), "witness", "privacy-safety"]) == 0
+    assert snap("Q2")[-1]["outcome"] == "PASS"
+
+
+def test_cite_Q3_findings_close_by_status_and_age(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _today(monkeypatch, "2026-11-02")                                    # Q3 reads the date, not the clock
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, queue=[
+        {"id": "P-1", "title": "Old", "stage": "DRAFTED", "kind": "patch", "drafted": "2026-08-04",
+         "blocked_on": "b" * 200}])
+    import maint_receipt as mr
+
+    def find(subject, at, **kw):
+        return json.dumps({"at": at, "row": "W1", "severity": "S2", "subject": subject, "detail": "", "route_to": "r",
+                           **kw})
+    md.mkdir(parents=True, exist_ok=True)
+    (md / mr.FINDINGS_NAME).write_text("\n".join([
+        find("closed one", "2026-01-01T00:00:00+00:00"), find("closed one", "2026-02-01T00:00:00+00:00", status="closed"),
+        find("wont one", "2026-01-01T00:00:00+00:00"), find("wont one", "2026-02-01T00:00:00+00:00", status="wont-do"),
+        find("open one", "2026-10-01T00:00:00+00:00"), find("open one", "2026-10-02T00:00:00+00:00")]) + "\n",
+        encoding="utf-8")
+    drive("Q3", maint_pages)
+    rec = receipt("Q3", maint_pages)
+    text = evidence_text(rec)
+    assert "open patches: 1; open findings: 1; flagged stale: **0**" in text
+    assert "| finding | W1 open one | S2 | 2026-10-01 | 32 |  | x2 -> r |" in text
+    assert "| patch | P-1 | DRAFTED | 2026-08-04 | 90 |  | " + "b" * 120 + " |" in text
+    assert rec["outcome"] == "PASS" and rec["n"] == 0
+    _today(monkeypatch, "2026-11-03")                                    # one day on: the patch is 91 days old
+    drive("Q3", maint_pages)
+    rec = receipt("Q3", maint_pages)
+    assert (rec["outcome"], rec["n"]) == ("FINDINGS", 1) and "| 91 | STALE |" in evidence_text(rec)
