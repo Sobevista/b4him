@@ -521,5 +521,30 @@ def in_run(body) -> int:
 CRASH_EXIT = 1                                 # the exit code recorded when the runner itself raised
 
 
+def in_process(module, *pre):
+    """A RUN (see RUN above) that runs an already-imported tool `module`'s main(pre + args) in THIS process, stdout and
+    stderr captured, its exit code returned as a child's would be. For a caller that has the tool imported (the row
+    cites). It runs only when the script maint_run asked for resolves to the very file `module` was loaded from: any
+    other module, even one declaring the same TOOL, is CouldNotStart (the runner's UNKNOWN), never a run."""
+    import contextlib
+    import io
+
+    def run_here(argv: list[str], timeout: int) -> tuple[int | None, str, str]:
+        want = Path(argv[1]).resolve()
+        got = getattr(module, "__file__", None)
+        if not got or Path(got).resolve() != want:
+            raise CouldNotStart(f"{want.name}: the module handed in is not this script ({got or 'it has no file'})")
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = module.main([*pre, *argv[2:]])
+        except SystemExit as e:
+            code = e.code if isinstance(e.code, int) else 1
+        except Exception as e:  # noqa: BLE001 - a tool crash is the runner's to judge, as in a real child process
+            return 1, out.getvalue(), f"{type(e).__name__}: {e}"
+        return code, out.getvalue(), err.getvalue()
+    return run_here
+
+
 if __name__ == "__main__":
     sys.exit(main())

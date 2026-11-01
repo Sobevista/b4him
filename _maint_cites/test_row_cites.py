@@ -19,7 +19,6 @@ and shows at least one cite of that row fails for each (the kill matrix).
 The tools are imported INSIDE the test bodies, so on a tree without them (b4him main d67bd8d) every test FAILS rather
 than erroring at collection. No network: sockets are refused; HTTP, DNS, TLS, RDAP and browsers are fakes.
 """
-import contextlib
 import datetime as dt
 import json
 import socket
@@ -53,46 +52,6 @@ class Clock:
 
     def now(self):
         return self.t.astimezone(dt.timezone.utc)
-
-
-class Sink:
-    """A text sink for a tool's stdout / stderr while it runs in process."""
-    parts = None
-
-    def write(self, text):
-        if self.parts is None:
-            self.parts = []
-        self.parts.append(str(text))
-        return len(str(text))
-
-    def flush(self):
-        return None
-
-    def text(self):
-        return "".join(self.parts or [])
-
-
-def in_process(tool, *pre):
-    """maint_run's RUN for one drive, in process: maint_run asks for `[python, tools/<script>, *args]`; when <script>
-    is the script `tool` (the row's own module, imported by the test) declares as its TOOL, its main(pre + args) runs
-    here with stdout and stderr captured, and its exit code is returned, as a child process would. Any other script
-    is refused (exit 2, nothing written): the test runs only the tool it imported."""
-    import maint_receipt as mr
-
-    def run_here(argv, timeout):
-        script = Path(argv[1]).name
-        if mr.tool_path(tool.TOOL) != "tools/" + script:
-            return 2, "", f"the test imported {tool.TOOL}, not {script}"
-        out, err = Sink(), Sink()
-        try:
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = tool.main([*pre, *argv[2:]])
-        except SystemExit as e:
-            code = e.code if isinstance(e.code, int) else 1
-        except Exception as e:  # noqa: BLE001 - a tool crash is the runner's to judge, as in a real child process
-            return 1, out.text(), repr(e)
-        return code, out.text(), err.text()
-    return run_here
 
 
 def world(monkeypatch, tmp_path, *when, watch=None):
@@ -158,7 +117,7 @@ def drive(row, tool, *pre):
     seen = {e.get("run_id") for e in log_lines() if e.get("kind") == "run_start"}
     saved = run.RUN
     if saved is run.run_process:
-        run.RUN = in_process(tool, *pre)
+        run.RUN = run.in_process(tool, *pre)          # maint_run checks `tool` IS the script it runs for the row
     try:
         code = run.main(["--row", row])
     finally:
@@ -187,9 +146,9 @@ def hand_close_ok(prev, rec):
 
 
 def runner_identity(row, tool):
-    """Check `tool` (the module the test imported) is the module maint_run.py runs for `row`: the script it declares
-    as its TOOL is exactly maint_run's RUNNERS script for the row (and in_process runs nothing else). -> the receipt
-    `tool` field that module writes (tools/<script>)."""
+    """Check `tool` (the module the test imported) declares as its TOOL exactly maint_run's RUNNERS script for the row
+    (maint_run.in_process then refuses any module whose FILE is not that script). -> the receipt `tool` field that
+    module writes (tools/<script>)."""
     import maint_receipt as mr
     import maint_run as run
     want = "tools/" + run.RUNNERS[row][0]
@@ -220,6 +179,27 @@ def receipt(row, tool):
                 and at >= d["start"] and e.get("tool") in (own, run.RUNNER))
     mine = [e for e in receipts_any() if this_run(e)]
     return mine[-1] if mine else {}
+
+
+def run_end(row):
+    """The run_end marker of the row's last drive (maint_run's last write: its exit code and rows_failed)."""
+    d = DRIVES.get(row)
+    ends = [e for e in log_lines() if e.get("kind") == "run_end" and d and e.get("run_id") == d["run_id"]]
+    return ends[-1] if ends else {}
+
+
+def drive_real(row):
+    """`maint_run.py --row <row>` with maint_run's REAL RUN (run_process: a child process). Records the drive."""
+    import maint_receipt as mr
+    import maint_run as run
+    start = mr.now_utc().replace(microsecond=0)
+    seen = {e.get("run_id") for e in log_lines() if e.get("kind") == "run_start"}
+    code = run.main(["--row", row])
+    new = [e.get("run_id") for e in log_lines() if e.get("kind") == "run_start" and e.get("run_id") not in seen]
+    if len(new) != 1 or not new[0]:
+        raise AssertionError(f"drive_real({row}): expected one new run_start marker, found {len(new)}")
+    DRIVES[row] = {"run_id": new[0], "start": start}
+    return code
 
 
 def closed(row, tool):
@@ -2980,7 +2960,7 @@ def test_cite_C1_a_pass_with_an_unexplained_exit_is_unknown(monkeypatch, tmp_pat
     _monitors(monkeypatch, MONS)
 
     def exits_2(argv, timeout):
-        code, out, err = in_process(headers_tls_check)(argv, timeout)                         # the tool writes its PASS ...
+        code, out, err = run.in_process(headers_tls_check)(argv, timeout)                         # the tool writes its PASS ...
         return 2, out, err + "\nthen died"                             # ... and the process exits 2
     monkeypatch.setattr(run, "RUN", exits_2)
     drive("C1", headers_tls_check)
@@ -3087,6 +3067,8 @@ def _intake_attack(monkeypatch, clock, row, kind):
         if kind == "foreign":
             mr.write_receipt(row, "PASS", n=0, why="written by another tool", tool=other)
             return 0, "", ""
+        if kind == "crash":                                                             # no receipt at all
+            return 3, "", "Traceback: the runner died before writing anything"
         mr.write_receipt(row, "PASS", n=0, why="then the process died", tool=own)       # unexplained exit
         return 2, "", "Traceback: then the process died"
     monkeypatch.setattr(run, "RUN", fake)
@@ -4125,3 +4107,536 @@ def test_cite_D2_a_hand_close_of_A3_follows_its_awaiting_line(monkeypatch, tmp_p
     rec = receipt("D2", maint_watch)
     assert code == 0 and shut["outcome"] == "PASS" and hand_close_ok(prev, shut)
     assert rec["outcome"] == "PASS" and "A3" not in rec["why"]
+
+# ================================================================== round 9: maint_run's exit code and run_end, row by row
+# A runner that dies without a receipt is the RUN's failure: maint_run exits 2 and run_end names the row in rows_failed.
+
+def test_cite_C1_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "C1", "crash")
+    code = drive("C1", headers_tls_check)
+    rec = receipt("C1", headers_tls_check)
+    end = run_end("C1")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a C1 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["C1"]
+
+def test_cite_W1_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1", "crash")
+    code = drive("W1", linkcheck)
+    rec = receipt("W1", linkcheck)
+    end = run_end("W1")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a W1 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["W1"]
+
+def test_cite_W1b_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import linkcheck
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W1b", "crash")
+    code = drive("W1b", linkcheck)
+    rec = receipt("W1b", linkcheck)
+    end = run_end("W1b")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a W1b receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["W1b"]
+
+def test_cite_W3_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W3", "crash")
+    code = drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    end = run_end("W3")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a W3 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["W3"]
+
+def test_cite_M1_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1", "crash")
+    code = drive("M1", maint_quality)
+    rec = receipt("M1", maint_quality)
+    end = run_end("M1")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a M1 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["M1"]
+
+def test_cite_M1b_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M1b", "crash")
+    code = drive("M1b", maint_quality)
+    rec = receipt("M1b", maint_quality)
+    end = run_end("M1b")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a M1b receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["M1b"]
+
+def test_cite_M2_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2", "crash")
+    code = drive("M2", maint_quality)
+    rec = receipt("M2", maint_quality)
+    end = run_end("M2")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a M2 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["M2"]
+
+def test_cite_M2b_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M2b", "crash")
+    code = drive("M2b", maint_quality)
+    rec = receipt("M2b", maint_quality)
+    end = run_end("M2b")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a M2b receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["M2b"]
+
+def test_cite_M3_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M3", "crash")
+    code = drive("M3", headers_tls_check)
+    rec = receipt("M3", headers_tls_check)
+    end = run_end("M3")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a M3 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["M3"]
+
+def test_cite_M4_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M4", "crash")
+    code = drive("M4", maint_pages)
+    rec = receipt("M4", maint_pages)
+    end = run_end("M4")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a M4 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["M4"]
+
+def test_cite_Q1_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q1", "crash")
+    code = drive("Q1", maint_pages)
+    rec = receipt("Q1", maint_pages)
+    end = run_end("Q1")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a Q1 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["Q1"]
+
+def test_cite_Q2_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q2", "crash")
+    code = drive("Q2", maint_pages)
+    rec = receipt("Q2", maint_pages)
+    end = run_end("Q2")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a Q2 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["Q2"]
+
+def test_cite_Q3_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q3", "crash")
+    code = drive("Q3", maint_pages)
+    rec = receipt("Q3", maint_pages)
+    end = run_end("Q3")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a Q3 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["Q3"]
+
+def test_cite_Q4_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q4", "crash")
+    code = drive("Q4", headers_tls_check)
+    rec = receipt("Q4", headers_tls_check)
+    end = run_end("Q4")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a Q4 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["Q4"]
+
+def test_cite_Q5_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q5", "crash")
+    code = drive("Q5", headers_tls_check)
+    rec = receipt("Q5", headers_tls_check)
+    end = run_end("Q5")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a Q5 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["Q5"]
+
+def test_cite_A2_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_pages
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A2", "crash")
+    code = drive("A2", maint_pages)
+    rec = receipt("A2", maint_pages)
+    end = run_end("A2")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a A2 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["A2"]
+
+def test_cite_A4_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_quality
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A4", "crash")
+    code = drive("A4", maint_quality)
+    rec = receipt("A4", maint_quality)
+    end = run_end("A4")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a A4 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["A4"]
+
+def test_cite_W2_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "W2", "crash")
+    code = drive("W2", maint_watch)
+    rec = receipt("W2", maint_watch)
+    end = run_end("W2")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a W2 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["W2"]
+
+def test_cite_M5_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "M5", "crash")
+    code = drive("M5", maint_watch)
+    rec = receipt("M5", maint_watch)
+    end = run_end("M5")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a M5 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["M5"]
+
+def test_cite_H2_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H2", "crash")
+    code = drive("H2", maint_watch)
+    rec = receipt("H2", maint_watch)
+    end = run_end("H2")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a H2 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["H2"]
+
+def test_cite_H3_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H3", "crash")
+    code = drive("H3", maint_watch)
+    rec = receipt("H3", maint_watch)
+    end = run_end("H3")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a H3 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["H3"]
+
+def test_cite_H1_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "H1", "crash")
+    code = drive("H1", maint_human)
+    rec = receipt("H1", maint_human)
+    end = run_end("H1")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a H1 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["H1"]
+
+def test_cite_A1_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A1", "crash")
+    code = drive("A1", maint_human)
+    rec = receipt("A1", maint_human)
+    end = run_end("A1")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a A1 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["A1"]
+
+def test_cite_A3_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_human
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "A3", "crash")
+    code = drive("A3", maint_human)
+    rec = receipt("A3", maint_human)
+    end = run_end("A3")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a A3 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["A3"]
+
+def test_cite_Q6_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "Q6", "crash")
+    code = drive("Q6", maint_watch)
+    rec = receipt("Q6", maint_watch)
+    end = run_end("Q6")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a Q6 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["Q6"]
+
+def test_cite_D1_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D1", "crash")
+    code = drive("D1", maint_watch)
+    rec = receipt("D1", maint_watch)
+    end = run_end("D1")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a D1 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["D1"]
+
+def test_cite_D2_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D2", "crash")
+    code = drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    end = run_end("D2")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a D2 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["D2"]
+
+def test_cite_D3_a_runner_that_dies_fails_the_run(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path)
+    _intake_attack(monkeypatch, clock, "D3", "crash")
+    code = drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    end = run_end("D3")
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a D3 receipt" in rec["why"]
+    assert code == 2 and end.get("exit") == 2 and end.get("rows_failed") == ["D3"]
+
+
+# ================================================================== round 9: maint_run's REAL child process (run_process)
+CHILD_EXIT_3 = "import sys\nsys.exit(3)\n"
+CHILD_SLEEPS = "import time\ntime.sleep(60)\n"
+CHILD_CWD = "import os, sys\nprint('cwd=' + os.path.basename(os.getcwd()), file=sys.stderr)\nsys.exit(3)\n"
+
+
+def child_tool(monkeypatch, tmp_path, row, body, timeout=None):
+    """maint_run's runner script for `row`, replaced by a tiny child script under tmp_path (TOOLS_DIR is maint_run's
+    public seam for this): maint_run then launches it for real with run_process. -> the scripts folder."""
+    import maint_run as run
+    d = tmp_path / "child-tools"
+    d.mkdir(parents=True, exist_ok=True)
+    script, args, t = run.RUNNERS[row]
+    (d / script).write_text(body, encoding="utf-8")
+    monkeypatch.setattr(run, "TOOLS_DIR", d)
+    if timeout is not None:
+        monkeypatch.setitem(run.RUNNERS, row, (script, args, timeout))
+    return d
+
+
+def test_cite_W1_a_child_s_exit_code_is_read(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    child_tool(monkeypatch, tmp_path, "W1", CHILD_EXIT_3)
+    code = drive_real("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "exited 3 without a W1 receipt" in rec["why"]
+    assert code == 2 and run_end("W1").get("rows_failed") == ["W1"]
+
+
+def test_cite_W1_a_child_past_its_timeout_is_stopped(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    child_tool(monkeypatch, tmp_path, "W1", CHILD_SLEEPS, timeout=2)
+    code = drive_real("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "timed out after 2 s and was stopped" in rec["why"] and code == 2
+
+
+def test_cite_W1_a_child_that_cannot_launch_could_not_start(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+    child_tool(monkeypatch, tmp_path, "W1", CHILD_EXIT_3)
+    monkeypatch.setattr(run, "REPO", tmp_path / "no-such-folder")         # the child's working folder is gone
+    code = drive_real("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and rec["why"].startswith("runner could not start") and code == 2
+
+
+def test_cite_W1_the_child_runs_in_the_repo_root(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+    child_tool(monkeypatch, tmp_path, "W1", CHILD_CWD)
+    root = tmp_path / "repo-root-w1"
+    root.mkdir()
+    monkeypatch.setattr(run, "REPO", root)
+    drive_real("W1")
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "cwd=repo-root-w1" in rec["why"]
+
+
+def test_cite_M2_the_row_s_timeout_reaches_the_child(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+    asked = []
+
+    def records(argv, timeout):
+        asked.append(timeout)
+        return 3, "", "stopped by the test"
+    monkeypatch.setattr(run, "RUN", records)
+    drive("M2", maint_quality)
+    rec = receipt("M2", maint_quality)
+    assert asked == [run.RUNNERS["M2"][2]] and rec.get("outcome") == "UNKNOWN"
+
+
+def test_cite_W1_a_foreign_module_with_the_same_tool_is_refused(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+
+    class LookAlike:
+        """Declares linkcheck's TOOL; is not linkcheck."""
+        TOOL = linkcheck.TOOL
+
+        def main(self, argv):
+            import maint_receipt as mr
+            mr.write_receipt("W1", "PASS", n=0, why="a look-alike's PASS", tool=self.TOOL)
+            return 0
+    code = drive("W1", LookAlike())
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and rec["why"].startswith("runner could not start") and code == 2
+
+
+def test_cite_W1_another_real_module_is_refused(monkeypatch, tmp_path):
+    import linkcheck
+    import maint_run
+    md, _ = world(monkeypatch, tmp_path)
+    code = drive("W1", maint_run)                                        # a real module, but not linkcheck.py
+    rec = receipt("W1", linkcheck)
+    assert rec.get("outcome") == "UNKNOWN" and "the module handed in is not this script" in rec["why"] and code == 2
+
+
+# ================================================================== round 9: git that fails inside the scanned tree
+def test_cite_W1_a_head_that_cannot_be_resolved_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    _net(monkeypatch)
+    repo = site_repo(linkcheck, tmp_path)
+    (repo / ".git" / "HEAD").write_text("ref: refs/heads/no-such-branch\n", encoding="utf-8")
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    assert rec["outcome"] == "UNKNOWN" and "git rev-parse HEAD failed" in rec["why"]
+
+
+def test_cite_W1_git_that_cannot_start_is_unknown(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    _net(monkeypatch)
+    repo = site_repo(linkcheck, tmp_path)
+    empty = tmp_path / "no-git-here"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))                              # no git binary on the path
+    drive("W1", linkcheck, "--repo", str(repo))
+    rec = receipt("W1", linkcheck)
+    assert rec["outcome"] == "UNKNOWN" and "git rev-parse HEAD failed" in rec["why"] and "exit 127" in rec["why"]
+
+
+def test_cite_W3_a_page_git_cannot_read_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    code, sha = maint_pages.git(repo, "rev-parse", "HEAD:lessons/alpha/index.html")
+    blob = repo / ".git" / "objects" / sha.strip()[:2] / sha.strip()[2:]
+    blob.chmod(0o666)                                                   # git writes its objects read-only
+    blob.unlink()                                                       # the page's object is gone from the tree
+    drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    assert code == 0 and rec["outcome"] == "UNKNOWN" and "could not run: git show" in rec["why"]
+
+
+def test_cite_W3_git_that_cannot_start_mid_scan_is_unknown(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    listed = maint_pages.served_files
+    empty = tmp_path / "no-git-here"
+    empty.mkdir()
+
+    def list_then_lose_git(repo, exts=(".html",)):
+        pages = listed(repo, exts)
+        monkeypatch.setenv("PATH", str(empty))                          # git is gone once the page list is read
+        return pages
+    monkeypatch.setattr(maint_pages, "served_files", list_then_lose_git)
+    drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    assert rec["outcome"] == "UNKNOWN" and "could not run: git could not start" in rec["why"]
+
+
+# ================================================================== round 9: a zone that is not the machine's (A07)
+FAR_EAST = dt.timezone(dt.timedelta(hours=9))
+
+
+def test_cite_D1_the_release_day_is_the_calendar_zone_s(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    monkeypatch.setattr(mr, "LOCAL_TZ", FAR_EAST)                       # +09:00: never this machine's zone
+    clock.t = dt.datetime(2026, 11, 2, 11, 0, tzinfo=FAR_EAST)          # 02:00Z; the US day is still 11-01
+    _release(monkeypatch, tmp_path, dict(LINE, at="2026-11-01T23:35:00+00:00"))   # 08:35 on 11-02 at +09:00
+    drive("D1", maint_watch)
+    rec = receipt("D1", maint_watch)
+    assert rec["outcome"] == "PASS" and rec["why"].startswith("2026-11-02: 08:35 PUBLISHED")
+
+
+# ================================================================== round 9: D2's owed-judgement clock (A17, A18)
+def _owed_m4(clock, later_outcome, later_why):
+    """M4 awaiting a judgement since 2026-11-02, then (on 2027-01-05) a line that is NOT a close; D2 runs 2027-01-06."""
+    import maint_receipt as mr
+    plant_awaiting("M4", "maint_pages.py", "awaiting managing-editor judgement: the walkthrough pack",
+                   "packs/M4/index.md")
+    clock.set(2027, 1, 5, 11)
+    mr.write_receipt("M4", later_outcome, n=1 if later_outcome == "FINDINGS" else None, why=later_why,
+                     tool="maint_pages.py")
+    clock.set(2027, 1, 6, 11)
+
+
+def test_cite_D2_a_line_that_is_not_a_close_leaves_the_judgement_owed(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    _table(monkeypatch, tmp_path, "D2", "M4")
+    _owed_m4(clock, "SKIP", "walkthrough re-run: nothing new")
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "FINDINGS" and "M4" in rec["why"] and "awaiting judgement since 2026-11-02" in rec["why"]
+
+
+def test_cite_D2_scanner_findings_are_not_a_judgement(monkeypatch, tmp_path):
+    import maint_watch
+    md, clock = world(monkeypatch, tmp_path, watch=maint_watch)
+    _table(monkeypatch, tmp_path, "D2", "M4")
+    _owed_m4(clock, "FINDINGS", "1 unglossed term on the route")
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert rec["outcome"] == "FINDINGS" and "M4" in rec["why"] and "awaiting judgement since 2026-11-02" in rec["why"]
+
+
+# ================================================================== round 9: the judge's precondition (A19, A20)
+def test_cite_M4_a_judge_close_needs_the_row_s_own_awaiting_line(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    pages_repo(monkeypatch, maint_pages, tmp_path)
+    drive("M4", maint_pages)
+    rec = receipt("M4", maint_pages)
+    mr.write_receipt("M4", "SKIP", why="awaiting managing-editor judgement: a pack from another tool",
+                     evidence=rec["evidence"], tool="maint_quality.py")             # not M4's runner
+    code, prev, after = close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "ok")
+    assert rec["outcome"] == "SKIP" and code == 1 and after == prev           # refused: nothing written
+
+
+def test_cite_M4_a_judge_close_needs_its_evidence_on_disk(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    pages_repo(monkeypatch, maint_pages, tmp_path)
+    drive("M4", maint_pages)
+    rec = receipt("M4", maint_pages)
+    mr.write_receipt("M4", "SKIP", why="awaiting managing-editor judgement: the walkthrough pack",
+                     evidence=".maint/packs/M4/gone.md", tool="maint_pages.py")      # names a pack that is not there
+    code, prev, after = close("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "ok")
+    assert rec["outcome"] == "SKIP" and code == 1 and after == prev
+
+
+def test_cite_M4_the_editors_judgement_closes_it(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    pages_repo(monkeypatch, maint_pages, tmp_path)
+    drive("M4", maint_pages)
+    code, prev, shut = close("M4", maint_watch, "judge", "M4", "FINDINGS", "1", "--seat", "managing-editor", "--note",
+                             "one term needs a gloss")
+    rec = receipt("M4", maint_pages)
+    assert rec == prev and code == 1 and (shut["outcome"], shut["n"]) == ("FINDINGS", 1) and hand_close_ok(prev, shut)
+
