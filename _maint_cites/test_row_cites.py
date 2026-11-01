@@ -8020,3 +8020,11 @@ def test_cite_M1_an_undocumented_exit_writes_no_findings(monkeypatch, tmp_path):
     rec = receipt("M1", maint_quality)
     assert rec["outcome"] == "UNKNOWN" and findings("M1") == []
 
+
+def test_cite_H1_d9_is_read_from_its_own_heading_only(monkeypatch, tmp_path):
+    import maint_human as mh
+    md, _ = world(monkeypatch, tmp_path, 2027, 1, 4, 11)
+    d9 = ("### D9 an aside\n\n| not | this |\n\n## D9 — Look. LOCKED 2026-07-02\n\nan older note ## not a heading\n\n"
+          "| r | v |\n\n## D10 — End\n")
+    repo = site_repo(RunGit(), tmp_path, decisions=d9)
+    assert mh.d9_reference(repo, tmp_path) == ["| r | v |"] and owns("H1", mh)
