@@ -4865,3 +4865,923 @@ def test_cite_W1_a_timed_out_child_is_stopped_with_its_children(monkeypatch, tmp
     assert rec.get("outcome") == "UNKNOWN" and "timed out after 3 s" in rec["why"]
     assert before > 0 and after == before                # it ran, and it was stopped with its parent
 
+
+# ================================================================== round 10 sweep: every refusal is exit 1 and writes nothing
+def refused(row, watch, *argv):
+    """A hand act that must be REFUSED: exit 1, and the row's receipt log unchanged."""
+    code, prev, after = close(row, watch, *argv)
+    return code == 1 and after == prev
+
+
+def _awaiting_m4(tmp_path):
+    plant_awaiting("M4", "maint_pages.py", "awaiting managing-editor judgement: the walkthrough pack",
+                   "packs/M4/index.md")
+
+
+def test_cite_D2_a_judge_refuses_when_the_row_table_cannot_be_read(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    bad = tmp_path / "rows.json"
+    bad.write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(maint_watch, "ROWS_FILE", bad)
+    _awaiting_m4(tmp_path)
+    assert refused("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "ok")
+    drive("D2", maint_watch)
+    assert receipt("D2", maint_watch)["outcome"] == "UNKNOWN"
+
+
+def test_cite_D2_a_judge_refuses_an_event_row(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("E1", "maint_run.py", "awaiting site-maintainer judgement: x", "packs/E1/index.md")
+    assert refused("E1", maint_watch, "judge", "E1", "PASS", "--seat", "site-maintainer", "--note", "ok")
+    assert refused("Z9", maint_watch, "judge", "Z9", "PASS", "--seat", "site-maintainer", "--note", "ok")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_a_judge_refuses_a_human_row(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    assert refused("H1", maint_watch, "judge", "H1", "PASS", "--seat", "managing-editor", "--note", "ok")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_a_judge_refuses_a_seat_that_is_not_a_seat(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _awaiting_m4(tmp_path)
+    assert refused("M4", maint_watch, "judge", "M4", "PASS", "--seat", "the-intern", "--note", "ok")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_a_judge_refuses_an_empty_note(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _awaiting_m4(tmp_path)
+    assert refused("M4", maint_watch, "judge", "M4", "PASS", "--seat", "managing-editor", "--note", "   ")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_a_judge_refuses_findings_without_a_count(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _awaiting_m4(tmp_path)
+    assert refused("M4", maint_watch, "judge", "M4", "FINDINGS", "--seat", "managing-editor", "--note", "x")
+    assert refused("M4", maint_watch, "judge", "M4", "FINDINGS", "0", "--seat", "managing-editor", "--note", "x")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_a_hand_act_refuses_a_fixed_clock(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _awaiting_m4(tmp_path)
+    assert refused("M4", maint_watch, "--now", "2026-11-02T10:00:00+00:00", "judge", "M4", "PASS", "--seat",
+                   "managing-editor", "--note", "ok")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_human_refuses_a_row_that_is_not_human(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    _awaiting_m4(tmp_path)
+    assert refused("M4", maint_watch, "human", "M4", "E01234")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_human_refuses_when_nothing_awaits(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    mr.write_receipt("H1", "SKIP", why="HUMAN row not due: next due 2027-01-04", tool="maint_human.py")
+    assert refused("H1", maint_watch, "human", "H1", "E01234")
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_D2_human_takes_a_real_e_number_only(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    for bad in ("E12", "E1234567", "E01234x", "xE01234", "E0123a"):
+        assert refused("H1", maint_watch, "human", "H1", bad), bad
+    code, prev, shut = close("H1", maint_watch, "human", "H1", "e01234")       # lower case is upper-cased, then good
+    assert code == 0 and shut["outcome"] == "PASS" and "E01234" in shut["why"]
+    assert snap("D2") == []                        # a refused hand act runs no watch either
+
+
+def test_cite_Q2_a_witness_refuses_when_nothing_awaits(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    assert refused("Q2", maint_watch, "witness", "privacy-safety", "--repo", str(repo))
+    assert repo.is_dir()
+
+
+def test_cite_Q2_a_witness_refuses_when_there_is_no_sweep(monkeypatch, tmp_path):
+    import maint_pages
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    repo = pages_repo(monkeypatch, maint_pages, tmp_path, names=True)
+    plant_awaiting("Q2", "maint_pages.py", "awaiting a witness: the sweep", "audits/q2.md")
+    assert refused("Q2", maint_watch, "witness", "privacy-safety", "--repo", str(repo))
+    assert repo.is_dir()
+
+
+def _armed_q6(monkeypatch, maint_watch):
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
+    drive("Q6", maint_watch)
+    return receipt("Q6", maint_watch)
+
+
+def test_cite_Q6_a_second_drill_is_refused_while_one_is_armed(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    first = _armed_q6(monkeypatch, maint_watch)
+    assert first["outcome"] == "SKIP" and refused("Q6", maint_watch, "drill")
+
+
+def test_cite_Q6_a_drill_for_a_past_day_is_refused(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    monkeypatch.setenv("MAINT_HEARTBEAT_URL", "https://hc-ping.example.invalid/x")
+    assert refused("Q6", maint_watch, "drill", "--date", "2026-10-01")
+    drive("Q6", maint_watch)
+    assert receipt("Q6", maint_watch)["outcome"] == "SKIP"
+
+
+def test_cite_Q6_confirm_refuses_without_an_armed_drill(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    assert refused("Q6", maint_watch, "confirm", "10:30")
+    drive("Q6", maint_watch)
+    assert receipt("Q6", maint_watch)["outcome"] == "UNKNOWN"
+
+
+def test_cite_Q6_confirm_refuses_when_the_drill_line_is_not_awaiting(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    import maint_receipt as mr
+    first = _armed_q6(monkeypatch, maint_watch)
+    mr.write_receipt("Q6", "SKIP", why="not this quarter", evidence=first["evidence"], tool="maint_watch.py")
+    assert first["outcome"] == "SKIP" and refused("Q6", maint_watch, "confirm", "10:30")
+
+
+def test_cite_Q6_confirm_refuses_a_time_it_cannot_read(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    first = _armed_q6(monkeypatch, maint_watch)
+    assert first["outcome"] == "SKIP"
+    assert refused("Q6", maint_watch, "confirm", "25:99")
+    assert refused("Q6", maint_watch, "confirm", "teatime")
+
+
+# ================================================================== round 10 sweep: maint_run's run, exit by exit, row by row
+def fake_runner(monkeypatch, row, outcome, code, asked=None):
+    """maint_run's RUN replaced by a child that writes the row's `outcome` receipt (as the row's own tool) and exits
+    `code`; `asked` collects the timeout maint_run passed."""
+    import maint_receipt as mr
+    import maint_run as run
+    own = run.RUNNERS[row][0]
+
+    def fake(argv, timeout):
+        if asked is not None:
+            asked.append(timeout)
+        if outcome:
+            mr.write_receipt(row, outcome, n=1 if outcome == "FINDINGS" else None, why=f"a {outcome} from the child",
+                             tool=own)
+        return code, "", ""
+    monkeypatch.setattr(run, "RUN", fake)
+
+
+def exit_case(monkeypatch, row, tool, outcome, code):
+    """One maint_run run of `row` whose child wrote `outcome` and exited `code` -> (receipt, run_end, exit code)."""
+    fake_runner(monkeypatch, row, outcome, code)
+    rc = drive(row, tool)
+    return receipt(row, tool), run_end(row), rc
+
+
+def test_cite_C1_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "C1", None, 3, asked)
+    drive("C1", headers_tls_check)
+    rec = receipt("C1", headers_tls_check)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for C1: 120 s
+
+
+def test_cite_C1_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "C1", headers_tls_check, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "C1", headers_tls_check, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["C1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "C1", headers_tls_check, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["C1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "C1", headers_tls_check, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["C1"] and rc == 2
+
+
+def test_cite_W1_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "W1", None, 3, asked)
+    drive("W1", linkcheck)
+    rec = receipt("W1", linkcheck)
+    assert asked == [3600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for W1: 3600 s
+
+
+def test_cite_W1_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "W1", linkcheck, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "W1", linkcheck, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W1", linkcheck, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["W1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W1", linkcheck, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W1"] and rc == 2
+
+
+def test_cite_W1b_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "W1b", None, 3, asked)
+    drive("W1b", linkcheck)
+    rec = receipt("W1b", linkcheck)
+    assert asked == [3600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for W1b: 3600 s
+
+
+def test_cite_W1b_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import linkcheck
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "W1b", linkcheck, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "W1b", linkcheck, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W1b"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W1b", linkcheck, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["W1b"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W1b", linkcheck, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W1b"] and rc == 2
+
+
+def test_cite_W3_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "W3", None, 3, asked)
+    drive("W3", maint_pages)
+    rec = receipt("W3", maint_pages)
+    assert asked == [900] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for W3: 900 s
+
+
+def test_cite_W3_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "W3", maint_pages, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "W3", maint_pages, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W3", maint_pages, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["W3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W3", maint_pages, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W3"] and rc == 2
+
+
+def test_cite_M1_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "M1", None, 3, asked)
+    drive("M1", maint_quality)
+    rec = receipt("M1", maint_quality)
+    assert asked == [7200] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for M1: 7200 s
+
+
+def test_cite_M1_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "M1", maint_quality, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "M1", maint_quality, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M1", maint_quality, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["M1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M1", maint_quality, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M1"] and rc == 2
+
+
+def test_cite_M1b_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "M1b", None, 3, asked)
+    drive("M1b", maint_quality)
+    rec = receipt("M1b", maint_quality)
+    assert asked == [3600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for M1b: 3600 s
+
+
+def test_cite_M1b_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "M1b", maint_quality, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "M1b", maint_quality, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M1b"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M1b", maint_quality, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["M1b"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M1b", maint_quality, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M1b"] and rc == 2
+
+
+def test_cite_M2_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "M2", None, 3, asked)
+    drive("M2", maint_quality)
+    rec = receipt("M2", maint_quality)
+    assert asked == [7200] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for M2: 7200 s
+
+
+def test_cite_M2_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "M2", maint_quality, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "M2", maint_quality, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M2", maint_quality, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["M2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M2", maint_quality, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M2"] and rc == 2
+
+
+def test_cite_M2b_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "M2b", None, 3, asked)
+    drive("M2b", maint_quality)
+    rec = receipt("M2b", maint_quality)
+    assert asked == [300] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for M2b: 300 s
+
+
+def test_cite_M2b_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "M2b", maint_quality, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "M2b", maint_quality, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M2b"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M2b", maint_quality, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["M2b"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M2b", maint_quality, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M2b"] and rc == 2
+
+
+def test_cite_M3_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "M3", None, 3, asked)
+    drive("M3", headers_tls_check)
+    rec = receipt("M3", headers_tls_check)
+    assert asked == [600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for M3: 600 s
+
+
+def test_cite_M3_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "M3", headers_tls_check, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "M3", headers_tls_check, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M3", headers_tls_check, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["M3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M3", headers_tls_check, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M3"] and rc == 2
+
+
+def test_cite_M4_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "M4", None, 3, asked)
+    drive("M4", maint_pages)
+    rec = receipt("M4", maint_pages)
+    assert asked == [600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for M4: 600 s
+
+
+def test_cite_M4_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "M4", maint_pages, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "M4", maint_pages, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M4"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M4", maint_pages, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["M4"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M4", maint_pages, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M4"] and rc == 2
+
+
+def test_cite_Q1_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "Q1", None, 3, asked)
+    drive("Q1", maint_pages)
+    rec = receipt("Q1", maint_pages)
+    assert asked == [600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for Q1: 600 s
+
+
+def test_cite_Q1_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "Q1", maint_pages, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "Q1", maint_pages, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q1", maint_pages, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["Q1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q1", maint_pages, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q1"] and rc == 2
+
+
+def test_cite_Q2_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "Q2", None, 3, asked)
+    drive("Q2", maint_pages)
+    rec = receipt("Q2", maint_pages)
+    assert asked == [900] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for Q2: 900 s
+
+
+def test_cite_Q2_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "Q2", maint_pages, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "Q2", maint_pages, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q2", maint_pages, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["Q2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q2", maint_pages, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q2"] and rc == 2
+
+
+def test_cite_Q3_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "Q3", None, 3, asked)
+    drive("Q3", maint_pages)
+    rec = receipt("Q3", maint_pages)
+    assert asked == [600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for Q3: 600 s
+
+
+def test_cite_Q3_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "Q3", maint_pages, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "Q3", maint_pages, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q3", maint_pages, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["Q3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q3", maint_pages, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q3"] and rc == 2
+
+
+def test_cite_Q4_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "Q4", None, 3, asked)
+    drive("Q4", headers_tls_check)
+    rec = receipt("Q4", headers_tls_check)
+    assert asked == [600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for Q4: 600 s
+
+
+def test_cite_Q4_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "Q4", headers_tls_check, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "Q4", headers_tls_check, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q4"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q4", headers_tls_check, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["Q4"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q4", headers_tls_check, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q4"] and rc == 2
+
+
+def test_cite_Q5_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "Q5", None, 3, asked)
+    drive("Q5", headers_tls_check)
+    rec = receipt("Q5", headers_tls_check)
+    assert asked == [600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for Q5: 600 s
+
+
+def test_cite_Q5_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "Q5", headers_tls_check, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "Q5", headers_tls_check, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q5"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q5", headers_tls_check, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["Q5"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q5", headers_tls_check, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q5"] and rc == 2
+
+
+def test_cite_A2_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "A2", None, 3, asked)
+    drive("A2", maint_pages)
+    rec = receipt("A2", maint_pages)
+    assert asked == [900] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for A2: 900 s
+
+
+def test_cite_A2_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_pages
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "A2", maint_pages, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "A2", maint_pages, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A2", maint_pages, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["A2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A2", maint_pages, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A2"] and rc == 2
+
+
+def test_cite_A4_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "A4", None, 3, asked)
+    drive("A4", maint_quality)
+    rec = receipt("A4", maint_quality)
+    assert asked == [3600] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for A4: 3600 s
+
+
+def test_cite_A4_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_quality
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "A4", maint_quality, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "A4", maint_quality, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A4"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A4", maint_quality, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["A4"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A4", maint_quality, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A4"] and rc == 2
+
+
+def test_cite_W2_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "W2", None, 3, asked)
+    drive("W2", maint_watch)
+    rec = receipt("W2", maint_watch)
+    assert asked == [300] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for W2: 300 s
+
+
+def test_cite_W2_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "W2", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "W2", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W2", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["W2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "W2", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["W2"] and rc == 2
+
+
+def test_cite_M5_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "M5", None, 3, asked)
+    drive("M5", maint_watch)
+    rec = receipt("M5", maint_watch)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for M5: 120 s
+
+
+def test_cite_M5_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "M5", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "M5", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M5"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M5", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["M5"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "M5", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["M5"] and rc == 2
+
+
+def test_cite_H2_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "H2", None, 3, asked)
+    drive("H2", maint_watch)
+    rec = receipt("H2", maint_watch)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for H2: 120 s
+
+
+def test_cite_H2_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "H2", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "H2", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["H2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "H2", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["H2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "H2", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["H2"] and rc == 2
+
+
+def test_cite_H3_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "H3", None, 3, asked)
+    drive("H3", maint_watch)
+    rec = receipt("H3", maint_watch)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for H3: 120 s
+
+
+def test_cite_H3_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "H3", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "H3", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["H3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "H3", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["H3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "H3", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["H3"] and rc == 2
+
+
+def test_cite_H1_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "H1", None, 3, asked)
+    drive("H1", maint_human)
+    rec = receipt("H1", maint_human)
+    assert asked == [1200] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for H1: 1200 s
+
+
+def test_cite_H1_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "H1", maint_human, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "H1", maint_human, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["H1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "H1", maint_human, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["H1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "H1", maint_human, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["H1"] and rc == 2
+
+
+def test_cite_A1_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "A1", None, 3, asked)
+    drive("A1", maint_human)
+    rec = receipt("A1", maint_human)
+    assert asked == [300] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for A1: 300 s
+
+
+def test_cite_A1_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "A1", maint_human, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "A1", maint_human, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A1", maint_human, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["A1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A1", maint_human, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A1"] and rc == 2
+
+
+def test_cite_A3_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "A3", None, 3, asked)
+    drive("A3", maint_human)
+    rec = receipt("A3", maint_human)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for A3: 120 s
+
+
+def test_cite_A3_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_human
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "A3", maint_human, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "A3", maint_human, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A3", maint_human, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["A3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "A3", maint_human, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["A3"] and rc == 2
+
+
+def test_cite_Q6_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "Q6", None, 3, asked)
+    drive("Q6", maint_watch)
+    rec = receipt("Q6", maint_watch)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for Q6: 120 s
+
+
+def test_cite_Q6_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "Q6", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "Q6", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q6"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q6", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["Q6"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "Q6", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["Q6"] and rc == 2
+
+
+def test_cite_D1_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "D1", None, 3, asked)
+    drive("D1", maint_watch)
+    rec = receipt("D1", maint_watch)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for D1: 120 s
+
+
+def test_cite_D1_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "D1", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "D1", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["D1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "D1", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["D1"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "D1", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["D1"] and rc == 2
+
+
+def test_cite_D2_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "D2", None, 3, asked)
+    drive("D2", maint_watch)
+    rec = receipt("D2", maint_watch)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for D2: 120 s
+
+
+def test_cite_D2_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "D2", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "D2", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["D2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "D2", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["D2"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "D2", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["D2"] and rc == 2
+
+
+def test_cite_D3_maint_run_gives_the_row_its_own_timeout(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    asked = []
+    fake_runner(monkeypatch, "D3", None, 3, asked)
+    drive("D3", maint_watch)
+    rec = receipt("D3", maint_watch)
+    assert asked == [120] and rec.get("outcome") == "UNKNOWN"          # the calendar's timeout for D3: 120 s
+
+
+def test_cite_D3_maint_run_explains_each_exit_by_its_receipt(monkeypatch, tmp_path):
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path)
+    for outcome, code in (("PASS", 0), ("FINDINGS", 1), ("UNKNOWN", 2), ("SKIP", 2)):     # explained: the run is fine
+        rec, end, rc = exit_case(monkeypatch, "D3", maint_watch, outcome, code)
+        assert rec.get("outcome") == outcome and end.get("rows_failed") == [] and rc == 0 == end.get("exit"), outcome
+    rec, end, rc = exit_case(monkeypatch, "D3", maint_watch, "PASS", 1)                       # a PASS that exits 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["D3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "D3", maint_watch, "FINDINGS", 2)                   # FINDINGS do not explain 2
+    assert rec.get("outcome") == "FINDINGS" and end.get("rows_failed") == ["D3"] and rc == 2
+    rec, end, rc = exit_case(monkeypatch, "D3", maint_watch, "UNKNOWN", 1)                    # nor UNKNOWN 1
+    assert rec.get("outcome") == "UNKNOWN" and end.get("rows_failed") == ["D3"] and rc == 2
+
+
+def test_cite_C1_the_runner_quotes_the_last_160_characters_of_a_failure(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+    monkeypatch.setattr(run, "RUN", lambda argv, timeout: (3, "", "first line\n" + "x" * 200))
+    drive("C1", headers_tls_check)
+    rec = receipt("C1", headers_tls_check)
+    assert rec.get("outcome") == "UNKNOWN" and rec["why"].endswith(": " + "x" * 160)
+
+
+def test_cite_C1_the_run_start_marker_says_who_triggered_it(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    _monitors(monkeypatch, MONS)
+    drive("C1", headers_tls_check)
+    manual = [e for e in log_lines() if e.get("kind") == "run_start" and e.get("run_id") == DRIVES["C1"]["run_id"]]
+    monkeypatch.setenv("MAINT_TRIGGER", "scheduled")
+    drive("C1", headers_tls_check)
+    sched = [e for e in log_lines() if e.get("kind") == "run_start" and e.get("run_id") == DRIVES["C1"]["run_id"]]
+    rec = receipt("C1", headers_tls_check)
+    assert rec["outcome"] == "PASS" and manual[0]["trigger"] == "manual" and sched[0]["trigger"] == "scheduled"
+
+
+def test_cite_C1_a_runner_that_raises_closes_the_run_with_exit_1(monkeypatch, tmp_path):
+    import headers_tls_check
+    import pytest
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+
+    def explodes(argv, timeout):
+        raise RuntimeError("the runner itself broke")
+    monkeypatch.setattr(run, "RUN", explodes)
+    with pytest.raises(RuntimeError):
+        run.main(["--row", "C1"])
+    ends = [e for e in log_lines() if e.get("kind") == "run_end"]
+    assert ends and ends[-1]["exit"] == 1 and headers_tls_check.TOOL == "headers_tls_check.py"
+
+
+def test_cite_C1_the_launch_is_the_py_launcher_s_when_it_started_the_run(monkeypatch, tmp_path):
+    import headers_tls_check
+    md, _ = world(monkeypatch, tmp_path)
+    import maint_run as run
+    own = (11, r"C:\\Python\\python.exe", "2026-11-02T16:00:00+00:00")
+    for launcher in ("py.exe", "pyw.exe", "PY.EXE"):
+        parent = (22, "C:\\Windows\\" + launcher, "2026-11-02T15:59:59+00:00")
+        assert run.choose_launch(own, parent) == {"pid": 22, "proc_started": "2026-11-02T15:59:59+00:00"}, launcher
+    for other in ("python.exe", "cmd.exe", "__sweep__", "py.exe.bak"):
+        parent = (22, "C:\\Windows\\" + other, "2026-11-02T15:59:59+00:00")
+        assert run.choose_launch(own, parent) == {"pid": 11, "proc_started": "2026-11-02T16:00:00+00:00"}, other
+    assert run.choose_launch(own, (22, None, None))["pid"] == 11
+    assert run.RUNNERS["C1"][0] == headers_tls_check.TOOL                      # C1's runs carry this launch record
+
