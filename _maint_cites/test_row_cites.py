@@ -61,7 +61,7 @@ def world(monkeypatch, tmp_path, *when, watch=None):
     md = tmp_path / ".maint"
     monkeypatch.setenv("MAINT_DIR", str(md))
     for v in ("MAINT_RUN_ID", "MAINT_TRIGGER", "MAINT_HEARTBEAT_URL", "UPTIMEROBOT_API_KEY", "CRUX_API_KEY",
-              "MAINT_OBSERVATORY_OK"):
+              "MAINT_OBSERVATORY_OK", "MAINT_LEDGER_PATH"):
         monkeypatch.delenv(v, raising=False)
     clock = Clock().set(*(when or (2026, 11, 2, 11)))
     monkeypatch.setattr(mr, "now_utc", clock.now)
@@ -4023,6 +4023,19 @@ def test_cite_A4_maint_run_a_pass_then_an_unexplained_exit_is_unknown(monkeypatc
 
 
 # ================================================================== D2: a hand close (maint_watch judge / human)
+def ledger(monkeypatch, tmp_path, *entries):
+    """A fixture ledger in the harness session ledger's line shape, pointed at by MAINT_LEDGER_PATH (read only by the
+    tool). `entries` are its lines."""
+    p = tmp_path / "ledger.jsonl"
+    p.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+    monkeypatch.setenv("MAINT_LEDGER_PATH", str(p))
+    return p
+
+
+def approval(e, kind="RULING", verdict="APPROVE"):
+    return {"id": e, "kind": kind, "body": {"verdict": verdict, "by": "daniel"}}
+
+
 def plant_awaiting(row, script, why, ev_rel):
     """An `awaiting ...` SKIP for `row` as its runner `script` writes it, with its evidence file under .maint/: the
     input a hand close needs (written through maint_receipt, the shared writer)."""
@@ -4082,6 +4095,7 @@ def test_cite_D2_a_hand_close_of_H1_follows_its_awaiting_line(monkeypatch, tmp_p
     md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
     _table(monkeypatch, tmp_path, "D2", "H1")
     plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    ledger(monkeypatch, tmp_path, approval("E01234"))
     code, prev, shut = close("H1", maint_watch, *('human', 'H1', 'E01234'))
     drive("D2", maint_watch)
     rec = receipt("D2", maint_watch)
@@ -4093,6 +4107,7 @@ def test_cite_D2_a_hand_close_of_A1_follows_its_awaiting_line(monkeypatch, tmp_p
     md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
     _table(monkeypatch, tmp_path, "D2", "A1")
     plant_awaiting("A1", "maint_human.py", "awaiting Daniel's ruling: A1 pack", "packs/A1/index.md")
+    ledger(monkeypatch, tmp_path, approval("E04321"))
     code, prev, shut = close("A1", maint_watch, *('human', 'A1', 'E04321'))
     drive("D2", maint_watch)
     rec = receipt("D2", maint_watch)
@@ -4104,6 +4119,7 @@ def test_cite_D2_a_hand_close_of_A3_follows_its_awaiting_line(monkeypatch, tmp_p
     md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
     _table(monkeypatch, tmp_path, "D2", "A3")
     plant_awaiting("A3", "maint_human.py", "awaiting Daniel's ruling: expires 2026-12-20 (47 days), the 60-day window is open", "packs/A3/index.md")
+    ledger(monkeypatch, tmp_path, approval("E05555"))
     code, prev, shut = close("A3", maint_watch, *('human', 'A3', 'E05555'))
     drive("D2", maint_watch)
     rec = receipt("D2", maint_watch)
@@ -4964,6 +4980,7 @@ def test_cite_D2_human_takes_a_real_e_number_only(monkeypatch, tmp_path):
     plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
     for bad in ("E12", "E1234567", "E01234x", "xE01234", "E0123a"):
         assert refused("H1", maint_watch, "human", "H1", bad), bad
+    ledger(monkeypatch, tmp_path, approval("E01234"))
     code, prev, shut = close("H1", maint_watch, "human", "H1", "e01234")       # lower case is upper-cased, then good
     assert code == 0 and shut["outcome"] == "PASS" and "E01234" in shut["why"]
     assert snap("D2") == []                        # a refused hand act runs no watch either
@@ -8676,3 +8693,56 @@ def test_cite_D2_the_standards_watch_runner_has_five_minutes(monkeypatch, tmp_pa
     import maint_run as run
     import maint_watch
     assert run.RUNNERS["E3"] == ("standards_watch.py", (), 300) and owns("D2", maint_watch)
+
+
+# ================================================================== sweep round 16: a HUMAN close is checked in the ledger
+def test_cite_H1_a_close_with_an_approved_ruling_closes_it(monkeypatch, tmp_path):
+    import maint_human
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    ledger(monkeypatch, tmp_path, approval("E00001", verdict="REJECT"), approval("E00002"))
+    plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    code, prev, shut = close("H1", maint_watch, "human", "H1", "E00002")
+    assert code == 0 and shut["outcome"] == "PASS" and hand_close_ok(prev, shut)
+    assert shut["why"] == "closed by Daniel's ledger E00002 (an APPROVE ruling in the ledger)" and owns("H1", maint_human)
+
+
+def test_cite_H1_an_e_number_not_in_the_ledger_is_refused(monkeypatch, tmp_path, capsys):
+    import maint_human
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    ledger(monkeypatch, tmp_path, approval("E00002"))
+    plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    code, prev, after = close("H1", maint_watch, "human", "H1", "E09999")
+    assert code == 1 and after == prev and "REFUSED: E09999 is not in the ledger" in capsys.readouterr().out
+    assert owns("H1", maint_human)
+
+
+def test_cite_H1_an_entry_that_is_not_an_approval_is_refused(monkeypatch, tmp_path, capsys):
+    import maint_human
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    ledger(monkeypatch, tmp_path, approval("E00003", verdict="REJECT"), approval("E00004", kind="FACT"),
+           {"id": "E00005", "kind": "RULING", "body": "APPROVE"})
+    plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    for e, kind, verdict in (("E00003", "RULING", "'REJECT'"), ("E00004", "FACT", "'APPROVE'"),
+                             ("E00005", "RULING", "None")):
+        code, prev, after = close("H1", maint_watch, "human", "H1", e)
+        out = capsys.readouterr().out
+        assert code == 1 and after == prev, e
+        assert f"REFUSED: {e} is a {kind} entry with verdict {verdict}, not an APPROVE ruling" in out, out
+    assert owns("H1", maint_human)
+
+
+def test_cite_H1_a_ledger_that_cannot_be_read_is_unknown_and_records_nothing(monkeypatch, tmp_path, capsys):
+    import maint_human
+    import maint_watch
+    md, _ = world(monkeypatch, tmp_path, watch=maint_watch)
+    plant_awaiting("H1", "maint_human.py", "awaiting Daniel's ruling: H1 pack", "packs/H1/index.md")
+    code, prev, after = close("H1", maint_watch, "human", "H1", "E00002")              # no MAINT_LEDGER_PATH
+    assert code == 2 and after == prev and capsys.readouterr().out.startswith("UNKNOWN: E00002 could not be checked")
+    p = ledger(monkeypatch, tmp_path, approval("E00002"))
+    p.write_text('{"id": "E00002", "kind": "RULING", "body": {"verdict": "APPROVE"}}\n{torn', encoding="utf-8")
+    code, prev, after = close("H1", maint_watch, "human", "H1", "E00002")
+    out = capsys.readouterr().out
+    assert code == 2 and after == prev and "the ledger line 2 is not JSON" in out and owns("H1", maint_human)
