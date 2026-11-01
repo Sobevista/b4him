@@ -434,42 +434,7 @@ TRIGGER_ENV = "MAINT_TRIGGER"        # set to "scheduled" only by the scheduled 
 
 
 LAUNCHERS = {"py.exe", "pyw.exe"}        # the Windows py launcher: Task Scheduler's process when /TR runs py.exe
-PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-
-
-def process_info(pid: int | None = None) -> tuple[str | None, str | None]:
-    """(image path, creation time ISO-8601 UTC) of `pid`, or of this process when None. (None, None) where the OS
-    will not say (not Windows, the process is gone, access denied)."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-        k32 = ctypes.windll.kernel32
-        k32.GetCurrentProcess.restype = wintypes.HANDLE
-        k32.OpenProcess.restype = wintypes.HANDLE
-        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
-        k32.GetProcessTimes.restype = wintypes.BOOL
-        k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
-                                                   ctypes.POINTER(wintypes.DWORD)]
-        k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
-        k32.CloseHandle.argtypes = [wintypes.HANDLE]
-        h = k32.GetCurrentProcess() if pid is None else k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not h:
-            return None, None
-        try:
-            buf, size = ctypes.create_unicode_buffer(1024), wintypes.DWORD(1024)
-            image = buf.value if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) else None
-            times = [wintypes.FILETIME() for _ in range(4)]
-            if not k32.GetProcessTimes(h, *[ctypes.byref(t) for t in times]):
-                return image, None
-            ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime      # 100 ns since 1601-01-01 UTC
-            t = dt.datetime(1601, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(microseconds=ticks // 10)
-            return image, t.isoformat(timespec="seconds")
-        finally:
-            if pid is not None:
-                k32.CloseHandle(h)
-    except (AttributeError, OSError, ImportError):
-        return None, None
+from maint_native import process_info  # noqa: E402  the one native module: read-only process facts
 
 
 def choose_launch(own: tuple[int, str | None, str | None],
