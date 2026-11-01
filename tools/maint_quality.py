@@ -429,6 +429,8 @@ def cmd_contrast(root: Path) -> dict:
         return receipt(root, "M1b", "UNKNOWN", why=str(e), evidence=ev)
     g = group_contrast(results)
     outcome, n, why = judge_contrast(g)
+    if outcome == "FINDINGS" and g["errors"]:   # a finding never hides a page that could not be audited
+        why += f"; also {len(g['errors'])} page(s) could not be audited: {', '.join(sorted(g['errors']))}"
     write_json(ev_path, {"row": "M1b", "viewport": "1280x800", "outcome": outcome, **g, "per_page": results})
     if outcome == "FINDINGS":
         for k, v in g["failure_causes"].items():
