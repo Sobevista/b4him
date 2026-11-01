@@ -7012,10 +7012,10 @@ def test_cite_W1_what_a_page_links_to(monkeypatch, tmp_path):
     assert found["ignored"] == 2 and len(found["self"]) == 2 and found["root"] == [("a.html", "/lessons/")]
     assert found["relative"] == [("a.html", "alpha/")]
     assert linkcheck.SELF_HOSTS == {"b4him.com", "www.b4him.com"}
-    served = {"lessons/index.html", "about.html", "_hidden/x.html"}
+    served = {"guides/index.html", "team.html", "_hidden/x.html"}
     r = linkcheck.resolves
-    assert r("/lessons/", served) and r("/about.html", served) and not r("/about/", served)
-    assert not r("/_hidden/x.html", served) and r("/lessons", served) and owns("W1", linkcheck)
+    assert r("/guides/", served) and r("/team.html", served) and not r("/team/", served)
+    assert not r("/_hidden/x.html", served) and r("/guides", served) and owns("W1", linkcheck)
 
 
 def test_cite_W1_a_site_with_no_page_is_unknown(monkeypatch, tmp_path):
@@ -7051,7 +7051,7 @@ def test_cite_W1_without_the_live_tree_every_broken_link_is_treated_as_live(monk
     drive("W1", linkcheck, "--repo", str(repo))
     rec = receipt("W1", linkcheck)
     ev = evidence(rec)
-    f = [x for x in findings("W1") if "about/index.html" in x["subject"]][0]
+    f = [x for x in findings("W1") if "about/" in x["subject"]][0]
     assert rec["outcome"] == "FINDINGS" and ev["internal"]["note"].startswith("live ref origin/main unreadable")
     assert f["detail"].endswith("live state UNKNOWN, treated as live") and f["severity"] == "S2"
     assert ev["skipped_by_broken_links"] == ["tools/tool-page.html"]
