@@ -132,6 +132,26 @@ def test_the_maintenance_files_are_excluded_by_the_config():
     assert not ss.excluded("tools/tracks/n8n.html", p)
 
 
+PYTEST_INI = b"[pytest]\npythonpath = tools\n"
+
+
+def test_the_root_pytest_ini_is_internal_and_not_served():
+    """The maintenance calendar (058cb2e) adds a root pytest.ini (the test runner's config). It is factory, not site:
+    classified INTERNAL, never in the served set, and (once main holds _config.yml) excluded by it, with the surface
+    on this tree plus that file reporting no problem about it. Found 2026-11-02: it would have been served."""
+    assert ss.internal_class("pytest.ini"), "pytest.ini has no INTERNAL decision"
+    assert "pytest.ini" not in ss.served(ss.Tree(["index.html", "pytest.ini"], lambda rel: b""))
+    with_ini = ss.Tree.worktree(ROOT, {"pytest.ini": PYTEST_INI})
+    assert "pytest.ini" not in ss.served(with_ini)
+    # discriminates: a config that does not name it leaves it served, and the surface says so
+    bare = ss.surface(ss.Tree(["index.html", "pytest.ini"], lambda rel: b"",
+                              {ss.CONFIG: b"exclude:\n  - \"*.md\"\n"}))[2]
+    assert any("pytest.ini" in pr for pr in bare), bare
+    if (ROOT / ss.CONFIG).exists():
+        assert ss.excluded("pytest.ini", pats()), "_config.yml leaves pytest.ini served"
+        assert not [pr for pr in ss.surface(with_ini)[2] if "pytest.ini" in pr]
+
+
 def test_no_json_is_served():
     """No served page uses a .json; tools/maint_rows.json names the owner, so no JSON may be in the served set."""
     s = ss.served(tree())

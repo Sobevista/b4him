@@ -68,6 +68,7 @@ def internal_class(rel: str) -> bool:
     the npm manifests of the maintenance tooling."""
     return (rel.endswith((".md", ".jsonl", ".py", ".cmd"))
             or rel in NPM_FILES
+            or rel == "pytest.ini"
             or rel.startswith(("boards/", "data/", "seats/", "tools/capability_inventory/"))
             or (rel.startswith("tools/") and rel.endswith((".js", ".json"))))
 
