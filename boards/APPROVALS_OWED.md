@@ -224,6 +224,7 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** [RULED 2026-10-20 APPROVE · ledger E00749 · applied by tools/approvals.py]
+**DANIEL:** [RULED 2026-11-04 REJECT after the APPROVE above was applied · ledger E01363 · unracked by tools/approvals.py] — his note: Ruled in chat 2026-11-03, Daniel verbatim: 'dude, just change the ruling please I am not finding it in that mountain and I am ruling it here.' Not a quality reject: Glossary II and III link to each other, so neither can publish first. Re-offer these same bytes after Glossary II is live.
 
 ### APPROVE SITE-PATCH-SHELF-1 at 9c44ee8 — Site patch - home shelf cards open their rooms (were href=#)
 
