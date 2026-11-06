@@ -1130,9 +1130,23 @@ def test_cite_M4_the_walkthrough_awaits_the_editor_with_its_pack(monkeypatch, tm
 
 
 # ================================================================== M5 board run (a test per outcome)
+# A fixed board head, stamped 2026-10-20 (the head of PRODUCTION_BOARD.md at d67bd8d). It is written here, never
+# read from the repo: the real board is regenerated on every offer/apply/release, so its stamp moves, and the M5
+# tests set their clocks against this one date.
+BOARD_HEAD_2026_10_20 = [
+    "# PRODUCTION BOARD",
+    "",
+    "*Generated 2026-10-20 by `tools/production_board.py` from `production_queue.jsonl`. "
+    "**Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*",
+    "",
+    "**RUNWAY: 14.0 weeks** — healthy  ",
+    "*(target 6w · floor 3w · 14 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*",
+]
+
+
 def _board(monkeypatch, tmp_path, stamp=True):
     import maint_watch as mw
-    head = (repo_root() / "PRODUCTION_BOARD.md").read_text(encoding="utf-8").splitlines()[:6]
+    head = list(BOARD_HEAD_2026_10_20)
     if not stamp:
         head = [x for x in head if "Generated" not in x]
     (tmp_path / "PRODUCTION_BOARD.md").write_text("\n".join(head) + "\n", encoding="utf-8")
