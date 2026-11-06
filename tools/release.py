@@ -49,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import binding  # noqa: E402
 import production_board as pb  # noqa: E402
+import serve_surface  # noqa: E402
 
 SITE = "https://b4him.com"
 TRACK_RE = re.compile(r"(<!-- b4him:track (?P<track>[\w-]+) [^>]*-->\n)(?P<body>.*?)(<!-- /b4him:track (?P=track) -->)",
@@ -185,7 +186,7 @@ def plan(day: dt.date) -> dict:
     refusal = blocked_refusal(piece)
     if refusal:
         return {"outcome": "FAIL", "piece": piece["id"], "why": refusal}
-    problems = pin_problems(piece)
+    problems = pin_problems(piece) + serve_surface.scope_problems(piece, piece.get("approved_blobs") or {})
     if problems:
         return {"outcome": "FAIL", "piece": piece["id"], "why": "; ".join(problems)}
     # Eligibility is judged AT RELEASE TIME from the row as it is now, not remembered from when it was racked.
@@ -226,6 +227,24 @@ def superseded_pages(row: dict, rows: list[dict]) -> list[str]:
     return out
 
 
+def is_site_config_file(row: dict, rel: str) -> bool:
+    """_config.yml on a site-config patch: the one file a patch may create (Pages never serves it; it is no page)."""
+    return row.get("patch_scope") == serve_surface.SITE_CONFIG and rel == serve_surface.CONFIG
+
+
+def site_config_problems(row: dict) -> list[str]:
+    """A racked site-config patch's approved _config.yml laid over the tree as it is NOW: a page published since the
+    tap must not be hidden by it, and every internal file must be. [] for any other row."""
+    if row.get("patch_scope") != serve_surface.SITE_CONFIG:
+        return []
+    blob = (row.get("approved_blobs") or {}).get(serve_surface.CONFIG)
+    data = git("cat-file", "blob", blob, binary=True, check=False) if blob else b""
+    try:
+        return serve_surface.surface(serve_surface.Tree.worktree(repo(), {serve_surface.CONFIG: data}))[2]
+    except serve_surface.SurfaceError as e:
+        return [str(e)]
+
+
 def plan_patches(day: dt.date) -> list[dict]:
     """The PATCH line (Daniel, 2026-10-20: "it moves outside the queue ... One is content and one is patches to the
     site"; "This is a website fix it shouldnt take a week"). Every racked patch is due on the next run, any day: no
@@ -246,7 +265,11 @@ def plan_patches(day: dt.date) -> list[dict]:
         if not why and any(not pb.blob_in_store(b) for b in (r.get("approved_blobs") or {}).values()):
             why = f"approved bytes for {r['id']} are gone from the object store (restore its approved/<id> tag)"
         why = why or "; ".join(pin_problems(r)) or "; ".join(binding.problems(r))
+        # SITE-PATCH-SERVE-1: only a site-config patch carries _config.yml, and it carries nothing else
+        why = why or "; ".join(serve_surface.scope_problems(r, r.get("approved_blobs") or {}))
+        why = why or "; ".join(site_config_problems(r))
         if not why and (r.get("index_entry") or any((r.get("replaces_blobs") or {}).get(rel) is None
+                                                     and not is_site_config_file(r, rel)
                                                      for rel in r.get("approved_blobs") or {})):
             why = (f"{r['id']} is not a patch: it adds a page or a lessons-index listing main does not serve yet; "
                    f"that is content and goes on the content line")
@@ -597,7 +620,15 @@ def push_release(day: dt.date, commit: str) -> None:
     git("push", "-q", "origin", f"{head}:refs/heads/main")
 
 
-def verify_live(row: dict, minutes: int) -> str:
+def verify_live(row: dict, minutes: int, commit: str | None = None) -> str:
+    if row.get("patch_scope") == serve_surface.SITE_CONFIG:
+        # SITE-PATCH-SERVE-1: Pages never serves /_config.yml, so its bytes cannot be fetched. Verify what it DOES:
+        # every SERVED path at the release commit answers 200 with that commit's bytes, the INTERNAL sample 404.
+        tree = serve_surface.Tree.at_commit(repo(), commit or git("rev-parse", "HEAD").strip())
+        try:
+            return serve_surface.verify(tree, minutes)
+        except serve_surface.SurfaceError as e:
+            raise ReleaseError(f"pushed, but {e}") from e
     deadline = time.time() + minutes * 60
     pending = {rel: blob for rel, blob in row["approved_blobs"].items() if not rel.startswith("tools/")}
     while True:                                           # always look at least once
@@ -674,7 +705,7 @@ def run_patches(a, day: dt.date, owed: dict | None = None) -> list[dict]:
                     push_release(day, pe["commit"])
                     pe.update(outcome="PUSHED-UNVERIFIED", pushed=True)
                     if a.verify_live:
-                        pe["live"] = verify_live(d["row"], a.live_minutes)
+                        pe["live"] = verify_live(d["row"], a.live_minutes, pe["commit"])
                         pe["outcome"] = "PUBLISHED"
         except Exception as e:                # noqa: BLE001 - logged, then judged below
             where = (f" (commit {pe['commit'][:7]} is on local main, pushed={pe.get('pushed', False)})"
