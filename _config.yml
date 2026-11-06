@@ -1,0 +1,58 @@
+# _config.yml: b4him.com serves the SITE only (SITE-PATCH-SERVE-1, Daniel 2026-10-20, ledger E00761:
+# "Go with Recommended D The curated Workshop."). The repo stays public on GitHub; nothing moves or is
+# deleted. This file's ONLY job is `exclude:`. Every other GitHub Pages default (theme, kramdown/GFM,
+# plugins, safe mode, the dot/underscore rule) is left as it was with no _config.yml.
+#
+# How GitHub Pages matches these (jekyll 3.10 EntryFilter#glob_include?): each pattern is joined to the
+# source root and tested with File.fnmatch? WITHOUT flags (so `*` also matches `/`), OR as a plain string
+# prefix of the path; a pattern ending in `/` also excludes that directory. So "*.md" excludes every .md
+# at any depth, and "data/" excludes the whole folder. Files starting with `.` or `_` are never served.
+#
+# Setting `exclude:` REPLACES the defaults instead of adding to them (jekyll deep_merge replaces arrays;
+# pages-gem adds CNAME only when exclude equals jekyll's default). The last block below restores those
+# defaults by hand so the served tree stays exactly what it was, minus the internal files.
+#
+# Classification of every git-tracked file at 2026-10-20 (tools/test_serve_config.py enforces it):
+#   SERVED (35): the 22 pages (index.html, about/ blog/ games/ videos/ writing/ index.html, lessons/index.html
+#     and its 15 lessons), tools/tracks/n8n.html (track furniture, live at /tools/tracks/n8n.html, kept by
+#     the ruling), style.css, lesson.css, favicon.ico, icon.svg, apple-touch-icon.png, assets/logo.png,
+#     assets/crest-watermark.png, assets/og.png (og:image by absolute URL), assets/fonts/*.woff2 (2,
+#     from style.css), assets/brand/*.png (2 master files no page references; left served, not factory code).
+#   INTERNAL, excluded here (50): 12 root *.md (planning, rules), boards/ (2 .md), production_queue.jsonl,
+#     data/ (4), 29 *.py (assets/brand/make_assets.py and 28 under tools/), tools/daily.cmd,
+#     tools/contrast-audit.js (no page loads it).
+#   NEVER SERVED either way (3): .gitattributes, .gitignore (leading dot), CNAME (Pages default, kept below).
+#   (88 tracked before this patch; it adds this file, never served, and tools/test_serve_config.py, internal.)
+# 2026-10-31 redraft: the maintenance calendar (a separate branch, landing before or after this patch) adds
+#   package.json, package-lock.json and tools/maint_rows.json (internal, excluded by name below), .lighthouserc.json
+#   and .pa11yci (leading dot) and tools/_maint_fixtures/ (leading underscore). The SERVED list stays the 35 above
+#   either way (tools/serve_surface.py and tools/test_serve_config.py enforce it on whatever main then holds).
+exclude:
+  # planning, rules and boards: no page on the site is Markdown
+  - "*.md"
+  # the factory: production_queue.jsonl, release_log.jsonl (git-ignored today), data, boards, seats (future)
+  - "*.jsonl"
+  - boards/
+  - data/
+  - seats/
+  # the tools: code and tests. NOT tools/ whole: tools/tracks/n8n.html stays served
+  - "*.py"
+  - "*.cmd"
+  - tools/*.js
+  - tools/capability_inventory/
+  # tool data (tools/maint_rows.json names the owner; no page loads any .json) and the maintenance
+  # calendar's npm manifests (pa11y-ci, @lhci/cli; node_modules is excluded below and git-ignored)
+  - tools/*.json
+  - package.json
+  - package-lock.json
+  # the test runner's config (root pytest.ini: pythonpath = tools)
+  - pytest.ini
+  # restored defaults (pages-gem: CNAME; jekyll 3.10: the rest)
+  - CNAME
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/

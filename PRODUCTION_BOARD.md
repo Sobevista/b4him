@@ -1,13 +1,13 @@
 # PRODUCTION BOARD
 
-*Generated 2026-11-04 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
+*Generated 2026-11-06 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
 **RUNWAY: 13.0 weeks** — healthy  
 *(target 6w · floor 3w · 13 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-26 in the pipeline · 5 published · cadence Tuesday only, hard cap 1 per 7 days
+26 in the pipeline · 6 published · cadence Tuesday only, hard cap 1 per 7 days
 
-*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (2 open, 0 racked) runs outside that cadence — see its own section.*
+*Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (1 open, 0 racked) runs outside that cadence — see its own section.*
 
 ## ⚠ CHANGED SINCE DANIEL'S APPROVAL
 
@@ -51,7 +51,7 @@
 *Fixes to published pages and site furniture (`kind: patch`). Outside the content cadence: no Tuesday rule, no 7-day cap, no content slot, no runway. A tapped patch publishes on the next release run (the daily 08:30 job), exact pinned bytes only, logged with lane `patch`.*
 
 - Site patch - home shelf cards open their rooms (were href=#) (`SITE-PATCH-SHELF-1`) — **BLOCKED: PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line)** (release will refuse)
-- Site patch - b4him.com serves the site only (curated Workshop: internal files stop being served) (`SITE-PATCH-SERVE-1`) — **BLOCKED: PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line)** (release will refuse)
+- Site patch - b4him.com serves the site only (curated Workshop: internal files stop being served) (`SITE-PATCH-SERVE-1`) — published 2026-11-06
 - Glossary I revision - fold each word's four rows so the page is shorter (`GC-GLOSS-1-R1`) — published 2026-10-20
 - Site patch - Title Case every published heading (D21) (`SITE-PATCH-HEADINGS-1`) — published 2026-10-20
 - Site patch - Title Case the n8n track heading (D21) (`SITE-PATCH-HEADINGS-2`) — published 2026-10-20
