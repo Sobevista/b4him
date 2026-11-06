@@ -1,0 +1,20 @@
+{
+  "_budgets": "[ASSUMED, Daniel rules] The three budgets below are the maintenance calendar's thresholds (row M2), not a ruling. LCP 2500 ms and CLS 0.1 are the Core Web Vitals 'good' bounds. TBT 200 ms stands in for INP, which a lab run cannot measure: web.dev calls TBT 'a reasonable proxy metric for INP for the lab but not a substitute for INP'. Each is judged on the median of 3 runs. tools/maint_quality.py perf reads only the ci key and fills collect.url from the served HTML at run time.",
+  "ci": {
+    "collect": {
+      "staticDistDir": ".",
+      "numberOfRuns": 3
+    },
+    "assert": {
+      "assertions": {
+        "largest-contentful-paint": ["error", {"maxNumericValue": 2500, "aggregationMethod": "median"}],
+        "cumulative-layout-shift": ["error", {"maxNumericValue": 0.1, "aggregationMethod": "median"}],
+        "total-blocking-time": ["error", {"maxNumericValue": 200, "aggregationMethod": "median"}]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".maint/lhci/reports"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "b4him-maintenance-scanners",
+  "private": true,
+  "description": "Dev-only scanners for the maintenance calendar (tools/maint_quality.py rows M1 and M2). Not site code; nothing here runs at install or on the site.",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@lhci/cli": "0.15.1",
+    "pa11y-ci": "5.0.0"
+  }
+}

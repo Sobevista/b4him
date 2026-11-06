@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="maint-fixture" content="mixed-content">
+<title>Maintenance fixture: mixed content</title>
+<style>body{background:#ffffff;color:#111111;font:16px/1.5 system-ui,sans-serif;margin:2rem}</style>
+</head>
+<body>
+<main>
+<h1>Maintenance fixture: mixed content</h1>
+<p>This page is a calibration fixture for the maintenance scanners (calendar row A4). It plants one image fetched over plain http from a reserved name that never resolves. The fault is DISARMED in this tracked copy, so the live site's own mixed-content and link scans stay clean: the calibration run arms it (data-planted-mixed becomes an http src) only in its scratch copy under .maint/.</p>
+<p><img data-planted-mixed="planted-mixed-content.invalid/pixel.png" alt="planted mixed content" width="1" height="1"></p>
+</main>
+</body>
+</html>

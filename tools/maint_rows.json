@@ -1,0 +1,425 @@
+{
+ "source": "maintenance-auditor seat, CALENDAR.md (PROPOSED 2026-10-20, unruled)",
+ "generated_by": "tools/maint_rows_build.py",
+ "epoch": "2026-10-20",
+ "epoch_note": "first date rows are scheduled from [ASSUMED]: the calendar's PROPOSED date",
+ "weekday": "Monday",
+ "grace_hours": {
+  "daily": 2,
+  "weekly": 24,
+  "monthly": 72,
+  "quarterly": 168,
+  "annual": 336,
+  "semiannual": 168
+ },
+ "rows": [
+  {
+   "id": "C1",
+   "cadence": "every 5 min",
+   "kind": "weekly",
+   "watched_by": "W2",
+   "note": "external monitor; its receipt is the W2 monitor line",
+   "grace_hours": 24,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "External uptime check of `https://b4him.com/` and one lesson URL (black-box)",
+   "receipt": "monitor history; the weekly W2 digest records \"monitor active, last 7 days uptime %\"",
+   "route_to": "Release Manager (S1: revert to the last approved bytes) + Site Maintainer"
+  },
+  {
+   "id": "D1",
+   "cadence": "daily 08:30 + 2 h",
+   "kind": "daily",
+   "at": "08:30",
+   "grace_hours": 2,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Confirm today's `release_log.jsonl` line exists (a non-release day logs SKIP)",
+   "receipt": "`maintenance_log` line `D1 PASS/ALARM`",
+   "route_to": "Release Manager"
+  },
+  {
+   "id": "D2",
+   "cadence": "daily",
+   "kind": "daily",
+   "at": "10:30",
+   "grace_hours": 2,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Calendar watch: every row's last receipt against its cadence + grace",
+   "receipt": "`maintenance_log` line listing every overdue row",
+   "route_to": "a harness-app tile \"MAINTENANCE OVERDUE: row X\" to Daniel; the owning seat"
+  },
+  {
+   "id": "D3",
+   "cadence": "daily",
+   "kind": "daily",
+   "at": "10:30",
+   "grace_hours": 2,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Out-of-band heartbeat: `maint_watch.py` pings a cron-schedule check (08:30 local time + 2 h grace)",
+   "receipt": "the service's ping log",
+   "route_to": "Daniel → Release Manager"
+  },
+  {
+   "id": "W1",
+   "cadence": "weekly Mon",
+   "kind": "weekly",
+   "grace_hours": 24,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Whole-site link check: (a) internal, case-sensitive, across every page, not only touched pages; (b) outbound, with cache",
+   "receipt": "`audits/<date>_links.json` + log line",
+   "route_to": "Site Maintainer: a patch-queue finding, S3. An internal 404 on a live page is S2"
+  },
+  {
+   "id": "W1b",
+   "cadence": "with W1",
+   "kind": "weekly",
+   "grace_hours": 24,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "For each dead outbound link, look up an Internet Archive snapshot and propose the replacement",
+   "receipt": "proposal attached to the finding",
+   "route_to": "Site Maintainer (standard-change catalog row 1, once Daniel rules it)"
+  },
+  {
+   "id": "W2",
+   "cadence": "weekly Mon",
+   "kind": "weekly",
+   "grace_hours": 24,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Weekly digest: receipts of the week, open findings by age, UNKNOWNs by age, monitor status",
+   "receipt": "`audits/<date>_weekly.md`",
+   "route_to": "Daniel, one line in the app. Silence is not used for \"nothing to report\": an empty week still writes \"0 findings\""
+  },
+  {
+   "id": "W3",
+   "cadence": "weekly Mon",
+   "kind": "weekly",
+   "grace_hours": 24,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "People/forbidden-token scan of every published page (D8, D11, E00571)",
+   "receipt": "log line per page. Exit 2 → UNKNOWN: `data/people_names.local.json` is absent today (STATE OF BUILD 2026-10-20)",
+   "route_to": "S1 → Release Manager + Daniel at once; a heuristic hit → Independent Reviewer to confirm"
+  },
+  {
+   "id": "M1",
+   "cadence": "monthly",
+   "kind": "monthly",
+   "grace_hours": 72,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Automated accessibility scan of every page, WCAG 2.2 AA rules, both runners",
+   "receipt": "`audits/<date>_a11y.json`. pa11y exit 1 = UNKNOWN, exit 2 = FINDINGS",
+   "route_to": "Site Maintainer (an AA failure on a live page is S2, as in prior RECOMMENDATION §1b)"
+  },
+  {
+   "id": "M1b",
+   "cadence": "monthly",
+   "kind": "monthly",
+   "grace_hours": 72,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Contrast audit of each page template, including the pseudo-element \"beam\"",
+   "receipt": "per-template result pasted into the a11y report, grouped by cause (INV-W8)",
+   "route_to": "Site Maintainer"
+  },
+  {
+   "id": "M2",
+   "cadence": "monthly",
+   "kind": "monthly",
+   "grace_hours": 72,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Lab performance: Lighthouse over the static tree, 3 runs, median, budget assertions",
+   "receipt": "`audits/<date>_perf.json`",
+   "route_to": "Site Maintainer: S3"
+  },
+  {
+   "id": "M2b",
+   "cadence": "monthly",
+   "kind": "monthly",
+   "grace_hours": 72,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Field performance: query CrUX for the origin. Expect \"no data\" while traffic is low ; record that as UNKNOWN-field, never as good",
+   "receipt": "log line with p75 LCP/INP/CLS or `UNKNOWN no CrUX data`",
+   "route_to": "Site Maintainer if p75 misses 2.5 s / 200 ms / 0.1"
+  },
+  {
+   "id": "M3",
+   "cadence": "monthly",
+   "kind": "monthly",
+   "grace_hours": 72,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "TLS and headers: certificate days-to-expiry, HTTP→HTTPS redirect, header snapshot diffed against last month, a grep for `http://` subresources (mixed content)",
+   "receipt": "`audits/<date>_tls.json`",
+   "route_to": "Site Maintainer. A cert under 14 days, or HTTPS failing → S1, Release Manager + Daniel [ASSUMED threshold]"
+  },
+  {
+   "id": "M4",
+   "cadence": "monthly",
+   "kind": "monthly",
+   "grace_hours": 72,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Non-technical reader walkthrough: one path (home → Find Your Door → a Tier 1 lesson) walked as a non-builder persona with the four cognitive-walkthrough questions ; jargon left unexplained; a plain-language indicator against a reading-age-9 target, reported as an indicator and never as a gate",
+   "receipt": "`audits/<date>_reader.md`",
+   "route_to": "Editor (words) / Site Maintainer (nav, furniture). Anything about warmth → Daniel, as taste"
+  },
+  {
+   "id": "M5",
+   "cadence": "monthly",
+   "kind": "monthly",
+   "grace_hours": 72,
+   "check": "board",
+   "mode": "(Editor's job; the auditor only checks its receipt)",
+   "task": "Cadence and runway review (PRODUCTION_PLAN §5, exists)",
+   "receipt": "board run",
+   "route_to": "Editor"
+  },
+  {
+   "id": "Q1",
+   "cadence": "quarterly",
+   "kind": "quarterly",
+   "months": [
+    1,
+    4,
+    7,
+    10
+   ],
+   "grace_hours": 168,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Every published page re-read: aged facts, a later ruling that supersedes the page, voice (D1), never preachy (D2), unexplained jargon (D3)",
+   "receipt": "per-page line `MAINTAINED <date>` in the queue/board",
+   "route_to": "a correction → Site Maintainer (patch line, S2); a voice question → Editor; doctrine → Daniel"
+  },
+  {
+   "id": "Q2",
+   "cadence": "quarterly",
+   "kind": "quarterly",
+   "months": [
+    1,
+    4,
+    7,
+    10
+   ],
+   "grace_hours": 168,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Genericization sweep across the whole site (D11): an independent grep for forbidden tokens + W3's registry, witnessed by a seat that did not write the pages",
+   "receipt": "`audits/<date>_genericize.md`",
+   "route_to": "S1 → Release Manager + Daniel; otherwise Site Maintainer"
+  },
+  {
+   "id": "Q3",
+   "cadence": "quarterly",
+   "kind": "quarterly",
+   "months": [
+    1,
+    4,
+    7,
+    10
+   ],
+   "grace_hours": 168,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Patch-queue hygiene: every open finding and patch is re-prioritised, or closed as won't-do with a reason",
+   "receipt": "hygiene note",
+   "route_to": "Site Maintainer; won't-do closures → Daniel tile"
+  },
+  {
+   "id": "Q4",
+   "cadence": "quarterly",
+   "kind": "quarterly",
+   "months": [
+    1,
+    4,
+    7,
+    10
+   ],
+   "grace_hours": 168,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "DNS and domain-takeover check: A/AAAA/CNAME point at Pages, no wildcard record, the verification TXT is present ; Enforce HTTPS is on",
+   "receipt": "`audits/<date>_dns.json`",
+   "route_to": "S1 if a record is dangling or wildcard; DNS edits → Daniel (M2: the registrar is in his hands)"
+  },
+  {
+   "id": "Q5",
+   "cadence": "quarterly",
+   "kind": "quarterly",
+   "months": [
+    1,
+    4,
+    7,
+    10
+   ],
+   "grace_hours": 168,
+   "check": "receipt",
+   "mode": "AUTOMATE (after the tap)",
+   "task": "Security-header grade",
+   "receipt": "grade + tests_failed in the log",
+   "route_to": "Site Maintainer. Pages cannot set headers , so most fixes are meta-tag only, and `frame-ancestors` cannot be fixed that way : a known limit, recorded and not re-filed every quarter"
+  },
+  {
+   "id": "Q6",
+   "cadence": "quarterly",
+   "kind": "quarterly",
+   "months": [
+    1,
+    4,
+    7,
+    10
+   ],
+   "grace_hours": 168,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Calendar self-audit + alarm fire drill: skip one heartbeat on purpose and confirm the alarm fires; list rows that produced zero findings and zero alarms in 4 quarters as candidates to retire",
+   "receipt": "drill receipt: \"alarm fired at hh:mm\" or FAIL",
+   "route_to": "a failed drill → Release Manager + Daniel (the alarm path is broken)"
+  },
+  {
+   "id": "H1",
+   "cadence": "every 6 months",
+   "kind": "semiannual",
+   "months": [
+    1,
+    7
+   ],
+   "grace_hours": 168,
+   "check": "human",
+   "mode": "HUMAN (warmth is taste)",
+   "task": "\"Feels like home\" review (D4): the home page and 3 random pages, screenshots next to the D9 reference, with the M4 notes attached",
+   "receipt": "Daniel's ruling, ledger E-number",
+   "route_to": "Daniel → Editor / Site Maintainer"
+  },
+  {
+   "id": "H2",
+   "cadence": "every 6 months, or on any refusal",
+   "kind": "semiannual",
+   "months": [
+    1,
+    7
+   ],
+   "grace_hours": 168,
+   "check": "note",
+   "mode": "(Independent Reviewer's job; the auditor checks its receipt)",
+   "task": "Publication-gate review (PRODUCTION_PLAN §5, exists)",
+   "receipt": "review note",
+   "route_to": "Independent Reviewer"
+  },
+  {
+   "id": "H3",
+   "cadence": "every 6 months",
+   "kind": "semiannual",
+   "months": [
+    1,
+    7
+   ],
+   "grace_hours": 168,
+   "check": "note",
+   "mode": "ASSIST",
+   "task": "Re-read this calendar and PRODUCTION_PLAN (exists, §5)",
+   "receipt": "amendment proposal or \"no change\"",
+   "route_to": "Daniel"
+  },
+  {
+   "id": "A1",
+   "cadence": "annually",
+   "kind": "annual",
+   "months": [
+    1
+   ],
+   "grace_hours": 336,
+   "check": "human",
+   "mode": "ASSIST; Daniel signs off",
+   "task": "Full manual WCAG 2.2 AA evaluation per WCAG-EM. The site is small (23 tracked HTML files at HEAD this session), so it evaluates every page instead of sampling . It covers the new 2.2 AA criteria (target size, focus not obscured) , keyboard, and a screen reader",
+   "receipt": "WCAG-EM report (steps 1–5)",
+   "route_to": "Site Maintainer"
+  },
+  {
+   "id": "A2",
+   "cadence": "annually",
+   "kind": "annual",
+   "months": [
+    1
+   ],
+   "grace_hours": 336,
+   "check": "receipt",
+   "mode": "ASSIST",
+   "task": "Content inventory and ROT audit: inventory every page (URL, owner, dates), then audit it . Mission rule: \"outdated\" means annotate, never erase. A failure stays in the record beside the wins (README). Only true duplicates are candidates to merge, and only Daniel rules a removal",
+   "receipt": "`audits/<date>_content_audit.md`",
+   "route_to": "Editor; any removal → Daniel"
+  },
+  {
+   "id": "A3",
+   "cadence": "annually, 60 days before renewal",
+   "kind": "annual",
+   "months": [
+    1
+   ],
+   "note": "60 days before renewal: the renewal date is not recorded here, so January is [ASSUMED]",
+   "grace_hours": 336,
+   "check": "human",
+   "mode": "HUMAN",
+   "task": "Domain registration: expiry date, auto-renew, registrar contact email still reaches Daniel (ICANN reminders go to the registrant )",
+   "receipt": "Daniel's confirmation in the ledger",
+   "route_to": "Daniel"
+  },
+  {
+   "id": "A4",
+   "cadence": "annually",
+   "kind": "annual",
+   "months": [
+    1
+   ],
+   "grace_hours": 336,
+   "check": "receipt",
+   "mode": "AUTOMATE",
+   "task": "Instrument calibration: run every scanner against a known-bad fixture page and confirm it sees the planted faults (INV-W8)",
+   "receipt": "calibration receipt",
+   "route_to": "Site Maintainer (a tool fix)"
+  },
+  {
+   "id": "E1",
+   "cadence": "on every template / nav / CSS patch, before the tap",
+   "kind": "event",
+   "grace_hours": null,
+   "check": "event",
+   "mode": "AUTOMATE",
+   "task": "M1 + M1b + W1(a) + M2 on the patched tree; attach them to the patch proof",
+   "receipt": "results attached to the stage-2 record",
+   "route_to": "Independent Reviewer"
+  },
+  {
+   "id": "E2",
+   "cadence": "each release",
+   "kind": "event",
+   "grace_hours": null,
+   "check": "event",
+   "mode": "AUTOMATE",
+   "task": "Read `--verify-live` on the release line (\"live bytes match\")",
+   "receipt": "the `release_log` line",
+   "route_to": "Release Manager"
+  },
+  {
+   "id": "E3",
+   "cadence": "WCAG / Pages / Actions changes",
+   "kind": "weekly",
+   "note": "event row polled weekly by tools/standards_watch.py [ASSUMED]",
+   "grace_hours": 24,
+   "check": "receipt",
+   "mode": "—",
+   "task": "Standards watch",
+   "receipt": "—",
+   "route_to": "Site-Ops Researcher"
+  }
+ ]
+}

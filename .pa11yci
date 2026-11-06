@@ -1,0 +1,10 @@
+{
+  "defaults": {
+    "standard": "WCAG2AA",
+    "runners": ["axe", "htmlcs"],
+    "timeout": 60000,
+    "concurrency": 1,
+    "includeWarnings": false
+  },
+  "urls": []
+}
