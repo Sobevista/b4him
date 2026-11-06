@@ -237,3 +237,15 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** _pending_
+
+### APPROVE SITE-PATCH-SERVE-1 at 180e5fe — Site patch - b4him.com serves the site only (curated Workshop: internal files stop being served)
+
+- **What this is to the build.** Site patch - b4him.com serves the site only (curated Workshop: internal files stop being served) (? track), drafted 2026-10-20 on `patch/serve-site-only`. The invariant it teaches: *NOT NAMED*. **The rendered proof: https://claude.ai/artifact/Chb92nAugc63FXnZmuseTk**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `_config.yml` = blob `5f2b4e5a8612`. No index entry is on the row, so the page will not be listed in the lessons index. This is a PATCH (the patch line, outside the content cadence): it publishes on the next daily release run after your tap, any day of the week, and takes no content slot.
+- **What it does to the aggregate, measured.** Runway is unchanged: a patch is on the patch line, not the content line.
+- **Cross-checked by, including where it is weak.** stage 2 PASS on 2026-11-06 by reviewer seat, session 392c7419 (agent reviewer-serve1-1106) (proof: C:\Users\dansl\Claude\Projects\Data Import\Connection\Knowledge_Base\Seats\b4him\reviewer\REVIEW_SERVE1_2026-11-06.md)
+- **Open label on this row (blocked_on).** PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line) — marked pre-tap: your approval clears it.
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
