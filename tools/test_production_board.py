@@ -109,3 +109,13 @@ def test_blob_sha_is_gits_blob_id_and_a_crlf_checkout_is_not_a_change(tmp_path):
         pytest.skip("git not on PATH: the blob id was checked by formula only")
     out = subprocess.run([git, "hash-object", "--no-filters", str(lf)], capture_output=True, encoding="utf-8")
     assert out.stdout.strip() == pb.blob_sha(lf)
+
+
+def test_the_generators_stamp_is_the_one_the_m5_reader_parses(tmp_path, monkeypatch):
+    """M5 (maint_watch.board_date) dates the board by the '*Generated <date> by ...' line this generator
+    writes; rewording either side alone must fail here, not leave M5 reading every real board as UNKNOWN."""
+    import maint_watch as mw
+    day = dt.date(2026, 10, 20)
+    text = board(tmp_path, monkeypatch, [], today=day)
+    (tmp_path / "PRODUCTION_BOARD.md").write_text(text, encoding="utf-8", newline="\n")   # tmp only, never the repo's board
+    assert mw.board_date(tmp_path, day) == day
