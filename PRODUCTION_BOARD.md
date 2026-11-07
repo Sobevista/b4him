@@ -33,8 +33,8 @@
 
 | slot | piece | review by | note |
 |---|---|---|---|
-| **2026-11-10** Tue | Glossary II - Intermediate terms | 2026-11-03 |  |
-| **2026-11-17** Tue | Silence Is Not a Grade - the gate that fails open | 2026-11-10 |  |
+| **2026-11-10** Tue | Silence Is Not a Grade - the gate that fails open | 2026-11-03 |  |
+| **2026-11-17** Tue | Glossary II - Intermediate terms | 2026-11-10 |  |
 | **2026-11-24** Tue | A Convention Without Enforcement Is a Preference | 2026-11-17 |  |
 | **2026-12-01** Tue | The Tripod - three kinds of checking | 2026-11-24 |  |
 | **2026-12-08** Tue | The Second Oracle - green proves you met your criteria | 2026-12-01 |  |
