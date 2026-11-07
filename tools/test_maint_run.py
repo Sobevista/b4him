@@ -62,6 +62,22 @@ def test_first_monday():
     assert run.first_monday(2027, 2) == dt.date(2027, 2, 1)          # the 1st is itself a Monday
 
 
+def test_never_receipted_rows_are_due_whatever_the_clock(md, monkeypatch, capsys):
+    """CAL-2: with an empty log every non-event, non-exempt row is caught up; a receipt drops its row out; is_due is
+    untouched (the Days paragraph tests above still hold)."""
+    caught = set(run.never_receipted(ROWS))
+    assert caught == set(IDS) - EVENTS - run.CATCHUP_EXEMPT
+    assert "Q6" not in caught and not (EVENTS & caught)
+    mr.write_receipt("W1", "PASS", why="fine", tool="tools/linkcheck.py")
+    assert "W1" not in run.never_receipted(ROWS)
+    # --list on a plain Tuesday now prints the daily rows plus every never-run row, nothing twice
+    monkeypatch.setattr(sys, "argv", ["maint_run.py", "--list", "--date", "2026-11-03"])
+    assert run.main() == 0
+    printed = capsys.readouterr().out.split()
+    assert set(printed) == (DAILY | caught) - {"W1"} and len(printed) == len(set(printed))
+    assert printed[-3:] == ["D1", "D2", "D3"]
+
+
 def test_order_puts_the_watcher_after_the_rest_and_d1_d2_d3_last():
     o = run.ordered(IDS)
     assert o[-3:] == ["D1", "D2", "D3"]

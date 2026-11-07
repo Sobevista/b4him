@@ -14,7 +14,10 @@ ran has a receipt in .maint/maintenance_log.jsonl.
 WHEN A ROW IS DUE (the calendar's Days paragraph, as tools/maint_rows.json carries it): daily rows every day; weekly
 rows on Monday; monthly rows on the first Monday of the month; quarterly, 6-monthly and annual rows on the first
 Monday of their months (the table's `months`, [ASSUMED] in maint_rows_build.py). Event rows (E1, E2) are never due
-on the clock; --all and --row give them a SKIP receipt saying why. E3, the standards watch, polls its feeds weekly
+on the clock; --all and --row give them a SKIP receipt saying why. CATCH-UP (CAL-2, 2026-11-07): a row that has never
+written a receipt at all is also due today, whatever the clock says, so a calendar merged mid-cycle does not stay silent
+until its first Monday in January; D2 alarms on exactly that condition, so the runner and the alarm agree. Event rows
+and Q6 (the fire drill, which withholds a heartbeat and wants a watched day) are exempt. E3, the standards watch, polls its feeds weekly
 (tools/standards_watch.py), so the table makes it a weekly row. A3 (domain registration, "60 days before renewal")
 is polled every Monday too: its due date is the registration's expiry minus 60 days, which only RDAP knows
 (tools/maint_human.py a3).
@@ -171,6 +174,21 @@ def load_table(path: Path | None = None) -> list[dict]:
 
 def due_rows(rows: list[dict], day: dt.date) -> list[str]:
     return [r["id"] for r in rows if is_due(r, day)]
+
+
+#: CAL-2 (2026-11-07): rows the clock has never reached are not silent until January. Q6 arms a drill that withholds
+#: D3's heartbeat for a day; it runs by hand (--row Q6) on a day the alarm can be watched.
+CATCHUP_EXEMPT = {"Q6"}
+
+
+def never_receipted(rows: list[dict]) -> list[str]:
+    """Rows with no receipt at all in the log (event rows and CATCHUP_EXEMPT excepted): due today whatever the clock.
+    An unreadable log returns [] (that is D2's alarm, not a reason to run every row)."""
+    try:
+        seen = {e.get("row") for e in mr.read_receipts()}
+    except (OSError, ValueError):
+        return []
+    return [r["id"] for r in rows if r.get("kind") != "event" and r["id"] not in CATCHUP_EXEMPT and r["id"] not in seen]
 
 
 def ordered(ids: list[str]) -> list[str]:
@@ -414,6 +432,7 @@ def main(argv=None) -> int:
     else:
         day = dt.date.fromisoformat(a.date) if a.date else dt.date.today()
         ids = due_rows(rows, day)
+        ids += [r for r in never_receipted(rows) if r not in ids]        # CAL-2 catch-up
     if a.list:
         print(" ".join(ordered(ids)))
         return 0

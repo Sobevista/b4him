@@ -50,6 +50,7 @@ def test_main_prints_and_registers_nothing(monkeypatch, capsys):
     assert lines[4].endswith(" /RU %USERDOMAIN%\\%USERNAME% /F")          # the /RU variant: run while signed out
     assert "<" not in lines[4] and ">" not in lines[4]                  # nothing cmd.exe would read as a redirect
     assert lines[6] == ms.BATTERY_PS and "DisallowStartIfOnBatteries = $false" in lines[6]
+    assert "StartWhenAvailable = $true" in lines[6] and "WakeToRun = $true" in lines[6]   # CAL-4: a missed start runs at wake
     assert "Nothing above has been run or registered." in lines[-1]
     i = lines.index(ms.HISTORY_ON)                                       # Daniel's elevated one-time step
     assert ms.HISTORY_ON == "wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true"

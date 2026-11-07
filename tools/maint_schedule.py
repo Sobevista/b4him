@@ -84,8 +84,11 @@ def command(repo: Path = REPO, py: str | None = None, ru: str | None = None) -> 
 #: Printed, never run. Task Scheduler's DisallowStartIfOnBatteries defaults to True ("the task will not be started if
 #: the computer is running on batteries", learn.microsoft.com/.../taskschd/tasksettings-disallowstartifonbatteries),
 #: and a task made by schtasks /Create gets that default, so on a laptop unplugged at 10:35 the run would not start.
+#: And (CAL-4, 2026-11-07) StartWhenAvailable + WakeToRun: on 2026-11-07 the PC slept through 10:35 with
+#: StartWhenAvailable off, Windows logged event 153 "missed its schedule", Last Result read 0x800710E0 and no row ran.
 BATTERY_PS = (f"$t = Get-ScheduledTask -TaskName '{TASK}'; $t.Settings.DisallowStartIfOnBatteries = $false; "
-              f"$t.Settings.StopIfGoingOnBatteries = $false; Set-ScheduledTask -InputObject $t")
+              f"$t.Settings.StopIfGoingOnBatteries = $false; $t.Settings.StartWhenAvailable = $true; "
+              f"$t.Settings.WakeToRun = $true; Set-ScheduledTask -InputObject $t")
 
 
 HISTORY_LOG = "Microsoft-Windows-TaskScheduler/Operational"
