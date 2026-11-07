@@ -236,7 +236,7 @@
 - **Open label on this row (blocked_on).** PRE-TAP: Daniel's review and preview (his one tap on the rendered proof, patch line) — marked pre-tap: your approval clears it.
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-11-07 APPROVE · ledger E01458 · applied by tools/approvals.py]
 
 ### APPROVE SITE-PATCH-SERVE-1 at 180e5fe — Site patch - b4him.com serves the site only (curated Workshop: internal files stop being served)
 
