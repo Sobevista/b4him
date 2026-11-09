@@ -34,6 +34,9 @@ import urllib.request
 from pathlib import Path
 
 SITE = "https://b4him.com"
+#: Where verify() looks for the served surface. SITE stays the name pages use for absolute links; a stress profile
+#: (tools/line_profile.py, set in release.py) points only LIVE at its throwaway target.
+LIVE = SITE
 CONFIG = "_config.yml"
 #: The patch scope that may change _config.yml, and nothing else.
 SITE_CONFIG = "site-config"
@@ -234,7 +237,7 @@ def scope_problems(row: dict, files) -> list[str]:
 def url_for(rel: str) -> str:
     if rel == "index.html" or rel.endswith("/index.html"):
         rel = rel[:-len("index.html")]
-    return f"{SITE}/{rel}"
+    return f"{LIVE}/{rel}"
 
 
 def _fetch(url: str) -> tuple[int | None, bytes]:
@@ -261,7 +264,7 @@ def verify(tree: Tree, minutes: float) -> str:
         raise SurfaceError("the committed config does not give the intended surface: " + "; ".join(problems))
     deadline = time.time() + minutes * 60
     want_200 = {url_for(rel): blob for rel, blob in blobs.items()}
-    want_404 = {SITE + p for p in sample}
+    want_404 = {LIVE + p for p in sample}
     last: dict[str, str] = {}
     while True:
         for url, blob in list(want_200.items()):

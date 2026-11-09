@@ -53,7 +53,7 @@ import serve_surface  # noqa: E402
 
 SITE = "https://b4him.com"
 if pb.PROFILE is not None:   # a stress profile's throwaway target (tools/line_profile.py); never set in production
-    SITE = pb.PROFILE.site
+    SITE = serve_surface.LIVE = pb.PROFILE.site
 TRACK_RE = re.compile(r"(<!-- b4him:track (?P<track>[\w-]+) [^>]*-->\n)(?P<body>.*?)(<!-- /b4him:track (?P=track) -->)",
                       re.S)
 ENTRY = ('    <a class="mod" href="{href}">\n'

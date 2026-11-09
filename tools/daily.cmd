@@ -1,4 +1,6 @@
 @echo off
+rem The production run never uses a stress profile (tools/line_profile.py): clear it whatever the environment says.
+set "B4HIM_LINE_PROFILE="
 rem b4him daily run (Windows Task Scheduler "b4him-daily-release", 08:30 every day).
 rem 1. turn Daniel's taps in the harness app into racked rows; 2. publish today's slot, if it is one.
 rem Every day logs a line in release_log.jsonl: a non-release day logs SKIP, so a day with no line means this did

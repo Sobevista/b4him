@@ -5,8 +5,8 @@ hopper_stress.py — prove the hopper and the publish on a fast clock, against a
 Daniel, 2026-11-09: "stress test it and have it auto publish a few in five minute intervals somewhere throw away if
 needed. Lets prove the hopper and publish work".
 
-WHAT IT BUILDS, all under --root (nothing else is written; nothing leaves 127.0.0.1):
-  clone/        a scratch clone of this checkout's HEAD, on main; its ONLY remote is origin = origin.git
+WHAT IT BUILDS, all under --root, which must be empty or absent (nothing else is written; nothing leaves 127.0.0.1):
+  clone/        this checkout's HEAD fetched alone (one branch, no tags) as main; its ONLY remote is origin = origin.git
   origin.git/   a local bare repo; its post-receive hook checks main out into live/
   live/         what the "site" serves: `python -m http.server` on 127.0.0.1:<free port> (the profile's `site`)
   profile.json  the line profile (tools/line_profile.py): repo = clone/, site = the local server, the PRODUCTION
@@ -24,11 +24,19 @@ production cadence rules (Tuesday, 1 per 7 days, T-7) are the ones exercised. Ea
 tools/daily.cmd under the profile, the second with `--date <virtual day>`, from this checkout's tools/ against clone/,
 then waits --every seconds.
 
-Exit 0 only when every tick is PUBLISHED for the expected piece, the live bytes of each tick's piece hash to its pins,
-the final live/ tree hashes to every pin of every STRESS row, and the production checkout's HEAD and status are the
-same after as before. 1 with the reason otherwise; 2 if the target could not be built (UNKNOWN, not a pass).
+Exit 0 only when every tick is PUBLISHED for the expected piece with every patch-line outcome PUBLISHED too, the live
+bytes of each tick's piece hash to its pins on disk AND over HTTP match the drafted page and its stage-2 blob, the
+final live/ tree hashes to every pin of every STRESS row, and production is the same after as before: HEAD,
+`status --porcelain --ignored`, and the bytes of release_log.jsonl and release_alarm.md (absent counts as a value).
+1 with the reason otherwise; 2 if the target could not be built or --root is not empty (UNKNOWN, not a pass).
+By design, a real production run (the 08:30 release) that writes its log during a stress run makes the run FAIL:
+the oracle cannot tell that line from a leak, so it does not try.
 
-    py tools/stress/hopper_stress.py --ticks 3 --every 300 --root <scratch dir> [--keep]
+Known and left as they are (review 2026-11-09, L2 and L3): `approvals.py apply` stamps `previewed` with the real date
+(it has no --date), which is why the first virtual Tuesday is at least T-7 from today; line_profile.FileLedger is a
+plain JSONL stand-in (no hash chain, no lock), enough for one runner and never the harness ledger.
+
+    py tools/stress/hopper_stress.py --ticks 3 --every 300 --root <empty scratch dir> [--keep]
 """
 from __future__ import annotations
 
@@ -66,7 +74,10 @@ class StressFail(RuntimeError):
 
 
 def sh(cmd, cwd=None, env=None, check=True) -> subprocess.CompletedProcess:
-    p = subprocess.run([str(c) for c in cmd], cwd=cwd, env=env, capture_output=True, encoding="utf-8",
+    cmd = [str(c) for c in cmd]
+    if cmd[0] == "git":           # a deep --root passes Windows' 260-character limit (review M1)
+        cmd[1:1] = ["-c", "core.longpaths=true"]
+    p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, encoding="utf-8",
                        errors="replace")
     if check and p.returncode:
         raise StressFail(f"{' '.join(str(c) for c in cmd)} failed ({p.returncode}): {(p.stderr or p.stdout).strip()}")
@@ -90,26 +101,29 @@ def blob_sha(path: Path) -> str | None:
 
 # ---------------------------------------------------------------- 1b: the throwaway target
 def build_scratch(root: Path, src: Path = SRC) -> dict:
-    """clone/ of src's HEAD on main, origin.git/ as its one remote, live/ filled by the post-receive hook."""
+    """clone/ holding src's HEAD alone as main, origin.git/ as its one remote, live/ filled by the post-receive hook.
+    Only HEAD is fetched (no other branch, no tag): src's other refs never reach the scratch, and a deep --root never
+    meets src's long ref names (review M1). src is never configured as a remote."""
     clone, bare, live = root / "clone", root / "origin.git", root / "live"
     for p in (clone, bare, live):
         if p.exists():
             raise StressFail(f"{p} already exists: a stress run starts from an empty --root")
     root.mkdir(parents=True, exist_ok=True)
     head = git(src, "rev-parse", "HEAD")
-    sh(["git", "clone", "-q", "--no-checkout", "--no-hardlinks", src, clone])
-    git(clone, "remote", "remove", "origin")          # the real origin is never configured here
+    sh(["git", "init", "-q", "-b", "main", clone])
     for k, v in (("user.name", DRAFTER[0]), ("user.email", DRAFTER[1]), ("core.autocrlf", "false"),
-                 ("commit.gpgsign", "false"), ("tag.gpgsign", "false")):
+                 ("core.longpaths", "true"), ("commit.gpgsign", "false"), ("tag.gpgsign", "false")):
         git(clone, "config", k, v)
-    git(clone, "checkout", "-q", "-B", "main", head)
-    for b in git(clone, "for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines():
-        if b != "main":
-            git(clone, "branch", "-q", "-D", b)
+    git(clone, "fetch", "-q", "--no-tags", str(src), "HEAD:refs/stress/src")
+    git(clone, "checkout", "-q", "-B", "main", "refs/stress/src")
+    git(clone, "update-ref", "-d", "refs/stress/src")
+    if git(clone, "rev-parse", "main") != head:
+        raise StressFail(f"the scratch clone's main is not {head[:12]}")
     # The bare repo is seeded by cloning, never by a push: release.py stays the only code under tools/ that pushes
     # (tools/test_production_boundary.py). Its own remote back to clone/ is removed, so it points nowhere.
-    sh(["git", "clone", "-q", "--bare", "--no-hardlinks", clone, bare])
+    sh(["git", "clone", "-q", "--bare", "--no-hardlinks", "--no-tags", clone, bare])
     git(bare, "remote", "remove", "origin")
+    git(bare, "config", "core.longpaths", "true")
     live.mkdir()
     checkout = ["git", f"--git-dir={bare.as_posix()}", f"--work-tree={live.as_posix()}", "-c", "core.autocrlf=false",
                 "checkout", "-f", "-q", "main"]
@@ -252,13 +266,57 @@ def pins_live(live: Path, row: dict) -> list[str]:
     return [rel for rel, blob in (row.get("approved_blobs") or {}).items() if blob_sha(live / rel) != blob]
 
 
+def http_problems(site: str, i: int, page: str, reviewed_blob: str | None) -> list[str]:
+    """An oracle independent of live/ on disk and of the queue's pins (review L1): GET the published page over HTTP and
+    compare its bytes to the page this runner drafted and to the blob the stage-2 record names."""
+    url = f"{site}/{page[:-len('index.html')]}"
+    try:
+        req = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
+        data = urllib.request.urlopen(req, timeout=10).read()
+    except OSError as e:
+        return [f"GET {url} failed: {e}"]
+    out = []
+    if data != page_html(i).encode("utf-8"):
+        out.append(f"GET {url} is not the drafted page")
+    if hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() != reviewed_blob:
+        out.append(f"GET {url} does not hash to the stage-2 blob {str(reviewed_blob)[:12]}")
+    return out
+
+
+def judge(content: dict, expected: str, disk_bad: list[str], http_bad: list[str]) -> str | None:
+    """Why a tick is not a pass, or None. The content line must be PUBLISHED for the expected piece, and every
+    patch-line outcome of the same run must be PUBLISHED too (review M3): a patch that failed is a failed tick."""
+    why = []
+    if content.get("outcome") != "PUBLISHED" or content.get("piece") != expected:
+        why.append(content.get("why") or f"content line {content.get('outcome', 'NO LOG LINE')} "
+                                          f"{content.get('piece')}, expected PUBLISHED {expected}")
+    why += [f"patch {p.get('piece')} {p.get('outcome')}: {p.get('why', '')}"
+            for p in content.get("patch_outcomes") or [] if p.get("outcome") != "PUBLISHED"]
+    if disk_bad:
+        why.append(f"live bytes differ for {', '.join(disk_bad)}")
+    why += http_bad
+    return "; ".join(why) or None
+
+
+#: Ignored by git, so `status` cannot see them; a leak would write exactly these (review M2).
+WATCHED = ("release_log.jsonl", "release_alarm.md")
+
+
 def production_state() -> dict:
-    out = {}
+    """HEAD, `status --porcelain --ignored` and the bytes of WATCHED (absent counts as a value) of every production
+    checkout line_profile names. A run passes only if this is identical before and after."""
+    out: dict = {}
     for root in sorted(line_profile.production_roots()):
+        if not Path(root).is_dir():
+            out[root] = "absent"
+            continue
         head = sh(["git", "-C", root, "rev-parse", "HEAD"], check=False).stdout.strip()
-        status = sh(["git", "-C", root, "status", "--porcelain"], check=False).stdout
-        out[root] = {"head": head, "status_sha": hashlib.sha256(status.encode()).hexdigest()[:12],
-                     "clean": status.strip() == ""}
+        status = sh(["git", "-C", root, "status", "--porcelain", "--ignored"], check=False).stdout
+        files = {}
+        for name in WATCHED:
+            p = Path(root) / name
+            files[name] = hashlib.sha256(p.read_bytes()).hexdigest()[:16] if p.exists() else "absent"
+        out[root] = {"head": head, "status_sha": hashlib.sha256(status.encode()).hexdigest()[:12], **files}
     return out
 
 
@@ -281,6 +339,7 @@ def run(ticks: int, every: float, root: Path, keep: bool, live_minutes: int | No
     reason = ""
 
     def write(entry: dict) -> None:
+        entry = {"at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), **entry}
         with slog.open("a", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
         print(json.dumps(entry, ensure_ascii=False), flush=True)
@@ -290,7 +349,8 @@ def run(ticks: int, every: float, root: Path, keep: bool, live_minutes: int | No
             t = build_scratch(root)
             server, site = serve(t["live"], root)
             profile = write_profile(root, t["clone"], site)
-            env = {**os.environ, line_profile.ENV: str(profile), "PYTHONIOENCODING": "utf-8"}
+            env = {**os.environ, line_profile.ENV: str(profile), "PYTHONIOENCODING": "utf-8",
+                   "PYTHONDONTWRITEBYTECODE": "1"}       # the children leave no __pycache__ in this checkout
             ids = seed_pieces(t["clone"], ticks, today)
             offer_and_tap(t["clone"], ids, env, root / "ledger.jsonl")
         except StressFail as e:
@@ -312,19 +372,22 @@ def run(ticks: int, every: float, root: Path, keep: bool, live_minutes: int | No
             content = next((e for e in reversed(new) if e.get("lane") == "content"), {})
             row = next((x for x in queue_rows(clone) if x["id"] == ids[k]), {})
             bad = pins_live(live, row)
+            page = row.get("page") or ""
+            http_bad = http_problems(site, k + 1, page, ((row.get("reviewed") or {}).get("blobs") or {}).get(page))
             entry = {"tick": k + 1, "virtual_day": f"{day} {day:%a}", "expected": ids[k],
                      "piece": content.get("piece"), "outcome": content.get("outcome", "NO LOG LINE"),
                      "commit": (content.get("commit") or "")[:12],
                      "origin_main": git(bare, "rev-parse", "main")[:12],
                      "live_hash_match": not bad and bool(row.get("approved_blobs")),
+                     "http_match": not http_bad,
                      "approvals": " | ".join(a.stdout.strip().splitlines()) or a.stderr.strip()[-300:],
                      "approvals_exit": a.returncode, "release_exit": r.returncode,
                      "elapsed_s": round(time.time() - t0, 2)}
             if content.get("patch_outcomes"):
                 entry["patch_outcomes"] = content["patch_outcomes"]
-            if content.get("outcome") != "PUBLISHED" or content.get("piece") != ids[k] or bad:
-                entry["why"] = (content.get("why") or r.stdout.strip()[-400:] or r.stderr.strip()[-400:]
-                                ) + (f"; live bytes differ for {', '.join(bad)}" if bad else "")
+            why = judge(content, ids[k], bad, http_bad)
+            if why:
+                entry["why"] = why + ("" if content else f" ({(r.stdout or r.stderr).strip()[-300:]})")
             results.append(entry)
             write(entry)
             if k + 1 < len(days) and every > 0:
@@ -373,6 +436,10 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
     root = Path(a.root) if a.root else Path(tempfile.mkdtemp(prefix="b4him-stress-"))
+    if root.exists() and (not root.is_dir() or any(root.iterdir())):
+        print(f"REFUSED: --root {root} is not an empty directory; a stress run writes only into a fresh one",
+              file=sys.stderr)
+        return 2
     code = run(a.ticks, a.every, root, a.keep, a.live_minutes)
     print(f"{'PASS' if code == 0 else 'FAIL'}: stress log at {root / 'stress_log.jsonl'}")
     return code
