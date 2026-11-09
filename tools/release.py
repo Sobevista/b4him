@@ -52,6 +52,8 @@ import production_board as pb  # noqa: E402
 import serve_surface  # noqa: E402
 
 SITE = "https://b4him.com"
+if pb.PROFILE is not None:   # a stress profile's throwaway target (tools/line_profile.py); never set in production
+    SITE = pb.PROFILE.site
 TRACK_RE = re.compile(r"(<!-- b4him:track (?P<track>[\w-]+) [^>]*-->\n)(?P<body>.*?)(<!-- /b4him:track (?P=track) -->)",
                       re.S)
 ENTRY = ('    <a class="mod" href="{href}">\n'
@@ -821,7 +823,7 @@ def main(argv=None) -> int:
 
     today = dt.date.today()
     day = dt.date.fromisoformat(a.date) if a.date else today
-    if a.apply and day != today:
+    if a.apply and day != today and not (pb.PROFILE is not None and pb.PROFILE.allow_date_apply):
         print(f"REFUSED: --apply publishes today ({today}) only; {day} is a dry run.")
         return 1
     entry = {"date": day.isoformat(), "mode": "apply" if a.apply else "dry-run", "lane": "content"}
@@ -836,7 +838,7 @@ def main(argv=None) -> int:
             # A failure ends the run. There is no repair path: nothing here retries, rebases, force-pushes or pushes
             # anything the failed run did not itself commit; a stranded release is re-pushed by the NEXT run, through
             # the same push_release() guard.
-            with scheduled_entry(today):
+            with scheduled_entry(day):        # == today, unless a stress profile allowed a dated apply above
                 code = run(a, day, entry)
         except Exception as e:                # noqa: BLE001 - every failure is logged, never a bare traceback
             where = (f" (commit {entry['commit'][:7]} is on local main, pushed={entry.get('pushed', False)})"

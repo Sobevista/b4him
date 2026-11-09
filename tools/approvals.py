@@ -376,6 +376,13 @@ def offer(pid: str, ref: str, proof: str, today: dt.date | None = None) -> str:
 
 # ---------------------------------------------------------------- apply
 def ledger():
+    if pb.PROFILE is not None:
+        # a stress profile (tools/line_profile.py) never reads or writes the harness: its taps live in a local file
+        if pb.PROFILE.ledger is None:
+            raise ApprovalError(f"the line profile {pb.PROFILE.path} names no `ledger` file; under a profile the "
+                                f"harness ledger is never used")
+        import line_profile
+        return line_profile.FileLedger(pb.PROFILE.ledger)
     if str(HARNESS) not in sys.path:
         sys.path.insert(0, str(HARNESS))
     from tools.session_ledger.ledger import Ledger
