@@ -260,3 +260,15 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** [RULED 2026-11-07 APPROVE · ledger E01459 · applied by tools/approvals.py]
+
+### APPROVE T4-L1 at bfe74c8 — Silence Is Not a Grade - the gate that fails open
+
+- **What this is to the build.** Silence Is Not a Grade - the gate that fails open (tier4 track), drafted 2026-10-13 on `draft/tier4-r2`. The invariant it teaches: *A gate whose miss looks like a pass fails open: every check must say PASSED, SKIPPED or REFUSED where the human can see it.*. **The rendered proof: https://claude.ai/artifact/V1itv2p2ozKJa5A4bY9Uag**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `lessons/silence-is-not-a-grade/index.html` = blob `46db3bd4ca36`; `tools/tracks/tier4.html` = blob `a7b479c3b251`. The lessons index gains: **Silence Is Not a Grade: The Gate That Fails Open** — A check that misses its trigger waves the work through ungraded. Every checkpoint has to say out loud whether it passed, skipped, or refused.. It takes the first open slot on or after 2026-11-17.
+- **What it does to the aggregate, measured.** Runway rises by 1.0 weeks (one piece ÷ 1 a week).
+- **Cross-checked by, including where it is weak.** stage 2 PASS on 2026-11-10 by reviewer seat (Quality & Trust), Glitch session, agent reviewer-t4-r2-1110 (proof: harness Knowledge_Base/Seats/b4him/reviewer/REVIEW_T4_r2_2026-11-10.md: links-only unlink, 13 sibling links removed (10 pager -> muted spans, 3 body -> plain words), visible text identical to bc31405 6/6, no sibling href left; release link replay 0 404s alone and cumulative (control bc31405: the 13, incl. the logged T4-L1 line); tools tests 92 passed; voice_check PASS 6/6; preview.py a7b1769 PASS 6/6; tier4.html unchanged)
+- **Open label on this row (blocked_on).** Daniel's one tap on the rendered proof (E00472) — marked pre-tap: your approval clears it.
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
