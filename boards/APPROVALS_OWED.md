@@ -295,7 +295,7 @@
 - **Open label on this row (blocked_on).** Daniel's one tap on the rendered proof (E00472) — marked pre-tap: your approval clears it.
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
-**DANIEL:** _pending_
+**DANIEL:** [RULED 2026-11-10 APPROVE · ledger E01503 · applied by tools/approvals.py]
 
 ### APPROVE T4-L4 at bfe74c8 — The Second Oracle - green proves you met your criteria
 
