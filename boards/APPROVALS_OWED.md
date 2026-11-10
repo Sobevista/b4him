@@ -296,3 +296,15 @@
 - **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
 
 **DANIEL:** _pending_
+
+### APPROVE T4-L4 at bfe74c8 — The Second Oracle - green proves you met your criteria
+
+- **What this is to the build.** The Second Oracle - green proves you met your criteria (tier4 track), drafted 2026-10-13 on `draft/tier4-r2`. The invariant it teaches: *A green suite proves you met your criteria, not that your criteria were right. Only someone doing the real task can find the rest.*. **The rendered proof: https://claude.ai/artifact/V1itv2p2ozKJa5A4bY9Uag**
+- **Why this decision exists.** It is your one tap (E00472): the words and the rendered page together. Nothing publishes that you have not seen.
+- **What changes if you approve.** These exact bytes go on the rack: `lessons/second-oracle/index.html` = blob `d7ebf2535bf6`; `tools/tracks/tier4.html` = blob `a7b479c3b251`. The lessons index gains: **The Second Oracle: Green Proves You Met Your Criteria, Not That They Were Right** — The checks gave the game a green light and it was still wrong. Your own tests check your own questions; only someone doing the real task checks the answers.. It takes the first open slot on or after 2026-11-17.
+- **What it does to the aggregate, measured.** Runway rises by 1.0 weeks (one piece ÷ 1 a week).
+- **Cross-checked by, including where it is weak.** stage 2 PASS on 2026-11-10 by reviewer seat (Quality & Trust), Glitch session, agent reviewer-t4-r2-1110 (proof: harness Knowledge_Base/Seats/b4him/reviewer/REVIEW_T4_r2_2026-11-10.md: links-only unlink, 13 sibling links removed (10 pager -> muted spans, 3 body -> plain words), visible text identical to bc31405 6/6, no sibling href left; release link replay 0 404s alone and cumulative (control bc31405: the 13, incl. the logged T4-L1 line); tools tests 92 passed; voice_check PASS 6/6; preview.py a7b1769 PASS 6/6; tier4.html unchanged)
+- **Open label on this row (blocked_on).** Daniel's one tap on the rendered proof (E00472) — marked pre-tap: your approval clears it.
+- **Recommendation.** Approve if the proof reads and looks right. Reject or Later with a note if not; a rejected piece goes back to drafting and returns here as a new commit.
+
+**DANIEL:** _pending_
