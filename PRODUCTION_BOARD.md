@@ -1,6 +1,6 @@
 # PRODUCTION BOARD
 
-*Generated 2026-11-07 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
+*Generated 2026-11-10 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
 **RUNWAY: 13.0 weeks** — healthy  
 *(target 6w · floor 3w · 13 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
@@ -33,18 +33,18 @@
 
 | slot | piece | review by | note |
 |---|---|---|---|
-| **2026-11-10** Tue | Silence Is Not a Grade - the gate that fails open | 2026-11-03 |  |
 | **2026-11-17** Tue | Glossary II - Intermediate terms | 2026-11-10 |  |
-| **2026-11-24** Tue | A Convention Without Enforcement Is a Preference | 2026-11-17 |  |
-| **2026-12-01** Tue | The Tripod - three kinds of checking | 2026-11-24 |  |
-| **2026-12-08** Tue | The Second Oracle - green proves you met your criteria | 2026-12-01 |  |
-| **2026-12-15** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-12-08 |  |
-| **2026-12-22** Tue | Math on the Table - locking parameters before the machine runs | 2026-12-15 |  |
-| **2026-12-29** Tue | Success for Doing Nothing | 2026-12-22 |  |
-| **2027-01-05** Tue | Ruled Is Not Applied | 2026-12-29 |  |
-| **2027-01-12** Tue | A Null Result Is Only as Strong as the Search Behind It | 2027-01-05 |  |
-| **2027-01-19** Tue | The Instrument Measures You First | 2027-01-12 |  |
-| **2027-01-26** Tue | Grade Each Leg Only on the Axis It Can Carry | 2027-01-19 |  |
+| **2026-11-24** Tue | Silence Is Not a Grade - the gate that fails open | 2026-11-17 |  |
+| **2026-12-01** Tue | A Convention Without Enforcement Is a Preference | 2026-11-24 |  |
+| **2026-12-08** Tue | The Tripod - three kinds of checking | 2026-12-01 |  |
+| **2026-12-15** Tue | The Second Oracle - green proves you met your criteria | 2026-12-08 |  |
+| **2026-12-22** Tue | Ask What It Optimised For - archaeology before inheritance | 2026-12-15 |  |
+| **2026-12-29** Tue | Math on the Table - locking parameters before the machine runs | 2026-12-22 |  |
+| **2027-01-05** Tue | Success for Doing Nothing | 2026-12-29 |  |
+| **2027-01-12** Tue | Ruled Is Not Applied | 2027-01-05 |  |
+| **2027-01-19** Tue | A Null Result Is Only as Strong as the Search Behind It | 2027-01-12 |  |
+| **2027-01-26** Tue | The Instrument Measures You First | 2027-01-19 |  |
+| **2027-02-02** Tue | Grade Each Leg Only on the Axis It Can Carry | 2027-01-26 |  |
 
 ## The patch line
 
