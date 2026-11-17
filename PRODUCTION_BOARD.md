@@ -1,11 +1,11 @@
 # PRODUCTION BOARD
 
-*Generated 2026-11-10 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
+*Generated 2026-11-17 by `tools/production_board.py` from `production_queue.jsonl`. **Never hand-edit — re-run the generator.** Doctrine: `PRODUCTION_PLAN.md`.*
 
-**RUNWAY: 13.0 weeks** — healthy  
-*(target 6w · floor 3w · 13 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
+**RUNWAY: 12.0 weeks** — healthy  
+*(target 6w · floor 3w · 12 piece(s) at stage ≥ PREVIEWED ÷ 1/week)*
 
-26 in the pipeline · 7 published · cadence Tuesday only, hard cap 1 per 7 days
+25 in the pipeline · 8 published · cadence Tuesday only, hard cap 1 per 7 days
 
 *Two lines (`PRODUCTION_PLAN` §3): the **content line** above and below; the **patch line** (0 open, 0 racked) runs outside that cadence — see its own section.*
 
@@ -13,7 +13,7 @@
 
 *RULED and PREVIEWED cover the bytes he saw (`approved_blobs`). These files changed after that, so the piece holds no slot until he rules and previews it again (`PRODUCTION_PLAN` §2: never inherited from a previous yes). A **live** piece listed here means the site no longer serves what he approved.*
 
-- **live** Site patch - Title Case every published heading (D21): lessons/index.html (approved 0b478c9a58de, now c949e035d96d)
+- **live** Site patch - Title Case every published heading (D21): lessons/index.html (approved 0b478c9a58de, now 272a02547ab6)
 
 ## Redraft owed — Daniel sent these back
 
@@ -33,7 +33,6 @@
 
 | slot | piece | review by | note |
 |---|---|---|---|
-| **2026-11-17** Tue | Glossary II - Intermediate terms | 2026-11-10 |  |
 | **2026-11-24** Tue | Silence Is Not a Grade - the gate that fails open | 2026-11-17 |  |
 | **2026-12-01** Tue | A Convention Without Enforcement Is a Preference | 2026-11-24 |  |
 | **2026-12-08** Tue | The Tripod - three kinds of checking | 2026-12-01 |  |
@@ -45,6 +44,7 @@
 | **2027-01-19** Tue | A Null Result Is Only as Strong as the Search Behind It | 2027-01-12 |  |
 | **2027-01-26** Tue | The Instrument Measures You First | 2027-01-19 |  |
 | **2027-02-02** Tue | Grade Each Leg Only on the Axis It Can Carry | 2027-01-26 |  |
+| **2027-02-09** Tue | The Law Writer's Own Laws | 2027-02-02 |  |
 
 ## The patch line
 
@@ -79,8 +79,7 @@
 
 **RULED** (DANIEL) — 0
 
-**PREVIEWED** (DANIEL) — 13
-  - Glossary II - Intermediate terms · source: `harness Knowledge_Base/Teaching/Glossary_Tiers_II_III_terms.md (term list, per-term sources)`
+**PREVIEWED** (DANIEL) — 12
   - Silence Is Not a Grade - the gate that fails open · source: `Knowledge_Base/Teaching/Module_09_Silence_Is_Not_A_Grade.md`
   - A Convention Without Enforcement Is a Preference · source: `Knowledge_Base/Teaching/Module_15_A_Convention_Without_Enforcement.md`
   - The Tripod - three kinds of checking · source: `Knowledge_Base/Teaching/Module_11_The_Tripod.md`

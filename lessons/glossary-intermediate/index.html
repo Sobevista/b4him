@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glossary II: Intermediate Terms · The n8n Track · Beacon Ministries</title>
+<meta name="description" content="Twenty automation words for a workflow that has to hold — idempotency, blast walls, safe defaults and the failures you cannot see — each said four ways: technical, plain, analogy, and the mistake it causes.">
+
+<meta property="og:title" content="Glossary II: Intermediate Terms">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://b4him.com/lessons/glossary-intermediate/">
+<meta property="og:description" content="Twenty automation words for a workflow that has to hold, each said four ways — technical, plain, analogy, and the mistake it causes.">
+<meta property="og:site_name" content="Beacon Ministries">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/lesson.css">
+<style>
+  /* Glossary-specific. Page-local per style.css's routing note; every colour
+     comes from the token table (INV-W1). */
+
+  /* the invariant — a structural row, not a closing remark (DECISIONS D18) */
+  .invariant{
+    margin:2.4rem 0 0; padding:1.2rem 1.4rem; background:var(--navy-900);
+    border-left:2px solid var(--gold); max-width:44rem;
+  }
+  .invariant .label{
+    font-family:var(--sans); font-size:.66rem; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--gold); margin:0 0 .7rem;
+  }
+  .invariant p.rule{
+    margin:0 0 .9rem; font-size:1.14rem; line-height:1.55; color:var(--gold-bright);
+    font-style:italic;
+  }
+  .invariant p.why{margin:0; color:var(--muted); line-height:1.62; font-size:.98rem}
+  .invariant p.why strong{color:var(--ink); font-weight:400}
+
+  /* jump index */
+  .jump{
+    margin:1.6rem 0 0; padding:0; list-style:none; display:flex; flex-wrap:wrap;
+    gap:.35rem .9rem; font-family:var(--sans); font-size:.78rem; max-width:44rem;
+    scroll-margin-top:5rem; /* "back to the list" lands with "The Twenty" in view */
+  }
+  .jump a{color:var(--gold); text-decoration:none; border-bottom:1px solid transparent}
+  .jump a:hover{color:var(--gold-bright); border-color:var(--gold)}
+
+  /* open all / close all — shown only once the script runs (it ships [hidden]) */
+  .fold-all{
+    display:block; margin:1.4rem 0 1.2rem; font-family:var(--sans); font-size:.74rem;
+    letter-spacing:.06em; color:var(--gold); background:transparent;
+    border:1px solid var(--line); border-radius:4px; padding:.5rem 1rem; cursor:pointer;
+    transition:border-color .15s ease, color .15s ease;
+  }
+  .fold-all:hover{color:var(--gold-bright); border-color:var(--gold)}
+  .fold-all:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+  .fold-all[hidden]{display:none}
+
+  /* one term — a native <details>: folded to its name by default, opens on click,
+     Enter or Space, and needs no script. The jump-list id sits on the <dl> inside,
+     so a browser that reveals a fragment's closed <details> (Chromium does) opens
+     the word with no script at all; the scroll margin keeps its name in view. */
+  .term{margin:0; max-width:44rem; border-top:1px solid var(--line)}
+  .jump + .fold-all[hidden] + .term{margin-top:1.4rem}
+  .term:last-of-type{border-bottom:1px solid var(--line)}
+  .term-head{
+    display:flex; align-items:baseline; gap:.85rem; flex-wrap:wrap; margin:0;
+    padding:.9rem 0; cursor:pointer; list-style:none;
+  }
+  .term-head::-webkit-details-marker{display:none}
+  .term-head::after{
+    content:"+" / ""; margin-left:auto; font-family:var(--sans); font-size:1.1rem;
+    line-height:1; color:var(--gold);
+  }
+  .term details[open] > .term-head::after{content:"\2212" / ""}
+  .term-head:hover h2{color:var(--gold)}
+  .term-head:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+  .term-head h2{margin:0; font-size:1.42rem}
+  .term-head .tier{
+    margin:0; font-family:var(--sans); font-size:.63rem; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  .rows{margin:0; scroll-margin-top:5.5rem}
+  .rows .row{
+    display:grid; grid-template-columns:10rem 1fr;
+    border-top:1px solid var(--line);
+  }
+  .rows .row:last-child{border-bottom:1px solid var(--line)}
+  .rows dt{
+    font-family:var(--sans); font-size:.64rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--gold); padding:.85rem 1rem .85rem 0;
+    line-height:1.5;
+  }
+  .rows dd{
+    margin:0; padding:.85rem 0; color:var(--ink); line-height:1.66; font-size:1rem;
+  }
+  /* the mistake row is the one people skip, so it gets its own weight —
+     shape and ground, not a new colour */
+  .rows .row.mistake{background:var(--navy-700); border-left:2px solid var(--gold-dim)}
+  .rows .row.mistake dt{padding-left:.9rem; color:var(--gold-bright)}
+  .rows .row.mistake dd{padding-right:1rem; color:var(--ink)}
+
+  .totop{
+    margin:.7rem 0 1.6rem; font-family:var(--sans); font-size:.72rem; letter-spacing:.04em;
+  }
+  .totop a{color:var(--muted); text-decoration:none}
+  .totop a:hover{color:var(--gold)}
+
+  @media (max-width:34rem){
+    /* a long name wraps to two or three lines on a phone: the margin clears the whole name */
+    .rows{scroll-margin-top:8rem}
+    .rows .row{grid-template-columns:1fr}
+    .rows dt{padding:.8rem 0 .1rem}
+    .rows dd{padding:0 0 .85rem}
+    .rows .row.mistake dt{padding-left:.9rem}
+    .rows .row.mistake dd{padding:0 .9rem .85rem .9rem}
+  }
+
+  /* paper has no click: every word prints open (the script also opens them on beforeprint) */
+  @media print{
+    .term details::details-content{content-visibility:visible; display:block}
+    .term-head::after, .fold-all, .totop{display:none}
+  }
+
+  /* a jump is this page's main navigation: under reduced motion it is instant.
+     (style.css's site-wide smooth scroll has no such override; that fix is its own patch.) */
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    .fold-all{transition:none}
+  }
+
+  /* the tier is the same for every word on this page (its title says Intermediate), so it is
+     shown, not announced: aria-hidden keeps "INTERMEDIATE" out of each name's accessible name */
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+   <a class="brand" href="/" aria-label="Beacon Ministries — home">
+    <img class="mark" src="/assets/logo.png" alt="" width="30" height="30" style="border-radius:50%" aria-hidden="true">
+    <span class="wordmark">Beacon Ministries</span>
+   </a>
+    <nav aria-label="Main">
+      <a href="/lessons/" aria-current="page">Lessons</a>
+      <a href="/games/">Games</a>
+      <a href="/videos/">Videos</a>
+      <a href="/writing/">Writing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/about/">About</a>
+    </nav>
+  </header>
+
+  <section class="lesson-hero">
+    <p class="label"><a href="/lessons/" style="color:var(--gold);text-decoration:none">The n8n Track</a> · Glossary II</p>
+    <h1>Twenty Words for a Workflow That Has to <em>Hold</em>.</h1>
+    <div class="can-do">
+      <p><strong>What you'll be able to do:</strong> say any of these twenty words four ways —
+      the precise definition, the one a non-technical colleague would understand, the everyday
+      thing it's like, and the mistake it causes — and look at a workflow that runs and say
+      which of them it is missing.</p>
+    </div>
+  </section>
+
+  <div class="lesson">
+
+    <div class="invariant">
+      <p class="label">The Invariant</p>
+      <p class="rule">A word you cannot say four ways — technical, plain, analogy, and the mistake
+      it causes — is a word you have not learned. You have only heard it.</p>
+      <p class="why"><strong>Why it matters:</strong> it's the same invariant as
+      <a href="/lessons/glossary-beginner/">Glossary I</a>, on purpose — one method, carried forward. It bites
+      harder here, because almost every word on this page names a failure you <em>cannot see</em>:
+      a record written twice, a record written half, a check that skipped itself, a default that
+      turned a missing number into a believable zero. Nothing errors. The four rows are how you find
+      out whether you knew the word or only the sound of it, before the data finds out for you.
+      This page is a tool glossary. The invariant under it isn't.</p>
+    </div>
+
+    <h2>Why This Page Exists</h2>
+    <p><a href="/lessons/glossary-beginner/">Glossary I</a> is the vocabulary for getting a workflow to
+    <em>run</em>. This one is the vocabulary for getting it to <em>hold</em> — to survive the
+    retry, the blank input, the crash halfway through, the night nobody is watching. Glossary I
+    pointed here more than once without saying so: Append's mistake row names a fix it never
+    defines, and three of its rows turn on the word <em>silently</em>.</p>
+    <p>The source glossary only carried two words past beginner. So I went back
+    through the rest of what we have — the intermediate curriculum itself, and the notes written
+    as things broke — and took the words that kept showing up. <strong>Every word here, and what it
+    means, was already in our own material.</strong> The four rows for eighteen of them were written
+    out for this page, in the same shape as the first two. Where the curriculum already had an
+    analogy, it's the one you'll read.</p>
+    <p>The fourth row is still the one I'd skip if I were you, so it still has its own shading.
+    Read it <em>before</em> you think you need it.</p>
+
+    <h2>Choose Your Door</h2>
+    <ul class="doors">
+      <li><strong>Builder</strong> — read the PLAIN rows, then take something you've already built
+      and break it on purpose: send it twice, send it blank, kill it halfway.</li>
+      <li><strong>Architect</strong> — read TECHNICAL only; six of these words are one rulebook,
+      and the rest are its failure modes.</li>
+      <li><strong>Translator</strong> — the ANALOGY rows are yours. Most of them come straight from
+      the curriculum, which was written with you in mind.</li>
+      <li><strong>Validator</strong> — start at the COMMON MISTAKE rows, then the gates at the
+      bottom.</li>
+    </ul>
+    <p style="font-size:1.02rem;color:var(--muted)">Not sure which is yours?
+    <a href="/lessons/find-your-door/">Take the 5-minute quiz →</a>&nbsp;Nothing saved, nothing
+    sent.</p>
+
+    <h2>Where the Analogies End</h2>
+    <p>Every analogy below is a ladder, and a ladder is for climbing off.</p>
+    <div class="analogy">
+      <p><strong>Where the analogy ends:</strong> look at who is in these pictures — a receptionist,
+      a foreman, a site inspector, a clerk. Every one of them is a <em>person</em>, and a person
+      notices things nobody told them to notice: the visitor they've seen before, the delivery that
+      looks a bit off. A workflow notices nothing you didn't build it to notice. It can't guess that
+      a request is a retry, can't sense that a record is half-saved, can't tell that a zero was
+      supposed to be a number. Every analogy here quietly hands you that judgment for free. In
+      software, the judgment is the part you have to build.</p>
+    </div>
+
+    <h2>The Twenty</h2>
+    <ul class="jump" id="top">
+      <li><a href="#agent">Agent</a></li>
+      <li><a href="#blast-wall">Blast Wall</a></li>
+      <li><a href="#error-trigger">Error Trigger</a></li>
+      <li><a href="#exponential-backoff">Exponential Backoff</a></li>
+      <li><a href="#fail-open">Fail-Open</a></li>
+      <li><a href="#half-written-state">Half-Written State</a></li>
+      <li><a href="#hallucination">Hallucination</a></li>
+      <li><a href="#idempotency">Idempotency</a></li>
+      <li><a href="#ingress-layer">Ingress Layer</a></li>
+      <li><a href="#near-miss">Near-Miss</a></li>
+      <li><a href="#pagination">Pagination</a></li>
+      <li><a href="#pull-at-genesis">Pull at Genesis, Commit at Revelation</a></li>
+      <li><a href="#run-id">Run_ID</a></li>
+      <li><a href="#safe-default">Safe Default</a></li>
+      <li><a href="#schema-rigidity">Schema Rigidity</a></li>
+      <li><a href="#status-code">Status Code</a></li>
+      <li><a href="#structured-output">Structured Output</a></li>
+      <li><a href="#system-prompt">System Prompt</a></li>
+      <li><a href="#upsert">Upsert</a></li>
+      <li><a href="#validation-block">Validation Block</a></li>
+    </ul>
+    <button type="button" class="fold-all" id="fold-all" hidden>Open all words</button>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Agent</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="agent">
+          <div class="row"><dt>Technical</dt><dd>An LLM-powered node that can reason, make decisions, and call external tools or APIs to complete a defined objective, then return a structured result.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>An AI that does more than answer — it acts. It reads a task, works out what it needs, calls the tools to get it, and hands back a result.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>A new hire with a phone and a company card. Give them a clear job and they come back with an answer. Give them a vague one and they <em>still</em> come back with an answer.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Treating an agent’s output as finished data. An agent returns whatever it generates — a polite explanation, markdown, half a JSON object — with no idea it just broke the next node. Every agent output goes through <a href="#structured-output">Structured Output</a> and a <a href="#validation-block">Validation Block</a> before anything downstream touches it.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Blast Wall</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="blast-wall">
+          <div class="row"><dt>Technical</dt><dd>A node-level configuration that isolates a non-critical branch so its failure does not propagate to the primary execution path. In n8n: <em>Continue on Fail</em> on the node, usually with retries. Partial results are merged so the core transaction still completes.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>A firebreak. If an optional step fails — say, an extra lookup times out — the rest of the workflow keeps going with what it has.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>Subcontractors on a building site, each walled into their own lane. The heating crew running late doesn’t send the electricians home.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Walling a node off and never reading what comes through the wall. Continue on Fail swallows the error and passes an item downstream that carries an error field instead of the data you wanted; every node shows green and the record is missing data. A blast wall has to <em>mark</em> what failed — a flag or an explicit null that the next node checks — or it isn’t a firebreak, it’s a rug.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Error Trigger</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="error-trigger">
+          <div class="row"><dt>Technical</dt><dd>A separate workflow that starts with an Error Trigger node and fires when a workflow that <em>names it</em> throws an unhandled fatal error. In n8n you attach it per workflow — each workflow’s Settings → Error workflow — so one error workflow can watch many, but only the ones you point at it. It packages the run ID, workflow name, failed node, error message and timestamp, and sends a human-readable alert. The source calls it the <em>Dead-Man’s Switch</em>.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>A workflow whose only job is to shout when another workflow crashes.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>The foreman’s standing order: if anything goes wrong on site and nobody reports it, his phone rings anyway.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>An alert that arrives and says only “an error occurred.” It fails the source’s own gate: the alert has to say <em>where</em> the system broke — which run, which node, what error, when. The quietest version: building the handler and never attaching it. The error workflow exists, looks right, and is pointed at by nothing — so the crash it was built for rings no phone. Another is never asking what happens when the error handler itself crashes. That question has a name in <strong>Glossary III</strong>, which isn’t published yet.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Exponential Backoff</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="exponential-backoff">
+          <div class="row"><dt>Technical</dt><dd>A retry strategy for transient failures — timeouts, rate limits, brief outages — where the wait between attempts doubles (1, 2, 4, 8 seconds) up to a maximum retry count, after which the workflow raises a final error.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>If a call fails, wait and try again — and wait longer each time, so you’re not hammering a service that’s already struggling.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>Calling a busy shop. You don’t redial every second. You try again in a minute, then five, then twenty.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Every copy of the workflow backing off on exactly the same schedule. When many runs fail together they retry together — all at once, then all at once again. Add <em>jitter</em>: a random wait between 2<sup>n</sup> and 2<sup>n+1</sup> seconds. And don’t retry what isn’t transient: a wrong key fails four times, just slower.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Fail-Open</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="fail-open">
+          <div class="row"><dt>Technical</dt><dd>A guard whose default, when its trigger doesn’t fire, is passage: no verdict, so proceed. Nobody chooses it. It is the free consequence of writing “if the check matches, act” and never writing the else-branch.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>A check where “the check didn’t happen” looks exactly like “the check passed.”</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>A homework tray labelled “Period 3.” One essay lands in a tray labelled “Period 3 ” — trailing space, different tray. The grading routine finds nothing wrong, and the missing essay reads as no news is good news.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Branching on a count. <code>count == 0</code> is the honest report of both “nothing was wrong” and “I could not look” — so if the step that produced the count crashed, the empty result takes the healthy branch. Make every check say its verdict out loud — <code>PASSED</code>, <code>SKIPPED</code>, <code>REFUSED</code> — so “I didn’t run” can never wear the costume of “all clear.”</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Half-Written State</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="half-written-state">
+          <div class="row"><dt>Technical</dt><dd>A data store left partially updated because a workflow wrote mid-execution and then failed before its later writes: some fields new, others stale, the record internally inconsistent.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>The workflow saved half its work and then crashed. The record looks complete. It isn’t.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>Updating a customer’s file during a phone call — note, note, note — and the call drops. The file now holds a partial, contradictory record that looks finished.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Treating it as no worse than a failed run. A failed run is obviously broken; a half-written record is <em>quietly wrong</em>, and quietly wrong outlives you. The fix isn’t better error handling at the crash point. It’s not writing until the end — <a href="#pull-at-genesis">Pull at Genesis, Commit at Revelation</a>.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Hallucination</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="hallucination">
+          <div class="row"><dt>Technical</dt><dd>An LLM generating plausible but incorrect or structurally invalid output. In a data pipeline the dangerous form is structural: markdown fences around the JSON, missing keys, or a sentence where an object was expected.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>The AI making something up because it had nothing real to say — or answering in the wrong shape.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>Asking for a filled-in form and getting back a friendly letter <em>about</em> the form.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Thinking it only means invented facts. In a pipeline, the common version is a blank input getting a polite “I don’t have enough information to answer that” — a sentence where your next node expected an object. That sentence crashes the write. Or worse, it gets written.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Idempotency</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="idempotency">
+          <div class="row"><dt>Technical</dt><dd>The property of an operation that produces the same result regardless of how many times it is executed with the same input. An idempotent workflow run twice with the same data produces one record, not two.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>If you do the same thing twice, the result is the same as doing it once. No duplicates.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>An elevator call button. Press it once or press it ten times — one elevator comes. (A light <em>toggle</em> is the opposite: press it twice and you are back where you started. That is the kind of operation idempotency protects you from.)</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Using Append without a deduplication check. If the same event fires twice (a webhook retry, a double form submission), you get two identical records. Fix: assign a unique <a href="#run-id">Run_ID</a> and check for it before writing.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Ingress Layer</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="ingress-layer">
+          <div class="row"><dt>Technical</dt><dd>A dedicated first stage — in n8n, typically an Edit Fields (Set) node straight after the trigger — whose only job is to ingest, normalize, label and route the incoming payload, so no raw, unvalidated external data reaches a processing node. It is the working form of <em>Separation of Concerns</em>.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>The front desk. Everything that arrives is checked, tidied and labelled before it goes anywhere inside.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>A receptionist who takes the visitor’s card, writes it out in the building’s own format, and stamps a visit number on it before anyone goes upstairs.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Mapping fields straight out of the incoming payload in five different nodes. Now every node has its own idea of what the data looks like, and one renamed field upstream breaks five places instead of one. One door in; everything downstream reads the cleaned version.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Near-Miss</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="near-miss">
+          <div class="row"><dt>Technical</dt><dd>Input one notch off from valid — an old template, a consistent typo, a plural where a singular was expected — that slips past exact-match checks without triggering them.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>Data that’s <em>almost</em> right. Close enough to look normal; wrong enough to skip your check.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>A key cut one notch off. It slides into the lock perfectly. It just doesn’t turn — and nothing tells you why the door is still shut.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Guarding against garbage and calling it done. Garbage looks like garbage and usually errors on its own; the near-miss is the one that sails through. We had a check that only recognised its marker word for word. One word off, and it didn’t fail — it skipped itself, and unchecked work went straight past it. The rule we took from that: near-misses refuse.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Pagination</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="pagination">
+          <div class="row"><dt>Technical</dt><dd>An API returning a large result set in pages — by page number, offset or cursor — with a field that says whether more remain (<code>has_next_page</code>, <code>next_cursor</code>). Getting the full set means looping until that field says stop.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>The API hands you the first hundred results and a note saying “there’s more.” You have to keep asking.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>Search results. Page one isn’t the whole internet.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Reading page one and believing it’s everything. Nothing errors — you just have the first 100 of 4,000 records. After the loop, compare your item count to the total the API reports. And give the loop a ceiling (the source uses 50 pages, then stop and log): an unbounded loop in production is its own outage.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Pull at Genesis, Commit at Revelation</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="pull-at-genesis">
+          <div class="row"><dt>Technical</dt><dd>The deterministic memory lifecycle: every read from the data store happens at the start of the workflow, all processing happens in memory, and every write happens in one operation at the end. If that one write is atomic, the store is either fully updated or untouched — never half-written. (If the final write is itself several calls, it can still fail between them; the lifecycle shrinks the danger to one moment, it doesn’t abolish it.)</dd></div>
+          <div class="row"><dt>Plain</dt><dd>Read everything first. Do the work. Save once, at the end.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>Pull the whole account history before the sales call; update the customer file once, after the call — never note by note during it.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Adding “just one quick save” in the middle because a later step needs the value. That one mid-flight write is the whole failure. Carry the value forward in memory and write it with everything else. Glossary I’s <em>Workflow</em> is the blueprint; this is the rule for when the blueprint is allowed to touch the database.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Run_ID</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="run-id">
+          <div class="row"><dt>Technical</dt><dd>A deterministic, unique identifier assigned to each workflow execution based on event data (for example, a hash of the event source + the event’s <em>own</em> timestamp + key fields). Used to enforce idempotency by detecting duplicate events. The timestamp must be the one the event carries, not the time you received it — a retried webhook arrives later, and a received-at time would give the duplicate a fresh ID.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>A unique tracking number generated from the event itself, used to detect and reject duplicate runs.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>A purchase order number. Derived from the vendor, date, and items ordered — so the same order always gets the same number. If the accounts-payable clerk sees a PO number they have already processed, they know it is a duplicate and reject it.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Using a database auto-increment ID as a Run_ID. Auto-increment IDs are assigned at write time — they cannot detect duplicates before writing. A Run_ID must be derived from the event data itself, before any write occurs.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Safe Default</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="safe-default">
+          <div class="row"><dt>Technical</dt><dd>A fallback value applied in an expression when a field is missing or null — in n8n, usually the nullish operator: <code>{{ $json.points ?? 0 }}</code> — so downstream nodes never receive <code>undefined</code>.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>“If this field is missing, use this instead.”</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>Writing “N/A” in a form box so the clerk doesn’t reject the whole form for one blank.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Defaulting a field that was <em>required</em>. <code>?? 0</code> on an optional bonus is a safe default. <code>?? 0</code> on an order total is a lie: the missing total becomes a real-looking zero, the log stays green, and nothing ever tells you. Defaults are for optional fields. A missing required field should stop the run.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Schema Rigidity</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="schema-rigidity">
+          <div class="row"><dt>Technical</dt><dd>The invariant that downstream systems never receive undefined keys or raw model text: required fields and types are enforced at every boundary — a JSON Schema on model output, explicit checks and safe defaults in expressions — and missing keys are intercepted before any database or code node. The source calls it the <em>Data Airbag</em>.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>Glossary I’s <a href="/lessons/glossary-beginner/#schema">Schema</a> says what your data should look like. Schema rigidity is actually refusing data that doesn’t.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>An airbag. You never notice it on a normal day. It exists for the one day the input hits your workflow at speed.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Writing the schema down and never enforcing it. A schema in a document is a hope — Glossary I already warns that the tool won’t enforce it for you. Rigidity is the check that runs on every execution, and you prove it by sending a payload with a required field removed and watching the run stop: explicitly, not silently.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Status Code</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="status-code">
+          <div class="row"><dt>Technical</dt><dd>The three-digit number an HTTP response opens with. 2xx: success. 4xx: a problem with the request — 401 not authenticated, 403 forbidden, 404 not found, 429 too many requests. 5xx: a problem on the server — 503 unavailable.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>The one-number answer that comes back before the data: it worked, it’s your end, or it’s theirs.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>The stamp on a returned letter: delivered, wrong address, refused, try again later.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Two of them. First, letting a 429 or a 503 flow downstream as an empty body — wire the HTTP node’s error output, or a rate limit becomes <code>undefined</code> in your data. Second, trusting 404 to mean “doesn’t exist.” Some services answer 404 to a request that lacks permission, so outsiders can’t even confirm the thing is there. “Fixing” the URL is the wrong fix; check the credential.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Structured Output</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="structured-output">
+          <div class="row"><dt>Technical</dt><dd>Enforcing a JSON Schema on an LLM node’s output (the node’s Output Schema / Structured Output option), declaring the required keys and their types so the response is constrained to machine-readable data.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>Instead of asking the AI nicely for JSON, you hand it a form it has to fill in.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>A written scope of work for a contractor: exactly these five items, in these sizes, or the delivery is refused at the gate.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Believing it’s the only wall. Structured output constrains the <em>shape</em>; it doesn’t stop a required field coming back null, or a <code>true</code> arriving as the string <code>"true"</code>. That is the <a href="#validation-block">Validation Block</a>’s job. The source’s own gate asks what each one catches that the other can’t. You need both.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>System Prompt</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="system-prompt">
+          <div class="row"><dt>Technical</dt><dd>Instructions given to an LLM at the start of a call that define its role, behaviour, constraints and output format.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>The job description you give the AI before it starts work.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>The briefing a temp gets on their first morning. A precise briefing gets the same work out of any temp. A vague one gets whatever that temp thought you meant.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Writing “return JSON” in the prompt and calling it enforcement. A prompt is a request, and the model will occasionally decline it; enforcement is <a href="#structured-output">Structured Output</a> plus a <a href="#validation-block">Validation Block</a>. And say who the model is: in our own builds a small model refused a bare instruction, then did the identical task the moment the prompt opened with a role.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Upsert</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="upsert">
+          <div class="row"><dt>Technical</dt><dd>A write operation that updates the existing record if one with the same unique key exists, and inserts a new one if not. One operation, two outcomes, zero duplicates.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>Find it by its ID. If it’s there, update it. If it isn’t, add it.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>The hotel clerk from Glossary I’s <a href="/lessons/glossary-beginner/#append">Append</a> — finally checking the guest list before handing out a room.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Upserting on a key that isn’t unique — a name, an email two people share, a value that changes over time. The upsert dutifully overwrites the wrong record. The key has to exist, and be unique, <em>before</em> the write — which is why Upsert travels with <a href="#run-id">Run_ID</a>.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <article class="term">
+      <details>
+        <summary class="term-head"><h2>Validation Block</h2><span class="tier" aria-hidden="true">Intermediate</span></summary>
+        <dl class="rows" id="validation-block">
+          <div class="row"><dt>Technical</dt><dd>A code step placed directly after an LLM node that re-checks every key, applies safe defaults or rejects, coerces types (the string <code>"true"</code> to a boolean), and returns one clean, flat object — the second wall after Structured Output.</dd></div>
+          <div class="row"><dt>Plain</dt><dd>A small piece of code that checks the AI’s answer before anything else is allowed to use it.</dd></div>
+          <div class="row"><dt>Analogy</dt><dd>A site inspector who checks the delivery against the order, even after the supplier swore it was right.</dd></div>
+          <div class="row mistake"><dt>Common mistake</dt><dd>Writing a validation block that can’t fail. If every field gets a <code>??</code> default, the block turns a broken model response into a tidy record of zeros and “Unknown” — and the source’s own review prompt asks exactly where <code>??</code> still lets bad data through. Decide which fields may default. For the rest, the block should throw.</dd></div>
+        </dl>
+        <p class="totop"><a href="#top">↑ back to the list</a></p>
+      </details>
+    </article>
+
+    <h2>What Isn't Here</h2>
+    <p>The words for <em>systems</em> — workflows that call other workflows, monitors that watch
+    them, agents that check each other, and the failures that only happen in the gaps between —
+    are held for <strong>Glossary III</strong>, which isn’t published yet. Several mistake rows above already point
+    there. That's the order these words were learned in: one workflow that holds, then several
+    that have to hold together.</p>
+    <p>And one more honest note. Six of these words — Ingress Layer, Idempotency, Schema Rigidity,
+    Blast Wall, Pull at Genesis, and the Error Trigger — are the curriculum's six rules, and each
+    of them is taught there by breaking it first. A glossary can give you the word. Only the
+    breaking gives you the fourth row.</p>
+
+    <h2>Validator Gates</h2>
+    <ol class="gates">
+      <li><strong>Gate 1:</strong> Without looking, say the difference between a <em>failed
+      execution</em> and a <em>half-written state</em>. Which one is more dangerous, and which word
+      on this page prevents it?</li>
+      <li><strong>Gate 2:</strong> <em>Structured Output</em> and the <em>Validation Block</em> are
+      both walls around a model's answer. Name one failure each catches that the other cannot.</li>
+      <li><strong>Gate 3:</strong> <em>Safe Default</em>'s mistake row and <em>Fail-Open</em>'s
+      mistake row describe the same disease in two different places. Say what it is in one
+      sentence.</li>
+      <li><strong>Gate 4 (own words):</strong> Pick a check you rely on — an email filter, a
+      spreadsheet lookup, a form that validates. Feed it a near-miss on purpose: one letter off, a
+      trailing space. Write your prediction first — flag, or silence? If it was silence, you have
+      found a fourth row of your own.</li>
+    </ol>
+
+    <div class="complete">
+      <p><strong>Glossary complete</strong> — the second of three. If the four-row habit is the
+      only thing you take from it, you got the invariant and can drop the tool. And if you take one
+      more thing: a workflow that runs is not a workflow that holds, and the difference is almost
+      never visible from the green tick.</p>
+    </div>
+
+    <nav class="pager">
+      <a href="/lessons/glossary-beginner/">← Glossary I: Beginner Terms</a>
+      <span class="spacer"></span>
+      <span style="color:var(--muted)">Glossary III: Advanced Terms — not yet published</span>
+    </nav>
+
+  </div>
+
+  <footer>
+    <span>Beacon Ministries · b4him.com</span>
+    <span>Built in the open. Fumbling included.</span>
+  </footer>
+
+</div>
+<script>
+/* Progressive enhancement only: every word already opens and closes without this
+   (native <details>). This adds the open-all control, and makes a jump link or a
+   #word in the address bar open its word in every browser, not only Chromium. */
+(function () {
+  var terms = [].slice.call(document.querySelectorAll('.term > details'));
+  var btn = document.getElementById('fold-all');
+  if (!terms.length || !btn) return;
+
+  function allOpen() { return terms.every(function (d) { return d.open; }); }
+  function relabel() { btn.textContent = allOpen() ? 'Close all words' : 'Open all words'; }
+
+  btn.addEventListener('click', function () {
+    var open = !allOpen();
+    terms.forEach(function (d) { d.open = open; });
+    relabel();
+  });
+  terms.forEach(function (d) { d.addEventListener('toggle', relabel); });
+  btn.hidden = false;
+  relabel();
+
+  function termFor(hash) {
+    if (!hash || hash.length < 2) return null;
+    var id = hash.slice(1);
+    try { id = decodeURIComponent(id); } catch (e) { /* malformed (e.g. #100%): use it raw */ }
+    var el = document.getElementById(id);
+    var article = el && el.closest('.term');
+    return article ? { el: el, details: article.querySelector('details') } : null;
+  }
+  function reveal(hash) {
+    var t = termFor(hash);
+    if (t && !t.details.open) t.details.open = true;
+    return t;
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href^="#"]');
+    if (a) reveal(a.getAttribute('href'));
+  });
+  window.addEventListener('hashchange', function () { reveal(location.hash); });
+  if (reveal(location.hash)) {
+    window.addEventListener('load', function () {
+      var t = termFor(location.hash);
+      // behavior follows the CSS scroll-behavior, which is instant under prefers-reduced-motion
+      if (t) t.el.scrollIntoView();
+    });
+  }
+
+  var before = null;
+  window.addEventListener('beforeprint', function () {
+    before = terms.map(function (d) { return d.open; });
+    terms.forEach(function (d) { d.open = true; });
+  });
+  window.addEventListener('afterprint', function () {
+    if (before) terms.forEach(function (d, i) { d.open = before[i]; });
+    before = null;
+    relabel();
+  });
+})();
+</script>
+</body>
+</html>
