@@ -41,6 +41,18 @@ RUNWAY_TARGET_WEEKS = 6        # (plan section 1)
 RUNWAY_FLOOR_WEEKS = 3         # (plan section 1)
 MAINT_PAGE_DAYS = 90           # quarterly page review        (plan section 5)
 
+# --- a stress profile (tools/line_profile.py, 2026-11-09). Inert unless env B4HIM_LINE_PROFILE names one: then the
+#     line acts on the profile's throwaway repo and clock instead. A profile naming the production repo is refused
+#     here, at import, before anything runs. With no profile every value above stays exactly as written.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import line_profile  # noqa: E402
+
+PROFILE = line_profile.load()
+if PROFILE is not None:
+    REPO = PROFILE.repo
+    QUEUE, BOARD = REPO / "production_queue.jsonl", REPO / "PRODUCTION_BOARD.md"
+    CADENCE_DAYS, PER_WEEK_CAP, REVIEW_LEAD_DAYS = PROFILE.cadence_days, PROFILE.per_week_cap, PROFILE.review_lead_days
+
 STAGES = ["SOURCE", "DRAFTED", "REVIEWED", "RULED", "PREVIEWED",
           "SCHEDULED", "PUBLISHED", "MAINTAINED"]
 STAGE_OWNER = {
